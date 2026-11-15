@@ -41,6 +41,7 @@ import { C, RADIUS, TYPE, FONT_STACK, TAP, btnBase, HUD_CSS, PANEL_RADIUS, PILL,
 import { floorAria, floorOf, floorTag } from '../floors';
 import { planStairs, landingTurns, turnPhrase } from '../stairGeometry';
 import { formatDistance, formatWalkTime, guidanceFor } from '../routeFormat';
+import { createVoiceGuide, hush, say, speechAvailable } from '../voiceGuidance';
 import { advanceAlongRoute } from '../routeProgress';
 
 /** Off-screen cue stays hidden while the stop's node arrow is below this fade (0..1). */
@@ -413,6 +414,16 @@ export default function ARView({
             font-size: ${TYPE.desc}; line-height: 1.4; color: ${C.muted}; font-variant-numeric: tabular-nums;
         }
         .ar-guide-stats b { color: ${C.white}; font-weight: 700; }
+        /* Spoken directions on/off: a quiet pill at the end of the numbers row. */
+        .ar-voice-btn {
+            margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: ${TAP.minHeight};
+            padding: 0 12px; border-radius: ${PILL}px; border: 1px solid rgba(255,255,255,0.14); background: transparent;
+            color: ${C.muted}; font: inherit; font-size: ${TYPE.desc}; font-weight: 700; cursor: pointer;
+        }
+        .ar-voice-btn:hover { color: ${C.white}; background: rgba(255,255,255,0.06); }
+        .ar-voice-btn:focus-visible { outline: ${TAP.focusOutline}; outline-offset: 2px; }
+        .ar-voice-btn.is-on { color: ${C.white}; border-color: ${C.accent}; }
+        .ar-guide-stats { align-items: center; }
         @media (prefers-reduced-motion: reduce) { .ar-step-icon svg { transition: none; } }
         .ar-route { display: flex; gap: 10px; align-items: baseline; margin-top: 1px; font-size: ${TYPE.desc}; color: ${C.muted}; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
         .ar-route > span:last-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -948,6 +959,30 @@ export default function ARView({
         try { return localStorage.getItem('arTechDetails') === '1'; } catch { return false; }
     });
     useEffect(() => { try { localStorage.setItem('arTechDetails', techDetails ? '1' : '0'); } catch { /* private mode */ } }, [techDetails]);
+    // Spoken directions (voiceGuidance.js): off until switched on, remembered on this device. The render
+    // loop feeds voiceRef the current guidance; lastGuideRef keeps it so switching on can say it at once.
+    const canSpeak = speechAvailable();
+    const [voiceOn, setVoiceOn] = useState(() => {
+        try { return canSpeak && localStorage.getItem('arVoice') === '1'; } catch { return false; }
+    });
+    const voiceRef = useRef(null);
+    const lastGuideRef = useRef(null);
+    useEffect(() => {
+        try { localStorage.setItem('arVoice', voiceOn ? '1' : '0'); } catch { /* private mode */ }
+        if (voiceOn && !voiceRef.current) voiceRef.current = createVoiceGuide(say);
+        if (!voiceOn) { voiceRef.current = null; hush(); }
+    }, [voiceOn]);
+    useEffect(() => hush, []);
+    const toggleVoice = () => {
+        const next = !voiceOn;
+        setVoiceOn(next);
+        // Speak inside the tap itself: iPhones only allow speech that starts from a user gesture.
+        if (next && lastGuideRef.current) {
+            const guide = createVoiceGuide(say);
+            voiceRef.current = guide;
+            guide.repeat(lastGuideRef.current, performance.now());
+        }
+    };
     const [showMiniMap, setShowMiniMap] = useState(false);
     // Camera <-> map swap: when true the map fills the stage and the camera
     // (or the free-roam 3D scene) shrinks into a corner preview.
@@ -966,19 +1001,10 @@ export default function ARView({
     // people off campus can try the movement. `testPosRef` holds the walked fix
     // the render loop uses as "you" (guidance, distances, the route).
     const [followTest, setFollowTest] = useState(false);
+    // True while the 3D mode walks instead of following the GPS (set below, once freeRoam is known).
     const followTestRef = useRef(false);
-    followTestRef.current = followMain && followTest;
     const testPosRef = useRef(null);
     const onTestMove = (lat, lng) => { testPosRef.current = { latitude: lat, longitude: lng }; };
-    useEffect(() => {
-        if (followMain && followTest) return;
-        // Leaving the test walk (or 3D mode): back to the real GPS position.
-        if (testPosRef.current) {
-            testPosRef.current = null;
-            reportWalked(null, null, true);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [followMain, followTest]);
     const setViewMode = (mode) => {
         setFollowMain(mode === 'follow');
         if (mode !== 'follow') setFollowTest(false);
@@ -1237,6 +1263,19 @@ export default function ARView({
     // are mirrored into dataRef just above.
     const freeRoamRef = useRef(freeRoam);
     freeRoamRef.current = freeRoam;
+    // On a computer (desktop free-roam: mouse and keyboard) the 3D mode walks with W A S D straight
+    // away; the Test walk button is only for phones, where walking replaces the GPS.
+    const testWalkOn = followMain && (followTest || freeRoam);
+    followTestRef.current = testWalkOn;
+    useEffect(() => {
+        if (testWalkOn) return;
+        // Leaving the test walk (or 3D mode): back to the real GPS position.
+        if (testPosRef.current) {
+            testPosRef.current = null;
+            reportWalked(null, null, true);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [testWalkOn]);
     useEffect(() => {
         if (freeRoam) return;
         const keys = keysRef.current;
@@ -2113,7 +2152,11 @@ export default function ARView({
                 if (data.destKey !== destId) {
                     data.destKey = destId;
                     data.targetIdx = 1;
-                    if (arrivedRef.current) { arrivedRef.current = false; setArrived(null); }
+                    if (arrivedRef.current) {
+                        arrivedRef.current = false;
+                        setArrived(null);
+                        if (voiceRef.current) voiceRef.current = createVoiceGuide(say); // a new route: speak again
+                    }
                 }
                 // A re-route (it re-runs from where you are every few metres)
                 // is a new list of stops starting at YOU: count from its first
@@ -2924,6 +2967,8 @@ export default function ARView({
                             relDeg: relDeg === null ? null : Math.round(relDeg / 5) * 5,
                             distM: leg.dist, isLast: idx === path.length - 1, destName: last?.name || '', arrived: arrivedNow,
                         });
+                        lastGuideRef.current = g;
+                        voiceRef.current?.update(g, performance.now());
                         const remainTxt = arrivedNow ? '0 m' : formatDistance(remaining);
                         const etaTxt = arrivedNow ? 'You are there' : formatWalkTime(remaining);
                         const stopTxt = `${Math.min(idx, path.length - 1)} of ${path.length - 1}`;
@@ -2949,6 +2994,7 @@ export default function ARView({
                     if (arrivedNow && !arrivedRef.current) {
                         arrivedRef.current = true;
                         setArrived({ name: last?.name || 'your destination' });
+                        voiceRef.current?.arrive(last?.name);
                         try { navigator.vibrate?.([40, 60, 40]); } catch { /* optional */ }
                     }
                 }
@@ -4200,6 +4246,19 @@ export default function ARView({
                     <span><b ref={closestRef}>-</b> left</span>
                     <span ref={closestNodeRef} />
                     <span>Stop <b ref={stopCountRef}>-</b></span>
+                    {canSpeak && (
+                        <button type="button" className={`ar-voice-btn${voiceOn ? ' is-on' : ''}`} aria-pressed={voiceOn}
+                            onClick={(e) => { e.stopPropagation(); toggleVoice(); }}
+                            title={voiceOn ? 'Spoken directions are on. Tap to turn them off.' : 'Hear the directions spoken aloud (works offline with the phone’s own voice).'}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                {voiceOn
+                                    ? <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    : <path d="m16 9.5 5 5m0-5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
+                            </svg>
+                            Voice {voiceOn ? 'on' : 'off'}
+                        </button>
+                    )}
                 </div>
                 {/* Field-test telemetry, off unless switched on in the menu. */}
                 {techDetails && (
@@ -4262,7 +4321,7 @@ export default function ARView({
                 </div>
             )}
 
-            {followMain && started && (
+            {followMain && started && !freeRoam && (
                 <button
                     type="button"
                     className={`ar-btn ar-mini-toggle ar-test-walk${followTest ? ' is-on' : ''}`}
@@ -4280,7 +4339,7 @@ export default function ARView({
                         route={route} buildings={buildings} links={links} pathways={pathways}
                         getPose={getFollowPose}
                         floor={floor}
-                        testWalk={followTest}
+                        testWalk={testWalkOn}
                         onTestMove={onTestMove}
                         joyBottom={`calc(${SAFE_BOTTOM} + ${DOCK_LIFT + (showGuidance ? guideH + 12 : 12)}px)`}
                         // Rebuilt when the STOPS change, not on each GPS fix (the

@@ -41,10 +41,21 @@ export default function RainReportButton({ headers, onWeather }) {
         }
     };
 
+    // Why a student would tap it: the forecast says dry, but it is raining where they stand.
+    const questionId = 'rain-report-question';
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 6, minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.hairline}`, minWidth: 0 }}>
+            {state.kind !== 'sent' && (
+                <span id={questionId} style={{ fontSize: TYPE.sub, fontWeight: 600, color: C.text, lineHeight: 1.35 }}>
+                    Is it raining where you are, but the app says dry?
+                    <span style={{ display: 'block', marginTop: 2, fontSize: TYPE.desc, fontWeight: 500, color: C.muted }}>
+                        Tell everyone. When 2 students report rain, routes switch to covered paths.
+                    </span>
+                </span>
+            )}
             <button
                 type="button"
+                aria-describedby={state.kind !== 'sent' ? questionId : undefined}
                 onClick={send}
                 aria-busy={state.kind === 'sending'}
                 style={{

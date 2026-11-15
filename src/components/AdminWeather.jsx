@@ -210,7 +210,7 @@ function TimeChart({ points, lines, dots = [], rug = null, yDomain, yFormat, hei
             prevT = p.t;
         }
         if (cur.length) segs.push(cur);
-        // Faint connectors across gaps (no data recorded in between), so the trend still reads.
+        // Connectors across gaps (no data recorded in between), so the trend still reads.
         const bridges = segs.slice(1).map((seg, i) => [segs[i][segs[i].length - 1], seg[0]]);
         return { ...line, segs, bridges };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,10 +272,10 @@ function TimeChart({ points, lines, dots = [], rug = null, yDomain, yFormat, hei
                         return <rect key={i} x={x(p.t) - 1.5} y={m.top + h + 6} width="3" height="9" rx="1" fill={state === 'rain' ? COLOR.airport : COLOR.dry} />;
                     })}
                     {dotLines.map((d) => (d.pts.length > 1
-                        ? <polyline key={`${d.key}-join`} points={d.pts.map((pt) => pt.join(',')).join(' ')} fill="none" stroke={d.color} strokeWidth="2.5" strokeOpacity="0.5" strokeLinejoin="round" />
+                        ? <polyline key={`${d.key}-join`} points={d.pts.map((pt) => pt.join(',')).join(' ')} fill="none" stroke={d.color} strokeWidth="2.5" strokeLinejoin="round" />
                         : null))}
                     {paths.map((line) => line.bridges.map(([a, b], i) => (
-                        <line key={`${line.key}-gap${i}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={line.color} strokeWidth="2.5" strokeOpacity="0.4" strokeLinecap="round" />
+                        <line key={`${line.key}-gap${i}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={line.color} strokeWidth="2.5" strokeLinecap="round" />
                     )))}
                     {paths.map((line) => line.segs.map((seg, i) => (seg.length === 1
                         ? <circle key={`${line.key}${i}`} cx={seg[0][0]} cy={seg[0][1]} r="4" fill={line.color} stroke={SURFACE} strokeWidth="1.5" />
@@ -512,7 +512,7 @@ function RainCard({ rain }) {
                             { label: 'Airport: rained', color: COLOR.airport, kind: 'bar' },
                             { label: 'Airport: dry', color: COLOR.dry, kind: 'bar' },
                         ]}
-                        tip="Rain chance over time. The marks under the chart are what the airport reported 20 minutes later. Faint lines cross times with no data. Hover the chart for exact values."
+                        tip="Rain chance over time. The marks under the chart are what the airport reported 20 minutes later. Long straight stretches cross times with no data. Hover the chart for exact values."
                     />
                     <TimeChart
                         points={points}
@@ -554,7 +554,7 @@ function HeatCard({ heat }) {
                             { label: 'Open-Meteo', color: COLOR.provider },
                             { label: 'Airport measured', color: COLOR.airport, kind: 'dot' },
                         ]}
-                        tip="Heat index 1 hour ahead, drawn at the hour each prediction was for. Dots are what the airport measured then. Faint lines cross times with no data."
+                        tip="Heat index 1 hour ahead, drawn at the hour each prediction was for. Dots are what the airport measured then. Long straight stretches cross times with no data."
                     />
                     <TimeChart
                         points={points}

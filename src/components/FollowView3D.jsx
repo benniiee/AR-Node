@@ -153,7 +153,7 @@ export default function FollowView3D({
                 s.testOn = true;
                 const first = nextStop();
                 const far = !s.pos || (first && Math.hypot(s.pos.x - first.x, s.pos.z - first.z) > TEST_NEAR_ROUTE_M);
-                if (far && first) {
+                if (s.pos && far && first) {
                     s.pos = new THREE.Vector3(first.x, Math.max(0, first.y - 0.25), first.z);
                     s.viewYaw = null;
                 }
@@ -162,6 +162,20 @@ export default function FollowView3D({
                 s.testLL = null;
                 s.joy = { x: 0, y: 0 };
                 s.keys.clear();
+            }
+            // Walking from the first frame (a computer opens 3D mode walking): the scene and route may not be
+            // ready yet, so keep trying until you can be placed, at your position if it is known.
+            if (live.testWalk && !s.pos && s.xz) {
+                const here = getPose?.();
+                const first = nextStop();
+                if (here && Number.isFinite(here.lat) && Number.isFinite(here.lng)) {
+                    const t = s.xz(here.lat, here.lng);
+                    s.pos = new THREE.Vector3(t.x, 0, t.z);
+                    s.pos.y = groundY(s.pos);
+                    if (Number.isFinite(here.headingDeg)) s.yaw = -here.headingDeg * Math.PI / 180;
+                } else if (first) {
+                    s.pos = new THREE.Vector3(first.x, Math.max(0, first.y - 0.25), first.z);
+                }
             }
             const pose = live.testWalk ? null : getPose?.();
             if (live.testWalk && s.pos) {

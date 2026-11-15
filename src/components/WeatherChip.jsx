@@ -110,7 +110,7 @@ export default function WeatherChip({ weather, inline = false, shadeActive = fal
         <Root
             role={inline && !compact ? undefined : 'status'}
             aria-live={inline && !compact ? undefined : 'polite'}
-            title={title}
+            title={compact ? undefined : title}
             style={{
                 display: 'flex', alignItems: 'center', gap: 8, flex: compact ? '1 1 auto' : undefined,
                 minHeight: inline ? 0 : TAP.minHeight, padding: compact ? 0 : inline ? '4px 0 0' : '0 4px',

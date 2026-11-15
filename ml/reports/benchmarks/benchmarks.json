@@ -1,0 +1,56 @@
+{
+  "rain": [
+    {
+      "method": "Open-Meteo's own rain chance",
+      "brier": 0.2401,
+      "auc": 0.852,
+      "starts": 0,
+      "dry_warned": 0.0
+    },
+    {
+      "method": "Original model (Nov 7)",
+      "brier": 0.0298,
+      "auc": 0.89,
+      "starts": 15,
+      "dry_warned": 0.05
+    },
+    {
+      "method": "First satellite model (Nov 13)",
+      "brier": 0.0296,
+      "auc": 0.914,
+      "starts": 19,
+      "dry_warned": 0.05
+    },
+    {
+      "method": "Current model (Nov 14)",
+      "brier": 0.0293,
+      "auc": 0.923,
+      "starts": 26,
+      "dry_warned": 0.05
+    }
+  ],
+  "rain_steps": 3550,
+  "rain_starts": 82,
+  "heat_mae": {
+    "Current model (airport-trained)": [
+      1.498,
+      1.598,
+      1.637
+    ],
+    "Typical for month and hour": [
+      1.735,
+      1.735,
+      1.735
+    ],
+    "Open-Meteo forecast": [
+      2.192,
+      2.192,
+      2.192
+    ],
+    "Previous model (ERA5-trained)": [
+      3.437,
+      3.482,
+      3.509
+    ]
+  }
+}

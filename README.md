@@ -118,6 +118,40 @@ vendor/bin/pint --format agent              # format PHP after changes
 - **UV index:** Open-Meteo's forecast UV index, shown from "moderate" (3) up. From "high" (6) routes prefer shade, more strongly up to "extreme" (11), the same way they do on hot days, so a clear but mild morning still steers students away from full sun.
 - **Freshness:** the server refreshes every 10 minutes (the satellite's rhythm) and phones check every 5, so a new satellite image or airport report reaches students within about 15 minutes, and a rain report within 5.
 
+### Benchmarks
+
+Every method below is scored on months that **none** of the models trained or tuned on, against what the Zamboanga airport actually observed. Numbers measured in November 2026 (also in `ml/reports/benchmarks/benchmarks.json`).
+
+**Rain, 20 minutes ahead.** The fairest test of "will students get a warning before the rain starts?": every method may wrongly warn on at most 5% of dry moments, and we count how many of the 82 rain starts (dry, then rain) it warned about.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="ml/reports/benchmarks/rain_benchmark_dark.png">
+  <img alt="Bar chart: rain starts warned at a 5% false-alarm rate. Open-Meteo 0, original model 15, first satellite model 19, current model 26, out of 82." src="ml/reports/benchmarks/rain_benchmark_light.png">
+</picture>
+
+| Method (Jul 29 - Oct 30 2026, 3,550 steps, 82 rain starts) | Rain starts warned at 5% false alarms | AUC (1 = perfect) | Brier score (lower is better) |
+|---|---|---|---|
+| Open-Meteo's own rain chance | 0 (it says 100% on 5.3% of dry moments) | 0.852 | 0.240 |
+| Original campus model (Nov 7): forecast + airport + 9 models | 15 | 0.890 | 0.0298 |
+| First satellite model (Nov 13): + cloud tops | 19 | 0.914 | 0.0296 |
+| **Current model (Nov 14): + water vapour, 10-minute cooling, history from 2024** | **26** | **0.923** | **0.0293** |
+
+The 1-hour model ("rain at any time within the next hour", test period Jun 26 - Oct 30 2026, 153 rain starts) warns before 49% of rain starts while wrongly warning on 10.8% of dry moments; AUC 0.916 and Brier 0.039, against 0.862 and 0.260 for Open-Meteo's own chance.
+
+**Heat index, 1 to 3 hours ahead.** Average error against the airport thermometer over a full test year.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="ml/reports/benchmarks/heat_benchmark_dark.png">
+  <img alt="Grouped bar chart: heat index error at +1, +2 and +3 hours. Current model 1.5, 1.6, 1.6 °C; typical for month and hour 1.7; Open-Meteo forecast 2.2; previous ERA5-trained model 3.4 to 3.5 °C." src="ml/reports/benchmarks/heat_benchmark_light.png">
+</picture>
+
+| Method (Nov 2025 - Oct 2026) | +1 h | +2 h | +3 h | Bias at +1 h |
+|---|---|---|---|---|
+| **Current model (trained on the airport thermometer)** | **1.50 °C** | **1.60 °C** | **1.64 °C** | **0.0 °C** |
+| Typical value for that month and hour | 1.74 °C | 1.74 °C | 1.74 °C | −0.3 °C |
+| Open-Meteo forecast heat index | 2.19 °C | 2.19 °C | 2.19 °C | −1.4 °C |
+| Previous model (trained on ERA5 reanalysis) | 3.44 °C | 3.48 °C | 3.51 °C | −2.7 °C |
+
 **Retraining** uses the training dashboard: `python ml/gui.py` (install packages once with `python -m pip install -r ml/requirements.txt`). In the Rain model section: 1 Download Open-Meteo, 2 Download METAR, 2b Download satellite (optional, many hours from 2024, resumable), 3 Train and evaluate (the 20-minute model), 3b Train 60-min model (optional). The Evaluation tab compares every input set, including the share of **rain starts** each one warned about. "Run parity check" proves the PHP app computes the same numbers as Python.
 
 ---

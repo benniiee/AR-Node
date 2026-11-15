@@ -1,0 +1,271 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Border;
+use App\Models\Building;
+use App\Models\CampusArea;
+use App\Models\Node;
+use App\Models\NodeLink;
+use App\Models\Pathway;
+use DateTimeImmutable;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+/**
+ * The public map (nodes, staircases, borders) as one payload, shared by
+ * GET /api/map-data and the static file storage/app/public/data/map.json, so
+ * the two can never drift apart.
+ *
+ * The file adds two fields the API does not have:
+ *  - hash: fingerprint of the content. `version` is only the newest updated_at,
+ *    so deleting an older node does not change it; the hash does.
+ *  - generated_at: when the file was written.
+ */
+class MapSnapshot
+{
+    public const FILE = 'map.json';
+
+    public const WRITTEN = 'written';
+
+    public const UNCHANGED = 'unchanged';
+
+    public const FAILED = 'failed';
+
+    /**
+     * The payload /api/map-data has always returned.
+     *
+     * @return array<string, mixed>
+     */
+    public static function payload(): array
+    {
+        return self::fullPayload() + ['audience' => 'member'];
+    }
+
+    /**
+     * What a visitor (not signed in) may see: building locations only. No
+     * offices, rooms, route nodes, staircases, walls or pathways. This is also
+     * the content of the public static file, which anyone can download.
+     *
+     * @return array<string, mixed>
+     */
+    public static function visitorPayload(): array
+    {
+        $full = self::fullPayload();
+
+        return [
+            'version' => $full['version'],
+            'nodes' => [],
+            'links' => [],
+            'borders' => [],
+            'buildings' => $full['buildings'],
+            'pathways' => [],
+            // Campus outlines and names are public, like the buildings.
+            'campus_areas' => $full['campus_areas'],
+            'audience' => 'visitor',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function fullPayload(): array
+    {
+        $nodes = Node::with('department:id,name,color')->get();
+        $borders = Border::all();
+        $links = NodeLink::orderBy('id')->get();
+        $buildings = Building::with('department:id,name,color')->orderBy('id')->get();
+        $pathways = Pathway::orderBy('id')->get();
+        $areas = CampusArea::orderBy('name')->get();
+
+        // A staircase edit changes routing, so it must bump the version too;
+        // building labels and pathways change what the map shows.
+        $version = max(
+            Node::max('updated_at')?->timestamp ?? 0,
+            Border::max('updated_at')?->timestamp ?? 0,
+            NodeLink::max('updated_at')?->timestamp ?? 0,
+            Building::max('updated_at')?->timestamp ?? 0,
+            Pathway::max('updated_at')?->timestamp ?? 0,
+            CampusArea::max('updated_at')?->timestamp ?? 0
+        );
+
+        return self::shape(
+            $nodes->map(fn ($n) => [
+                'id' => $n->id,
+                'name' => $n->name,
+                'type' => $n->type,
+                'latitude' => $n->latitude,
+                'longitude' => $n->longitude,
+                'elevation' => $n->elevation,
+                'floor_level' => $n->floor_level,
+                'path_type' => $n->path_type,
+                'campus' => $n->campus,
+                'building_id' => $n->building_id,
+                // Department label colour. Creator names stay off the public
+                // feed - the admin panel reads those from GET /api/nodes.
+                'department' => $n->department ? [
+                    'id' => $n->department->id,
+                    'name' => $n->department->name,
+                    'color' => $n->department->color,
+                ] : null,
+            ])->all(),
+            $links->map(fn ($l) => [
+                'id' => $l->id,
+                'node_a_id' => $l->node_a_id,
+                'node_b_id' => $l->node_b_id,
+                'kind' => $l->kind,
+                'angle_deg' => $l->angle_deg,
+                'yaw_deg' => $l->yaw_deg,
+                'flights' => $l->flights,
+                'landing_m' => $l->landing_m,
+            ])->all(),
+            $borders->map(fn ($b) => [
+                'group_id' => $b->group_id,
+                'latitude' => $b->latitude,
+                'longitude' => $b->longitude,
+            ])->all(),
+            (int) $version,
+            $buildings->map(fn ($b) => [
+                'id' => $b->id,
+                'name' => $b->name,
+                'short_name' => $b->short_name,
+                'floors' => $b->floors,
+                'height_m' => $b->height_m,
+                'status' => $b->status,
+                'campus' => $b->campus,
+                'polygon' => $b->polygon,
+                'doors' => $b->doors ?? [],
+                // Outline + label dot use the department colour, like nodes.
+                'department' => $b->department ? [
+                    'id' => $b->department->id,
+                    'name' => $b->department->name,
+                    'color' => $b->department->color,
+                ] : null,
+            ])->all(),
+            $pathways->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'kind' => $p->kind,
+                'status' => $p->status,
+                'coordinates' => $p->coordinates,
+            ])->all(),
+            $areas->map(fn (CampusArea $a) => [
+                'id' => $a->id,
+                'name' => $a->name,
+                'color' => $a->color,
+                'polygon' => $a->polygon,
+            ])->all(),
+        );
+    }
+
+    /**
+     * Pure assembly of the payload from plain arrays (unit-testable without a database).
+     *
+     * @param  list<array<string, mixed>>  $nodes
+     * @param  list<array<string, mixed>>  $links
+     * @param  list<array{group_id: mixed, latitude: mixed, longitude: mixed}>  $borderRows  in database order
+     * @param  list<array<string, mixed>>  $buildings
+     * @param  list<array<string, mixed>>  $pathways
+     * @param  list<array<string, mixed>>  $campusAreas
+     * @return array<string, mixed>
+     */
+    public static function shape(array $nodes, array $links, array $borderRows, int $version, array $buildings = [], array $pathways = [], array $campusAreas = []): array
+    {
+        $groups = [];
+
+        foreach ($borderRows as $row) {
+            $id = (int) $row['group_id'];
+            $groups[$id]['group_id'] = $id;
+            $groups[$id]['coordinates'][] = ['lat' => $row['latitude'], 'lng' => $row['longitude']];
+        }
+
+        return [
+            'version' => $version,
+            'nodes' => array_values($nodes),
+            'links' => array_values($links),
+            'borders' => array_values($groups),
+            'buildings' => array_values($buildings),
+            'pathways' => array_values($pathways),
+            'campus_areas' => array_values($campusAreas),
+        ];
+    }
+
+    /**
+     * The file content: the payload plus hash and generated_at.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public static function snapshot(array $payload): array
+    {
+        $hash = substr(sha1((string) json_encode([
+            $payload['nodes'], $payload['links'], $payload['borders'],
+            $payload['buildings'] ?? [], $payload['pathways'] ?? [], $payload['campus_areas'] ?? [], $payload['audience'] ?? null,
+        ])), 0, 16);
+
+        return [
+            'generated_at' => (new DateTimeImmutable)->format(DATE_ATOM),
+            'hash' => $hash,
+        ] + $payload;
+    }
+
+    /**
+     * True when the file already holds this content, so rewriting it would only
+     * change its Last-Modified for nothing.
+     *
+     * @param  array<string, mixed>|null  $current
+     * @param  array<string, mixed>  $next
+     */
+    public static function isUnchanged(?array $current, array $next): bool
+    {
+        return is_array($current)
+            && ($current['hash'] ?? null) === $next['hash']
+            && ($current['version'] ?? null) === $next['version'];
+    }
+
+    /**
+     * Rewrite map.json when (and only when) the map changed.
+     *
+     * @return self::WRITTEN|self::UNCHANGED|self::FAILED
+     */
+    public static function refresh(bool $force = false): string
+    {
+        try {
+            // The static file is public (no sign-in), so it carries the
+            // visitor view; the full map is only served by the API to members.
+            $next = self::snapshot(self::visitorPayload());
+
+            if (! $force && self::isUnchanged(PublicData::read(self::FILE), $next)) {
+                return self::UNCHANGED;
+            }
+
+            return PublicData::write(self::FILE, $next) ? self::WRITTEN : self::FAILED;
+        } catch (Throwable $exception) {
+            Log::warning('Map snapshot failed.', ['error' => $exception->getMessage()]);
+
+            return self::FAILED;
+        }
+    }
+
+    /** A refresh is already queued for this request. */
+    private static bool $queued = false;
+
+    /**
+     * Called from model events: refresh after the response is sent, so an admin
+     * saving a node never waits for it. Once per request: laying 50 route nodes
+     * along a road, or handing over a building with its rooms, saves many rows,
+     * and each rebuild reads the whole map.
+     */
+    public static function refreshAfterResponse(): void
+    {
+        if (app()->runningUnitTests() || self::$queued) {
+            return;
+        }
+
+        self::$queued = true;
+        dispatch(function (): void {
+            self::$queued = false;
+            self::refresh();
+        })->afterResponse();
+    }
+}

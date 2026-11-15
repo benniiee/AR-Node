@@ -1,0 +1,930 @@
+{
+  "train_on": "forecast",
+  "labels": "airport",
+  "split": {
+    "train": [
+      "2022-01-01",
+      "2024-11-01",
+      17439
+    ],
+    "val": [
+      "2024-11-02",
+      "2025-11-01",
+      6768
+    ],
+    "test": [
+      "2025-11-02",
+      "2026-11-01",
+      6916
+    ]
+  },
+  "horizons": {
+    "1": {
+      "alpha": 10.0,
+      "val_mae": 1.69,
+      "deployed_key": "model (forecast inputs = deployed)",
+      "beats_baselines": true,
+      "results": {
+        "model (ERA5 inputs)": {
+          "n": 6917,
+          "mae": 1.978,
+          "rmse": 2.426,
+          "bias": -0.956,
+          "category_accuracy": 0.7184,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 473,
+              "caution": 578,
+              "extreme_caution": 6,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 196,
+              "caution": 2136,
+              "extreme_caution": 133,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 6,
+              "caution": 1015,
+              "extreme_caution": 2360,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 2,
+              "extreme_caution": 12,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "persistence (ERA5 now)": {
+          "n": 6917,
+          "mae": 3.617,
+          "rmse": 4.331,
+          "bias": -2.91,
+          "category_accuracy": 0.4177,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 579,
+              "caution": 478,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 486,
+              "caution": 1970,
+              "extreme_caution": 9,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 85,
+              "caution": 2956,
+              "extreme_caution": 340,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 8,
+              "extreme_caution": 6,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "diurnal average": {
+          "n": 6879,
+          "mae": 1.735,
+          "rmse": 2.256,
+          "bias": -0.252,
+          "category_accuracy": 0.7927,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 695,
+              "caution": 336,
+              "extreme_caution": 21,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 236,
+              "caution": 1754,
+              "extreme_caution": 443,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 7,
+              "caution": 369,
+              "extreme_caution": 3004,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "model (forecast inputs = deployed)": {
+          "n": 6917,
+          "mae": 1.498,
+          "rmse": 1.967,
+          "bias": 0.023,
+          "category_accuracy": 0.8012,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0727,
+          "heat_mode_false": 10,
+          "confusion": {
+            "none": {
+              "none": 594,
+              "caution": 452,
+              "extreme_caution": 11,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 161,
+              "caution": 1970,
+              "extreme_caution": 334,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 5,
+              "caution": 398,
+              "extreme_caution": 2978,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "persistence (forecast now)": {
+          "n": 6917,
+          "mae": 2.419,
+          "rmse": 2.994,
+          "bias": -1.498,
+          "category_accuracy": 0.6579,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 666,
+              "caution": 390,
+              "extreme_caution": 1,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 410,
+              "caution": 1932,
+              "extreme_caution": 123,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 41,
+              "caution": 1387,
+              "extreme_caution": 1953,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "forecast HI at target hour": {
+          "n": 6917,
+          "mae": 2.192,
+          "rmse": 2.703,
+          "bias": -1.369,
+          "category_accuracy": 0.7017,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 717,
+              "caution": 339,
+              "extreme_caution": 1,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 237,
+              "caution": 2142,
+              "extreme_caution": 86,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 18,
+              "caution": 1368,
+              "extreme_caution": 1995,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        }
+      }
+    },
+    "2": {
+      "alpha": 10.0,
+      "val_mae": 1.77,
+      "deployed_key": "model (forecast inputs = deployed)",
+      "beats_baselines": true,
+      "results": {
+        "model (ERA5 inputs)": {
+          "n": 6917,
+          "mae": 1.901,
+          "rmse": 2.357,
+          "bias": -0.856,
+          "category_accuracy": 0.7324,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 490,
+              "caution": 560,
+              "extreme_caution": 7,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 229,
+              "caution": 2075,
+              "extreme_caution": 161,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 5,
+              "caution": 875,
+              "extreme_caution": 2501,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 1,
+              "extreme_caution": 13,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "persistence (ERA5 now)": {
+          "n": 6917,
+          "mae": 3.752,
+          "rmse": 4.567,
+          "bias": -2.972,
+          "category_accuracy": 0.4061,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 552,
+              "caution": 505,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 533,
+              "caution": 1919,
+              "extreme_caution": 13,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 168,
+              "caution": 2875,
+              "extreme_caution": 338,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 10,
+              "extreme_caution": 4,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "diurnal average": {
+          "n": 6879,
+          "mae": 1.735,
+          "rmse": 2.256,
+          "bias": -0.252,
+          "category_accuracy": 0.7927,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 695,
+              "caution": 336,
+              "extreme_caution": 21,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 236,
+              "caution": 1754,
+              "extreme_caution": 443,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 7,
+              "caution": 369,
+              "extreme_caution": 3004,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "model (forecast inputs = deployed)": {
+          "n": 6917,
+          "mae": 1.598,
+          "rmse": 2.086,
+          "bias": -0.011,
+          "category_accuracy": 0.7834,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0909,
+          "heat_mode_false": 6,
+          "confusion": {
+            "none": {
+              "none": 538,
+              "caution": 508,
+              "extreme_caution": 11,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 149,
+              "caution": 2004,
+              "extreme_caution": 312,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 1,
+              "caution": 503,
+              "extreme_caution": 2877,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "persistence (forecast now)": {
+          "n": 6917,
+          "mae": 2.791,
+          "rmse": 3.577,
+          "bias": -1.629,
+          "category_accuracy": 0.6144,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 600,
+              "caution": 455,
+              "extreme_caution": 2,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 455,
+              "caution": 1804,
+              "extreme_caution": 206,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 203,
+              "caution": 1332,
+              "extreme_caution": 1846,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 1,
+              "extreme_caution": 13,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "forecast HI at target hour": {
+          "n": 6917,
+          "mae": 2.192,
+          "rmse": 2.703,
+          "bias": -1.369,
+          "category_accuracy": 0.7017,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 717,
+              "caution": 339,
+              "extreme_caution": 1,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 237,
+              "caution": 2142,
+              "extreme_caution": 86,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 18,
+              "caution": 1368,
+              "extreme_caution": 1995,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        }
+      }
+    },
+    "3": {
+      "alpha": 10.0,
+      "val_mae": 1.811,
+      "deployed_key": "model (forecast inputs = deployed)",
+      "beats_baselines": true,
+      "results": {
+        "model (ERA5 inputs)": {
+          "n": 6916,
+          "mae": 1.862,
+          "rmse": 2.341,
+          "bias": -0.785,
+          "category_accuracy": 0.736,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 551,
+              "caution": 495,
+              "extreme_caution": 10,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 254,
+              "caution": 2014,
+              "extreme_caution": 197,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 7,
+              "caution": 849,
+              "extreme_caution": 2525,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 1,
+              "extreme_caution": 13,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "persistence (ERA5 now)": {
+          "n": 6916,
+          "mae": 3.954,
+          "rmse": 4.887,
+          "bias": -3.051,
+          "category_accuracy": 0.3956,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 505,
+              "caution": 551,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 527,
+              "caution": 1908,
+              "extreme_caution": 30,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 324,
+              "caution": 2734,
+              "extreme_caution": 323,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 12,
+              "extreme_caution": 2,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "diurnal average": {
+          "n": 6878,
+          "mae": 1.735,
+          "rmse": 2.256,
+          "bias": -0.252,
+          "category_accuracy": 0.7924,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 693,
+              "caution": 337,
+              "extreme_caution": 21,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 237,
+              "caution": 1753,
+              "extreme_caution": 443,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 7,
+              "caution": 369,
+              "extreme_caution": 3004,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "model (forecast inputs = deployed)": {
+          "n": 6916,
+          "mae": 1.637,
+          "rmse": 2.13,
+          "bias": -0.031,
+          "category_accuracy": 0.7715,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0364,
+          "heat_mode_false": 1,
+          "confusion": {
+            "none": {
+              "none": 511,
+              "caution": 533,
+              "extreme_caution": 12,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 148,
+              "caution": 2017,
+              "extreme_caution": 300,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 2,
+              "caution": 571,
+              "extreme_caution": 2808,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 1,
+              "extreme_caution": 13,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "persistence (forecast now)": {
+          "n": 6916,
+          "mae": 3.262,
+          "rmse": 4.227,
+          "bias": -1.727,
+          "category_accuracy": 0.5523,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 520,
+              "caution": 533,
+              "extreme_caution": 3,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 427,
+              "caution": 1640,
+              "extreme_caution": 398,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 420,
+              "caution": 1301,
+              "extreme_caution": 1660,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 3,
+              "extreme_caution": 11,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        },
+        "forecast HI at target hour": {
+          "n": 6916,
+          "mae": 2.192,
+          "rmse": 2.703,
+          "bias": -1.37,
+          "category_accuracy": 0.7017,
+          "danger_or_above_cases": 14,
+          "danger_or_above_recall": 0.0,
+          "heat_mode_hours": 110,
+          "heat_mode_recall": 0.0,
+          "heat_mode_false": 0,
+          "confusion": {
+            "none": {
+              "none": 716,
+              "caution": 339,
+              "extreme_caution": 1,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "caution": {
+              "none": 237,
+              "caution": 2142,
+              "extreme_caution": 86,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_caution": {
+              "none": 18,
+              "caution": 1368,
+              "extreme_caution": 1995,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 14,
+              "danger": 0,
+              "extreme_danger": 0
+            },
+            "extreme_danger": {
+              "none": 0,
+              "caution": 0,
+              "extreme_caution": 0,
+              "danger": 0,
+              "extreme_danger": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "recommended": true
+}

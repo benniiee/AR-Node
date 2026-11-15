@@ -1,0 +1,25 @@
+{
+    "name": "campus-nav-admin",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "concurrently -n api,web,sched -c blue,magenta,green \"php artisan serve --port=8005 --host=0.0.0.0\" \"vite --port 5173\" \"php artisan schedule:work\"",
+        "dev:scheduler": "php artisan schedule:work",
+        "dev:frontend": "vite --port 5173",
+        "dev:backend": "php artisan serve --port=8005 --host=0.0.0.0",
+        "build": "vite build"
+    },
+    "dependencies": {
+        "leaflet": "^1.9.4",
+        "protomaps-leaflet": "^5.1.0",
+        "qrcode-generator": "^1.4.4",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "three": "^0.186.0"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^4.3.4",
+        "concurrently": "^9.1.2",
+        "vite": "^5.4.11"
+    }
+}

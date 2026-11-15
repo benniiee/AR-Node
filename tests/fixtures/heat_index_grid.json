@@ -1,0 +1,533 @@
+{
+ "source": "ml/heat_common.py heat_index_c()",
+ "cases": [
+  {
+   "t_c": 20.0,
+   "rh": 5.0,
+   "heat_index_c": 18.186111,
+   "category": "none"
+  },
+  {
+   "t_c": 20.0,
+   "rh": 10.0,
+   "heat_index_c": 18.316667,
+   "category": "none"
+  },
+  {
+   "t_c": 20.0,
+   "rh": 30.0,
+   "heat_index_c": 18.838889,
+   "category": "none"
+  },
+  {
+   "t_c": 20.0,
+   "rh": 50.0,
+   "heat_index_c": 19.361111,
+   "category": "none"
+  },
+  {
+   "t_c": 20.0,
+   "rh": 65.0,
+   "heat_index_c": 19.752778,
+   "category": "none"
+  },
+  {
+   "t_c": 20.0,
+   "rh": 80.0,
+   "heat_index_c": 20.144444,
+   "category": "none"
+  },
+  {
+   "t_c": 20.0,
+   "rh": 90.0,
+   "heat_index_c": 20.405556,
+   "category": "none"
+  },
+  {
+   "t_c": 20.0,
+   "rh": 100.0,
+   "heat_index_c": 20.666667,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 5.0,
+   "heat_index_c": 23.686111,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 10.0,
+   "heat_index_c": 23.816667,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 30.0,
+   "heat_index_c": 24.338889,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 50.0,
+   "heat_index_c": 24.861111,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 65.0,
+   "heat_index_c": 25.252778,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 80.0,
+   "heat_index_c": 25.644444,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 90.0,
+   "heat_index_c": 25.905556,
+   "category": "none"
+  },
+  {
+   "t_c": 25.0,
+   "rh": 100.0,
+   "heat_index_c": 26.166667,
+   "category": "none"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 5.0,
+   "heat_index_c": 25.556111,
+   "category": "none"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 10.0,
+   "heat_index_c": 25.686667,
+   "category": "none"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 30.0,
+   "heat_index_c": 26.208889,
+   "category": "none"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 50.0,
+   "heat_index_c": 27.142263,
+   "category": "caution"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 65.0,
+   "heat_index_c": 28.026976,
+   "category": "caution"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 80.0,
+   "heat_index_c": 29.087812,
+   "category": "caution"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 90.0,
+   "heat_index_c": 30.278436,
+   "category": "caution"
+  },
+  {
+   "t_c": 26.7,
+   "rh": 100.0,
+   "heat_index_c": 31.932893,
+   "category": "caution"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 5.0,
+   "heat_index_c": 26.053001,
+   "category": "none"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 10.0,
+   "heat_index_c": 26.393766,
+   "category": "none"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 30.0,
+   "heat_index_c": 27.095502,
+   "category": "caution"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 50.0,
+   "heat_index_c": 28.449072,
+   "category": "caution"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 65.0,
+   "heat_index_c": 30.031125,
+   "category": "caution"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 80.0,
+   "heat_index_c": 32.099072,
+   "category": "caution"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 90.0,
+   "heat_index_c": 34.0032,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 28.0,
+   "rh": 100.0,
+   "heat_index_c": 36.378836,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 5.0,
+   "heat_index_c": 27.498638,
+   "category": "caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 10.0,
+   "heat_index_c": 27.861792,
+   "category": "caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 30.0,
+   "heat_index_c": 28.752283,
+   "category": "caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 50.0,
+   "heat_index_c": 31.049081,
+   "category": "caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 65.0,
+   "heat_index_c": 33.882146,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 80.0,
+   "heat_index_c": 37.667037,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 90.0,
+   "heat_index_c": 40.774647,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 30.0,
+   "rh": 100.0,
+   "heat_index_c": 44.360847,
+   "category": "danger"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 5.0,
+   "heat_index_c": 28.604253,
+   "category": "caution"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 10.0,
+   "heat_index_c": 29.023085,
+   "category": "caution"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 30.0,
+   "heat_index_c": 30.261674,
+   "category": "caution"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 50.0,
+   "heat_index_c": 33.468037,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 65.0,
+   "heat_index_c": 37.381094,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 80.0,
+   "heat_index_c": 42.586966,
+   "category": "danger"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 90.0,
+   "heat_index_c": 46.775778,
+   "category": "danger"
+  },
+  {
+   "t_c": 31.5,
+   "rh": 100.0,
+   "heat_index_c": 51.539175,
+   "category": "danger"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 5.0,
+   "heat_index_c": 29.718164,
+   "category": "caution"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 10.0,
+   "heat_index_c": 30.232278,
+   "category": "caution"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 30.0,
+   "heat_index_c": 31.999755,
+   "category": "caution"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 50.0,
+   "heat_index_c": 36.288949,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 65.0,
+   "heat_index_c": 41.403485,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 80.0,
+   "heat_index_c": 48.14457,
+   "category": "danger"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 90.0,
+   "heat_index_c": 53.542266,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 33.0,
+   "rh": 100.0,
+   "heat_index_c": 59.662872,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 5.0,
+   "heat_index_c": 31.209325,
+   "category": "caution"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 10.0,
+   "heat_index_c": 31.916437,
+   "category": "caution"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 30.0,
+   "heat_index_c": 34.672938,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 50.0,
+   "heat_index_c": 40.675429,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 65.0,
+   "heat_index_c": 47.580917,
+   "category": "danger"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 80.0,
+   "heat_index_c": 56.546649,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 90.0,
+   "heat_index_c": 63.668385,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 35.0,
+   "rh": 100.0,
+   "heat_index_c": 71.705785,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 5.0,
+   "heat_index_c": 32.939049,
+   "category": "caution"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 10.0,
+   "heat_index_c": 33.769683,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 30.0,
+   "heat_index_c": 37.75268,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 50.0,
+   "heat_index_c": 45.776497,
+   "category": "danger"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 65.0,
+   "heat_index_c": 54.688913,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 80.0,
+   "heat_index_c": 66.082373,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 90.0,
+   "heat_index_c": 75.056373,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 37.0,
+   "rh": 100.0,
+   "heat_index_c": 85.133059,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 5.0,
+   "heat_index_c": 35.550853,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 10.0,
+   "heat_index_c": 36.705306,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 30.0,
+   "heat_index_c": 43.134595,
+   "category": "danger"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 50.0,
+   "heat_index_c": 54.767952,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 65.0,
+   "heat_index_c": 67.095714,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 80.0,
+   "heat_index_c": 82.511545,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 90.0,
+   "heat_index_c": 94.504358,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 40.0,
+   "rh": 100.0,
+   "heat_index_c": 107.869645,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 5.0,
+   "heat_index_c": 38.241983,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 10.0,
+   "heat_index_c": 39.849832,
+   "category": "extreme_caution"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 30.0,
+   "heat_index_c": 49.431272,
+   "category": "danger"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 50.0,
+   "heat_index_c": 65.36723,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 65.0,
+   "heat_index_c": 81.596286,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 80.0,
+   "heat_index_c": 101.491418,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 90.0,
+   "heat_index_c": 116.791547,
+   "category": "extreme_danger"
+  },
+  {
+   "t_c": 43.0,
+   "rh": 100.0,
+   "heat_index_c": 133.721044,
+   "category": "extreme_danger"
+  }
+ ]
+}

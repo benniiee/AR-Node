@@ -213,7 +213,9 @@ export default function FollowView3D({
                     // Report a few times a second (the route and guidance follow).
                     if (now - s.reportedAt > 150) {
                         s.reportedAt = now;
-                        live.onTestMove?.(s.testLL.lat, s.testLL.lng);
+                        // With the figure's facing (compass degrees; yaw = -heading, as for the GPS pose below).
+                        const facingDeg = ((((-s.yaw * 180) / Math.PI) % 360) + 360) % 360;
+                        live.onTestMove?.(s.testLL.lat, s.testLL.lng, facingDeg);
                     }
                 }
             } else if (s.xz && pose && Number.isFinite(pose.lat) && Number.isFinite(pose.lng)) {

@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createVoiceGuide, spokenText, STEADY_MS, MIN_GAP_MS } from './voiceGuidance.js';
 
-test('directions are read with metres spelled out', () => {
-    assert.equal(spokenText({ main: 'Turn left', sub: 'Next stop in 20 m' }), 'Turn left. Next stop in 20 metres.');
-    assert.equal(spokenText({ main: 'Walk straight', sub: 'Library in 1.2 km' }), 'Walk straight. Library in 1.2 kilometres.');
+test('only the direction is spoken, not the distance to the next stop', () => {
+    assert.equal(spokenText({ main: 'Turn left', sub: 'Next stop in 20 m' }), 'Turn left.');
+    assert.equal(spokenText({ main: 'Walk straight', sub: 'Library in 1.2 km' }), 'Walk straight.');
 });
 
 test('a direction is spoken once it is steady, not while the phone swings around', () => {
@@ -17,7 +17,7 @@ test('a direction is spoken once it is steady, not while the phone swings around
     v.update(turn, 800 + STEADY_MS - 1);
     assert.deepEqual(said, []);
     v.update(turn, 800 + STEADY_MS);
-    assert.deepEqual(said, ['Turn left. Next stop in 20 metres.']);
+    assert.deepEqual(said, ['Turn left.']);
     v.update({ ...turn, sub: 'Next stop in 15 m' }, 5000);                // same direction, closer: silent
     assert.equal(said.length, 1);
 });
@@ -43,5 +43,5 @@ test('switching Voice on says the current direction at once', () => {
     const v = createVoiceGuide((t) => said.push(t));
     v.repeat({ main: 'Bear right', sub: 'Next stop in 8 m' }, 0);
     v.update({ main: 'Bear right', sub: 'Next stop in 8 m' }, 5000);     // already said: not again
-    assert.deepEqual(said, ['Bear right. Next stop in 8 metres.']);
+    assert.deepEqual(said, ['Bear right.']);
 });

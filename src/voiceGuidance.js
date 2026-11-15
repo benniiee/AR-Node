@@ -15,10 +15,12 @@ export function speechAvailable() {
     return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
 }
 
-/** The sentence for one guidance card ({ main, sub } from routeFormat.guidanceFor): "m" read as metres. */
-export function spokenText({ main, sub }) {
-    const words = (s) => String(s || '').replace(/(\d+(?:\.\d+)?)\s?km\b/g, '$1 kilometres').replace(/(\d+)\s?m\b/g, '$1 metres');
-    return sub ? `${words(main)}. ${words(sub)}.` : `${words(main)}.`;
+/**
+ * The sentence for one guidance card ({ main, sub } from routeFormat.guidanceFor): the direction only
+ * ("Turn left."). The distance stays on screen; saying it every time is noise while walking.
+ */
+export function spokenText({ main }) {
+    return `${String(main || '').trim()}.`;
 }
 
 function englishVoice() {

@@ -39,7 +39,7 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Directions go around walls and buildings, prefer sheltered paths when rain is likely, and avoid exposed paths while it rains or in heat mode.
 - See the weather in one pill at the bottom of the map (what routing is doing right now); tap it for the details: chance of rain in the next 20 minutes and within the next hour, the heat index now and 1 to 3 hours ahead, and the UV index (sunburn risk). When no route is possible, the message says whether rain or heat closed the open-air paths.
 - Tap **"It's raining here"** (in the weather pill's details) when rain starts. When two or more students report rain within 15 minutes, everyone's routes switch to covered paths straight away, before any forecast or airport report notices.
-- Follow the route on the 2D map, in 3D, or in AR (camera view). Tap **Voice** on the direction card to hear each new direction spoken ("Turn right. Next stop in 76 metres", "You have arrived at …"). It uses the phone's own voices, so it also works offline.
+- Follow the route on the 2D map, in 3D, or in AR (camera view). Tap **Voice** on the direction card to hear each new direction spoken, just the direction ("Turn right.", "You have arrived at …"), so it stays short while walking. It uses the phone's own voices, so it also works offline.
 - Scan a QR code on campus to set their position when GPS is weak.
 - Install ARNode on the home screen. After one online visit, the map, search and directions also work offline.
 - Change their own password (required after an admin reset).

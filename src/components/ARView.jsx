@@ -1004,7 +1004,8 @@ export default function ARView({
     // True while the 3D mode walks instead of following the GPS (set below, once freeRoam is known).
     const followTestRef = useRef(false);
     const testPosRef = useRef(null);
-    const onTestMove = (lat, lng) => { testPosRef.current = { latitude: lat, longitude: lng }; };
+    // headingDeg: which way the walking figure faces (compass degrees), for "turn left / right".
+    const onTestMove = (lat, lng, headingDeg = null) => { testPosRef.current = { latitude: lat, longitude: lng, headingDeg }; };
     const setViewMode = (mode) => {
         setFollowMain(mode === 'follow');
         if (mode !== 'follow') setFollowTest(false);
@@ -2957,8 +2958,11 @@ export default function ARView({
                     const arrivedNow = lines.includes('Arrived');
                     if (target && Number.isFinite(target.latitude)) {
                         const leg = bearingAndDistance(user.latitude, user.longitude, target.latitude, target.longitude);
-                        const cam360 = ((camYaw % 360) + 360) % 360;
-                        const relDeg = !preview && Number.isFinite(camYaw) ? norm180(leg.bearing - cam360) : null;
+                        // Left / right from where you face: the walking figure in the 3D mode's test walk,
+                        // else the camera (phone compass, or the mouse look on a computer).
+                        const walkerDeg = followTestRef.current ? testPosRef.current?.headingDeg : null;
+                        const facing = Number.isFinite(walkerDeg) ? walkerDeg : (!preview && Number.isFinite(camYaw) ? camYaw : null);
+                        const relDeg = facing === null ? null : norm180(leg.bearing - (((facing % 360) + 360) % 360));
                         let remaining = leg.dist;
                         for (let k = idx; k < path.length - 1; k += 1) {
                             remaining += bearingAndDistance(path[k].latitude, path[k].longitude, path[k + 1].latitude, path[k + 1].longitude).dist;

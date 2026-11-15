@@ -21,24 +21,104 @@ const reduceMotion = () => typeof window !== 'undefined'
     && window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export function makeLabel(text, { bg = '#ffffff', fg = '#0a0a0c', scale = 1.7 } = {}) {
+// Small glyphs drawn in front of a label's text: a building (building names) or a map pin (the destination).
+function drawIcon(g, kind, x, cy, size, color) {
+    g.save();
+    g.fillStyle = color;
+    g.strokeStyle = color;
+    if (kind === 'building') {
+        const w = size * 0.78; const h = size * 0.86;
+        const left = x + (size - w) / 2; const top = cy - h / 2;
+        g.fillRect(left, top, w, h);
+        // Windows (3 x 3) and a door cut out of the block.
+        g.globalCompositeOperation = 'destination-out';
+        const cw = w / 7; const ch = h / 9;
+        for (let r = 0; r < 3; r += 1) {
+            for (let c = 0; c < 3; c += 1) g.fillRect(left + cw * (1 + c * 2), top + ch * (1 + r * 2), cw, ch);
+        }
+        g.fillRect(left + w / 2 - cw * 0.75, top + h - ch * 1.6, cw * 1.5, ch * 1.6);
+    } else if (kind === 'pin') {
+        const r = size * 0.32;
+        const px = x + size / 2; const py = cy - size * 0.12;
+        g.beginPath();
+        g.arc(px, py, r, Math.PI * 0.85, Math.PI * 2.15);
+        g.lineTo(px, cy + size * 0.48);
+        g.closePath();
+        g.fill();
+        g.globalCompositeOperation = 'destination-out';
+        g.beginPath(); g.arc(px, py, r * 0.42, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+}
+
+/**
+ * A text label for the 3D views (stairs, route, follow view): a rounded pill with a soft shadow, an
+ * optional border and an optional icon ('building' | 'pin'). Its width fits the text. `scale` is the
+ * width a short label gets (the pill is scale/4 tall); sprite.userData.aspect and .heightFactor let a
+ * screen-sized label keep the pill's true proportions (RouteModel3D screenLabel).
+ */
+export function makeLabel(text, { bg = '#ffffff', fg = '#0a0a0c', scale = 1.7, icon = null, border = null } = {}) {
+    const k = 2;                       // drawn at double resolution: crisp text on phones
+    const H = 72 * k;                  // pill height
+    const pad = 26 * k; const gap = 12 * k; const iconSize = 36 * k; const margin = 14 * k;
+    const font = `700 ${32 * k}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+    const measure = document.createElement('canvas').getContext('2d');
+    measure.font = font;
+    const textW = Math.ceil(measure.measureText(String(text)).width);
+    const pillW = Math.max(H * 1.6, pad * 2 + textW + (icon ? iconSize + gap : 0));
+
     const canvas = document.createElement('canvas');
-    canvas.width = 320; canvas.height = 80;
+    canvas.width = pillW + margin * 2;
+    canvas.height = H + margin * 2;
     const g = canvas.getContext('2d');
+    const x0 = margin; const y0 = margin * 0.7; // a little more room below for the shadow
+    const r = H / 2;
+    const pill = () => {
+        g.beginPath();
+        g.moveTo(x0 + r, y0); g.lineTo(x0 + pillW - r, y0);
+        g.arc(x0 + pillW - r, y0 + r, r, -Math.PI / 2, Math.PI / 2);
+        g.lineTo(x0 + r, y0 + H);
+        g.arc(x0 + r, y0 + r, r, Math.PI / 2, Math.PI * 1.5);
+        g.closePath();
+    };
+    // Soft drop shadow lifts the label off the scene behind it.
+    g.save();
+    g.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    g.shadowBlur = 10 * k;
+    g.shadowOffsetY = 3 * k;
     g.fillStyle = bg;
-    const r = 36;
-    g.beginPath();
-    g.moveTo(r + 4, 4); g.lineTo(316 - r, 4); g.arc(316 - r, 40, 36, -Math.PI / 2, Math.PI / 2);
-    g.lineTo(r + 4, 76); g.arc(r + 4, 40, 36, Math.PI / 2, Math.PI * 1.5); g.closePath();
+    pill();
     g.fill();
+    g.restore();
+    if (border) {
+        g.lineWidth = 3 * k;
+        g.strokeStyle = border;
+        pill();
+        g.stroke();
+    }
+    let tx = x0 + pillW / 2;
+    if (icon) {
+        const contentW = iconSize + gap + textW;
+        const ix = x0 + (pillW - contentW) / 2;
+        drawIcon(g, icon, ix, y0 + H / 2, iconSize, fg);
+        tx = ix + iconSize + gap + textW / 2;
+    }
     g.fillStyle = fg;
-    g.font = '700 34px system-ui, sans-serif';
+    g.font = font;
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(text, 160, 42);
+    g.fillText(String(text), tx, y0 + H / 2 + 2 * k);
+
     const tex = new THREE.CanvasTexture(canvas);
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    tex.colorSpace = THREE.SRGBColorSpace;
+    // No fog or tone mapping: a label keeps its real colours at any distance.
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, fog: false, toneMapped: false });
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(scale, scale * 0.25, 1);
+    const heightFactor = canvas.height / H;
+    const aspect = canvas.width / canvas.height;
+    const pillH = scale * 0.25;
+    sprite.scale.set(pillH * heightFactor * aspect, pillH * heightFactor, 1);
+    sprite.userData.aspect = aspect;
+    sprite.userData.heightFactor = heightFactor;
     sprite.renderOrder = 10;
     return sprite;
 }

@@ -69,7 +69,9 @@ export function person(foot, heading) {
 function screenLabel(text, opts = {}, size = 0.05) {
     const label = makeLabel(text, opts);
     label.material.sizeAttenuation = false;
-    label.scale.set(size * 4, size, 1);
+    // `size` = the pill's height on screen; width follows the text (and the shadow margin around it).
+    const h = size * label.userData.heightFactor;
+    label.scale.set(h * label.userData.aspect, h, 1);
     return label;
 }
 
@@ -237,7 +239,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
                 group.add(line);
             }
         }
-        const name = screenLabel(b.short_name || b.name, { bg: '#16161b', fg: '#ffffff' }, 0.05);
+        const name = screenLabel(b.short_name || b.name, { bg: '#16161b', fg: '#ffffff', icon: 'building', border: 'rgba(255, 255, 255, 0.28)' }, 0.05);
         const cx = ring.reduce((s, p) => s + p.x, 0) / ring.length;
         const cz = ring.reduce((s, p) => s + p.z, 0) / ring.length;
         name.position.set(cx, ceiling + 2, cz);
@@ -269,7 +271,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
         group.add(new THREE.LineSegments(new THREE.EdgesGeometry(body, 25), blockEdge));
         const cx = ring.reduce((sum, p) => sum + p.x, 0) / ring.length;
         const cz = ring.reduce((sum, p) => sum + p.z, 0) / ring.length;
-        const tag = screenLabel(b.short_name || b.name, { bg: '#2a2a30', fg: '#e5e5ea' }, 0.034);
+        const tag = screenLabel(b.short_name || b.name, { bg: '#26262c', fg: '#e5e5ea', icon: 'building', border: 'rgba(255, 255, 255, 0.18)' }, 0.034);
         tag.position.set(cx, height + 1.5, cz);
         group.add(tag);
     }
@@ -338,7 +340,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
         group.add(head);
         const dest = path[path.length - 1];
         if (dest?.name) {
-            const label = screenLabel(dest.name, { bg: '#22c55e', fg: '#05230f' }, 0.05);
+            const label = screenLabel(dest.name, { bg: '#22c55e', fg: '#05230f', icon: 'pin', border: '#ffffff' }, 0.05);
             label.position.set(end.x, end.y + 3.1, end.z);
             group.add(label);
         }

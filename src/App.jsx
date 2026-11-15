@@ -61,7 +61,7 @@ const SHELL_CSS = `
     .main-enter { animation: fadeIn 0.5s var(--ease-out) both; }
 
     /* Phones and narrow windows: a slim top bar with a menu button; the rail becomes a
-       drawer that slides in from the left (FRONTEND.md §7: hamburger/drawer on mobile). */
+       drawer that slides in from the left. */
     .menu-btn, .menu-close {
         flex: none; display: grid; place-items: center; width: ${TAP.minHeight}; height: ${TAP.minHeight};
         border: 1px solid ${C.hairline}; border-radius: 10px; background: rgba(255, 255, 255, 0.04); color: ${C.white};

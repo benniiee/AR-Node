@@ -54,7 +54,7 @@ export const ICONS = {
 };
 
 export function ToolDock({ viewOpen, onAdd, onWalls, onPin, onView, onCampus = null, campusOpen = false }) {
-    // `short`: the label on very narrow phones (FRONTEND.md 7: short mobile labels).
+    // `short`: the label on very narrow phones.
     const btn = (key, icon, label, onClick, pressed, short = null) => (
         <button key={key} className="mt-dock-btn" onClick={onClick} aria-pressed={pressed} aria-label={short ? label : undefined}>
             {icon}

@@ -1688,7 +1688,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 }
                 /* Header and footer are floating glass cards, not full-bleed
                    bars — the same panel shape the 3D screen uses, so both
-                   screens read as one HUD (ui-ux-consistency Principle 4). */
+                   screens read as one HUD. */
                 .mnav-header {
                     position: relative; z-index: 1100;
                     display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 0;

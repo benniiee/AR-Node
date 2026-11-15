@@ -6,7 +6,7 @@ import { C, TYPE, TAP, PANEL_RADIUS, PILL, ELEVATION } from '../uiTokens';
 /*
  * The student app's menu (☰ at the end of the header): offline copy status, Install app and
  * the account. One button instead of a row of chips, so the map keeps the screen
- * (FRONTEND.md §7 and §8: hamburger on small screens, popover for a few actions).
+ * (a hamburger on small screens, a popover for a few actions).
  * Esc, a tap outside or choosing an item closes it; focus goes in and comes back.
  */
 const CSS = `

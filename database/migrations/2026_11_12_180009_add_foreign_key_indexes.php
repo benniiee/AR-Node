@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Indexes for every foreign key and for the wall group filter. PostgreSQL does not index
- * foreign keys by itself (docs/database/POSTGRESQL.md §3), so the faculty node list,
+ * foreign keys by itself, so the faculty node list,
  * the wall-ownership check on every wall save and each "set null on delete" (a removed
  * department, building or account) scanned whole tables. On PostgreSQL the indexes are
  * built CONCURRENTLY, outside a transaction, so map edits keep working meanwhile (§5).

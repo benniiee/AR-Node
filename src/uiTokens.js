@@ -100,7 +100,7 @@ export const C = {
  *   BADGE_RADIUS (6px)  badges, tags, counts and map labels;
  *   RADIUS (10px)       text inputs and notice boxes, same as controls;
  *   PANEL_RADIUS (16px) panels, cards, docks and bottom sheets.
- * One radius family (FRONTEND.md §2.1): no pill-shaped controls next to square cards.
+ * One radius family: no pill-shaped controls next to square cards.
  */
 export const BADGE_RADIUS = 6;
 export const RADIUS = 10;
@@ -385,7 +385,7 @@ export const ADMIN_CSS = `
     }
     .ui-input:disabled, .ui-select:disabled { opacity: ${TAP.disabledOpacity}; cursor: not-allowed; }
     .ui-input[aria-invalid="true"] { border-color: ${C.errorBorder}; }
-    /* Inline field error (ui-ux-consistency.md Part 4 "Error Message"). */
+    /* Inline field error: the message under the field, in the danger colour. */
     .ui-field-error { font-size: ${TYPE.desc}; line-height: 1.4; color: ${C.danger}; }
 
     .ui-btn {
@@ -400,9 +400,9 @@ export const ADMIN_CSS = `
     .ui-btn:focus-visible { outline: ${TAP.focusOutline}; outline-offset: 2px; }
     .ui-btn:disabled { opacity: ${TAP.disabledOpacity}; cursor: not-allowed; }
     .ui-btn-block { width: 100%; }
-    /* Primary = confirm / save / go: green (docs/frontend/ui-ux-consistency.md
-       §1.2, §2.2). Brand red stays on brand surfaces (wordmark, nav edge, login
-       art); on a button it would read as "danger" next to Remove. */
+    /* Primary = confirm / save / go: green. Brand red stays on brand surfaces
+       (wordmark, nav edge, login art); on a button it would read as "danger"
+       next to Remove. */
     .ui-btn-primary { background: ${C.primary}; color: ${C.white}; }
     .ui-btn-primary:hover:not(:disabled) { background: ${C.primaryHover}; }
     .ui-btn-primary:active:not(:disabled) { background: ${C.primaryPress}; }
@@ -412,7 +412,7 @@ export const ADMIN_CSS = `
     .ui-btn-danger:hover:not(:disabled) { background: rgba(255, 35, 56, 0.12); border-color: ${C.errorBorder}; }
     .ui-btn-sm { min-height: 34px; padding: 0 14px; }
 
-    /* Status badges: the one colour language (ui-ux-consistency.md §2.3).
+    /* Status badges: one colour language for the whole app.
        ok = green, attention = amber, danger = red, neutral = grey. Text only,
        no icons; used for standalone statuses (roles, building status). */
     .ui-badge {

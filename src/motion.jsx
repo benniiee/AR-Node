@@ -17,8 +17,8 @@ export const EASE = {
 };
 
 /**
- * Three durations for the whole admin console (docs/frontend redesign skill:
- * interactions 200-300 ms). fast = press / hover / colour, base = a surface
+ * Three durations for the whole admin console (interactions take 200-300 ms).
+ * fast = press / hover / colour, base = a surface
  * opening or closing, slow = page-level entrances only.
  */
 export const DUR = { fast: '160ms', base: '260ms', slow: '420ms' };

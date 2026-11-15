@@ -45,7 +45,7 @@ export default function WeatherChip({ weather, inline = false, shadeActive = fal
         : null;
 
     // The words carry the state; colour sits only on a small icon that means
-    // something (FRONTEND.md 2.11: no status dots). Dry and normal: no icon.
+    // something (no status dots). Dry and normal: no icon.
     const kind = raining ? 'rain' : heatMode ? 'heat' : rainMode ? 'cloud' : shadeActive ? 'sun' : null;
     const iconColor = raining || heatMode ? C.error : C.warning;
 

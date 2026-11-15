@@ -574,7 +574,7 @@ export default function ARView({
         .ar-start-title { margin: 0; font-size: ${TYPE.title}; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; text-wrap: balance; }
         .ar-start-place { margin-top: 4px; font-size: ${TYPE.sub}; color: ${C.text}; }
         .ar-start-summary { margin: 6px 0 14px; font-size: ${TYPE.sub}; color: ${C.accent}; }
-        /* Tips: a bare icon in the text colour, no dots (FRONTEND.md §2.11). */
+        /* Tips: a bare icon in the text colour, no dots. */
         .ar-start-tips { margin: 0 0 16px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; text-align: left; }
         .ar-start-tips li {
             display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: ${RADIUS}px;

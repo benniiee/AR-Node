@@ -6,7 +6,7 @@ import RainReportButton from './RainReportButton';
 /**
  * The weather on the map: one pill at the bottom centre with the line that matters ("Extreme
  * heat: outdoor paths closed"), in the same glass as the other floating map controls. Colour
- * sits only on its small icon (FRONTEND.md 2.5). Tapping it opens the details above it
+ * sits only on its small icon. Tapping it opens the details above it
  * (disclosure: next-hour rain, heat outlook, UV, "It's raining here"); tapping outside or
  * Escape closes them and focus returns to the pill.
  */

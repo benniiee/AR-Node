@@ -50,7 +50,8 @@ from common import (HOURLY_CSV, LAT, LON, M15_CSV, METAR_CSV, MM_MODELS, MM_VARS
 import satellite
 from download_metar import fetch_year
 from heat_common import (HEAT_MODE_C, CATEGORY_KEYS, ERA5_CSV, FORECAST_CSV, GRID_FIXTURE, HEAT_MODEL_JSON, HEAT_PARITY_JSON,
-                         HEAT_VARS, build_heat_features, category, heat_index_series, read_hourly)
+                         HEAT_VARS, add_airport_features, airport_heat_index, build_heat_features, category,
+                         heat_index_series, read_hourly)
 from train import metar_rain_flag, nearest_obs
 
 MANILA = timezone(timedelta(hours=8))  # Asia/Manila, no daylight saving
@@ -1854,6 +1855,21 @@ class App(tk.Tk):
             base = pd.Timestamp(datetime.now(MANILA).replace(tzinfo=None, minute=0, second=0, microsecond=0))
             if base not in feats.index:
                 return {"error": f"The forecast has no row for the current hour ({dt12(base)})"}
+            if model.get("airport_inputs"):
+                # Like HeatModel::forecast(): the airport's latest heat index, or the model without it.
+                try:
+                    mr = requests.get(AVIATION_WEATHER_METAR, timeout=20, params={"ids": "RPMZ", "format": "json", "hours": 3})
+                    mr.raise_for_status()
+                    reps = [x for x in mr.json() if isinstance(x, dict) and "obsTime" in x and "rawOb" in x]
+                except Exception:
+                    reps = []
+                reports = pd.DataFrame({"time": [datetime.fromtimestamp(int(x["obsTime"]), MANILA).replace(tzinfo=None, second=0)
+                                                 for x in reps], "hi": [airport_heat_index(x["rawOb"]) for x in reps]},
+                                       columns=["time", "hi"]).dropna().sort_values("time")
+                reports["time"] = reports["time"].astype("datetime64[ns]")
+                feats = add_airport_features(feats, reports)
+                if pd.isna(feats.loc[base].get("obs_heat_index")) and model.get("fallback"):
+                    model = {**model, **model["fallback"]}
             row = feats.loc[base, model["features"]]
             missing = [k for k, v in row.items() if pd.isna(v)]
             if missing:

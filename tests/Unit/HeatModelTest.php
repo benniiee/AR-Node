@@ -86,6 +86,64 @@ class HeatModelTest extends TestCase
         $this->assertSame(HeatIndex::category(round($now + 3, 1)), $outlook['items'][2]['category']);
     }
 
+    /**
+     * A model that reads the airport: +h hours = airport heat index now + h, with a hot-hour chance of 50 %
+     * (logit 0) and the "heat index now + h" model as its no-airport fallback.
+     */
+    private function writeAirportModel(): string
+    {
+        $perHorizon = [];
+        $fallback = [];
+        foreach ([1, 2, 3] as $h) {
+            $perHorizon[(string) $h] = ['mean' => [0.0], 'scale' => [1.0], 'coef' => [1.0], 'intercept' => (float) $h,
+                'hot' => ['coef' => [0.0], 'intercept' => 0.0, 'threshold' => $h === 1 ? 0.4 : 0.6]];
+            $fallback[(string) $h] = ['mean' => [0.0], 'scale' => [1.0], 'coef' => [1.0], 'intercept' => (float) $h];
+        }
+
+        return $this->writeModel([
+            'features' => ['obs_heat_index'],
+            'per_horizon' => $perHorizon,
+            'airport_inputs' => ['features' => ['obs_heat_index', 'obs_minus_forecast'], 'max_age_minutes' => 90],
+            'fallback' => ['features' => ['heat_index'], 'per_horizon' => $fallback],
+        ]);
+    }
+
+    public function test_airport_model_reads_the_newest_report_at_or_before_the_hour(): void
+    {
+        $model = HeatModel::load($this->writeAirportModel());
+        $reports = [
+            ['time' => '2026-04-10T12:00', 'raw' => 'METAR RPMZ 100400Z 9999 FEW017 33/25 Q1010'],
+            ['time' => '2026-04-10T13:00', 'raw' => 'METAR RPMZ 100500Z 9999 FEW017 35/27 Q1008'],
+            // After the current hour (13:00): training could not see it, so neither may the app.
+            ['time' => '2026-04-10T13:30', 'raw' => 'METAR RPMZ 100530Z 9999 FEW017 30/20 Q1008'],
+        ];
+
+        $outlook = $model->forecast($this->payload(), $this->now(), null, $reports);
+
+        $this->assertSame('model', $outlook['source']);
+        $this->assertSame(round(46.7 + 1, 1), $outlook['items'][0]['heat_index_c']);
+        $this->assertSame(50, $outlook['items'][0]['hot_chance']);
+        // 50 % is above the +1 h alert threshold (40 %) but below the +2 h one (60 %).
+        $this->assertTrue($outlook['items'][0]['hot_alert']);
+        $this->assertFalse($outlook['items'][1]['hot_alert']);
+    }
+
+    public function test_airport_model_without_a_recent_report_uses_its_fallback(): void
+    {
+        $model = HeatModel::load($this->writeAirportModel());
+        // Two hours before the current hour: older than the 90 minutes the model allows.
+        $old = [['time' => '2026-04-10T11:00', 'raw' => 'METAR RPMZ 100300Z 9999 FEW017 35/27 Q1008']];
+
+        foreach ([null, [], $old] as $reports) {
+            $outlook = $model->forecast($this->payload(), $this->now(), null, $reports);
+
+            $this->assertSame('model', $outlook['source']);
+            $this->assertSame(round(HeatIndex::celsius(32.0, 60.0) + 1, 1), $outlook['items'][0]['heat_index_c']);
+            // The fallback has no hot-hour regression.
+            $this->assertArrayNotHasKey('hot_chance', $outlook['items'][0]);
+        }
+    }
+
     public function test_missing_model_file_falls_back_to_the_forecast_heat_index(): void
     {
         $outlook = HeatModel::load($this->dir.'/missing.json')->forecast($this->payload(), $this->now());

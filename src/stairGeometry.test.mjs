@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    planStairs, planFromLink, fitYaw, stairWalkLength, flightsForShape, shapeIdOf,
+    planStairs, planFromLink, fitYaw, fitAngle, stairWalkLength, flightsForShape, shapeIdOf,
     stairInstruction, landingTurns, footprint, meanAngle, normalizeFlights, bearingOf,
 } from './stairGeometry.js';
 
@@ -133,4 +133,17 @@ test('walkLine runs from the bottom node up every flight and landing to the full
     assert.ok(Math.abs(line[line.length - 1].u - 3) < 1e-9);
     for (let i = 1; i < line.length; i += 1) assert.ok(line[i].u >= line[i - 1].u - 1e-9, 'never goes down');
     assert.ok(line.some((p) => Math.abs(p.u - 1.5) < 1e-9), 'passes the landing');
+});
+
+test('fitAngle: the slope that makes the stairs end on the top node, for any shape', () => {
+    for (const shape of ['straight', 'straight-landing', 'l-right']) {
+        // The real stairs climb 3 m at 28 degrees; fitting from where their top lands gives 28 back.
+        const truth = planStairs({ rise: 3, yawDeg: 60, flights: flightsForShape(shape, 28), angleDeg: 28, landingM: 1.4 });
+        const deg = fitAngle({ rise: 3, topOffset: { e: truth.end.e, n: truth.end.n }, flights: flightsForShape(shape, 45), landingM: 1.4 });
+        near(deg, 28, 0.15);
+    }
+    // Too far for any stairs: the gentlest; too close: the steepest; stacked: nothing to fit.
+    assert.equal(fitAngle({ rise: 3, topOffset: { e: 200, n: 0 }, flights: flightsForShape('straight', 45) }), 10);
+    assert.equal(fitAngle({ rise: 3, topOffset: { e: 0.4, n: 0 }, flights: flightsForShape('straight', 45) }), 80);
+    assert.equal(fitAngle({ rise: 3, topOffset: { e: 0.1, n: 0 }, flights: flightsForShape('straight', 45) }), null);
 });

@@ -1,0 +1,51 @@
+{
+  "created": "2026-11-18T16:43:26+00:00",
+  "window_steps": 8,
+  "hidden": 32,
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "features": 51,
+  "rows": {
+    "train": 22266,
+    "val": 4771,
+    "test": 4772
+  },
+  "val_brier": {
+    "logistic regression": 0.02369,
+    "GRU (2-hour window)": 0.02364
+  },
+  "validation_gain": 0.002,
+  "test": {
+    "logistic regression": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03638,
+      "log_loss": 0.12874,
+      "roc_auc": 0.9201,
+      "precision": 0.2655,
+      "recall": 0.6929,
+      "false_alarm_ratio": 0.7345,
+      "false_positive_rate": 0.102,
+      "start_recall": 0.4662,
+      "starts": 133
+    },
+    "GRU (2-hour window)": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03497,
+      "log_loss": 0.12732,
+      "roc_auc": 0.9162,
+      "precision": 0.2918,
+      "recall": 0.7095,
+      "false_alarm_ratio": 0.7082,
+      "false_positive_rate": 0.0916,
+      "start_recall": 0.4962,
+      "starts": 133
+    }
+  },
+  "kept": false,
+  "rule": "kept only with at least 0.5% lower validation Brier than the logistic regression"
+}

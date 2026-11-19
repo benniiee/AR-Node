@@ -396,9 +396,14 @@
     "sat_wv_campus": -22.04,
     "sat_wv_minus_ir_campus": -31.87,
     "sat_wv_minus_ir_10km": -16.625,
-    "sat_wv_min_30km": -33.025
+    "sat_wv_min_30km": -33.025,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 0.99528,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.017663814897676707,
+   "expected_fallback_probability": 0.017663814897676648,
    "expected_features": {
     "precip_0": 0.0,
     "precip_1": 0.0,
@@ -450,9 +455,14 @@
     "sat_wv_campus": -22.04,
     "sat_wv_minus_ir_campus": -31.87,
     "sat_wv_minus_ir_10km": -16.625,
-    "sat_wv_min_30km": -33.025
+    "sat_wv_min_30km": -33.025,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 0.99528,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.0011564189903612953
+   "expected_probability": 0.0007678296061052848
   },
   {
    "now": "2026-07-28T07:45",
@@ -841,9 +851,14 @@
     "sat_wv_campus": -16.128,
     "sat_wv_minus_ir_campus": -26.485,
     "sat_wv_minus_ir_10km": -13.605,
-    "sat_wv_min_30km": -19.015
+    "sat_wv_min_30km": -19.015,
+    "sat_phase_water_10km": 0.89855,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.07246,
+    "sat_phase_cloudy_30km": 0.9622,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.019241161170283017,
+   "expected_fallback_probability": 0.019241161170283405,
    "expected_features": {
     "precip_0": 0.3,
     "precip_1": 0.3,
@@ -895,9 +910,14 @@
     "sat_wv_campus": -16.128,
     "sat_wv_minus_ir_campus": -26.485,
     "sat_wv_minus_ir_10km": -13.605,
-    "sat_wv_min_30km": -19.015
+    "sat_wv_min_30km": -19.015,
+    "sat_phase_water_10km": 0.89855,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.07246,
+    "sat_phase_cloudy_30km": 0.9622,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.0080579276233098
+   "expected_probability": 0.019716082437886955
   },
   {
    "now": "2026-08-28T17:45",
@@ -1294,9 +1314,14 @@
     "sat_wv_campus": -16.492,
     "sat_wv_minus_ir_campus": -35.816,
     "sat_wv_minus_ir_10km": -27.543,
-    "sat_wv_min_30km": -29.67
+    "sat_wv_min_30km": -29.67,
+    "sat_phase_water_10km": 0.76812,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.21739,
+    "sat_phase_cloudy_30km": 0.90866,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.01912180367363793,
+   "expected_fallback_probability": 0.019121803673637736,
    "expected_features": {
     "precip_0": 0.0,
     "precip_1": 0.0,
@@ -1348,9 +1373,14 @@
     "sat_wv_campus": -16.492,
     "sat_wv_minus_ir_campus": -35.816,
     "sat_wv_minus_ir_10km": -27.543,
-    "sat_wv_min_30km": -29.67
+    "sat_wv_min_30km": -29.67,
+    "sat_phase_water_10km": 0.76812,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.21739,
+    "sat_phase_cloudy_30km": 0.90866,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.0015345762836581078
+   "expected_probability": 0.0028347537141303596
   },
   {
    "now": "2026-09-29T11:30",
@@ -1747,9 +1777,14 @@
     "sat_wv_campus": -18.387,
     "sat_wv_minus_ir_campus": -43.628,
     "sat_wv_minus_ir_10km": -36.08,
-    "sat_wv_min_30km": -28.696
+    "sat_wv_min_30km": -28.696,
+    "sat_phase_water_10km": 0.5942,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.74488,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.021247729711971308,
+   "expected_fallback_probability": 0.02124772971197118,
    "expected_features": {
     "precip_0": 0.0,
     "precip_1": 0.0,
@@ -1801,9 +1836,14 @@
     "sat_wv_campus": -18.387,
     "sat_wv_minus_ir_campus": -43.628,
     "sat_wv_minus_ir_10km": -36.08,
-    "sat_wv_min_30km": -28.696
+    "sat_wv_min_30km": -28.696,
+    "sat_phase_water_10km": 0.5942,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.74488,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.0006540951028749164
+   "expected_probability": 0.0009589635867528215
   },
   {
    "now": "2026-09-17T08:45",
@@ -2192,9 +2232,14 @@
     "sat_wv_campus": -26.417,
     "sat_wv_minus_ir_campus": -13.451,
     "sat_wv_minus_ir_10km": -10.841,
-    "sat_wv_min_30km": -45.592
+    "sat_wv_min_30km": -45.592,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.6367420875763924,
+   "expected_fallback_probability": 0.6367420875763911,
    "expected_features": {
     "precip_0": 0.3,
     "precip_1": 0.3,
@@ -2246,9 +2291,14 @@
     "sat_wv_campus": -26.417,
     "sat_wv_minus_ir_campus": -13.451,
     "sat_wv_minus_ir_10km": -10.841,
-    "sat_wv_min_30km": -45.592
+    "sat_wv_min_30km": -45.592,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.4545079607452381
+   "expected_probability": 0.42871149687196847
   },
   {
    "now": "2026-09-11T22:30",
@@ -2641,9 +2691,14 @@
     "sat_wv_campus": -14.559,
     "sat_wv_minus_ir_campus": -36.647,
     "sat_wv_minus_ir_10km": -34.412,
-    "sat_wv_min_30km": -27.498
+    "sat_wv_min_30km": -27.498,
+    "sat_phase_water_10km": 0.57971,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.58268,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.022450760886378242,
+   "expected_fallback_probability": 0.022450760886378027,
    "expected_features": {
     "precip_0": 0.0,
     "precip_1": 0.0,
@@ -2695,9 +2750,14 @@
     "sat_wv_campus": -14.559,
     "sat_wv_minus_ir_campus": -36.647,
     "sat_wv_minus_ir_10km": -34.412,
-    "sat_wv_min_30km": -27.498
+    "sat_wv_min_30km": -27.498,
+    "sat_phase_water_10km": 0.57971,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.58268,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.0023401316202705043
+   "expected_probability": 0.0029014095127662043
   },
   {
    "now": "2026-09-17T14:30",
@@ -3098,9 +3158,14 @@
     "sat_wv_campus": -23.557,
     "sat_wv_minus_ir_campus": -24.423,
     "sat_wv_minus_ir_10km": -16.073,
-    "sat_wv_min_30km": -64.089
+    "sat_wv_min_30km": -64.089,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.27795794822551206,
+   "expected_fallback_probability": 0.2779579482255135,
    "expected_features": {
     "precip_0": 0.4,
     "precip_1": 0.4,
@@ -3152,9 +3217,14 @@
     "sat_wv_campus": -23.557,
     "sat_wv_minus_ir_campus": -24.423,
     "sat_wv_minus_ir_10km": -16.073,
-    "sat_wv_min_30km": -64.089
+    "sat_wv_min_30km": -64.089,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.10593695995127891
+   "expected_probability": 0.0849968191370701
   },
   {
    "now": "2026-10-21T01:30",
@@ -3535,9 +3605,14 @@
     "sat_wv_campus": -14.897,
     "sat_wv_minus_ir_campus": -36.876,
     "sat_wv_minus_ir_10km": -35.153,
-    "sat_wv_min_30km": -16.201
+    "sat_wv_min_30km": -16.201,
+    "sat_phase_water_10km": 0.69565,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.53071,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.014555643277657512,
+   "expected_fallback_probability": 0.014555643277657385,
    "expected_features": {
     "precip_0": 0.0,
     "precip_1": 0.0,
@@ -3589,9 +3664,14 @@
     "sat_wv_campus": -14.897,
     "sat_wv_minus_ir_campus": -36.876,
     "sat_wv_minus_ir_10km": -35.153,
-    "sat_wv_min_30km": -16.201
+    "sat_wv_min_30km": -16.201,
+    "sat_phase_water_10km": 0.69565,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.53071,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.0007840075399024176
+   "expected_probability": 0.0011214478337701697
   },
   {
    "now": "2026-09-13T05:30",
@@ -3972,9 +4052,14 @@
     "sat_wv_campus": -15.164,
     "sat_wv_minus_ir_campus": -32.04,
     "sat_wv_minus_ir_10km": -22.28,
-    "sat_wv_min_30km": -63.378
+    "sat_wv_min_30km": -63.378,
+    "sat_phase_water_10km": 0.76812,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.11594,
+    "sat_phase_cloudy_30km": 0.98583,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.14452881450771501,
+   "expected_fallback_probability": 0.1445288145077161,
    "expected_features": {
     "precip_0": 0.1,
     "precip_1": 0.1,
@@ -4026,9 +4111,14 @@
     "sat_wv_campus": -15.164,
     "sat_wv_minus_ir_campus": -32.04,
     "sat_wv_minus_ir_10km": -22.28,
-    "sat_wv_min_30km": -63.378
+    "sat_wv_min_30km": -63.378,
+    "sat_phase_water_10km": 0.76812,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.11594,
+    "sat_phase_cloudy_30km": 0.98583,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.09977430822006618
+   "expected_probability": 0.18589974745930796
   },
   {
    "now": "2026-09-06T17:30",
@@ -4425,9 +4515,14 @@
     "sat_wv_campus": -39.011,
     "sat_wv_minus_ir_campus": -16.044,
     "sat_wv_minus_ir_10km": -4.132,
-    "sat_wv_min_30km": -52.261
+    "sat_wv_min_30km": -52.261,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0,
+    "sat_phase_missing": 0.0
    },
-   "expected_fallback_probability": 0.015581551974111266,
+   "expected_fallback_probability": 0.01558155197411128,
    "expected_features": {
     "precip_0": 0.0,
     "precip_1": 0.0,
@@ -4479,9 +4574,14 @@
     "sat_wv_campus": -39.011,
     "sat_wv_minus_ir_campus": -16.044,
     "sat_wv_minus_ir_10km": -4.132,
-    "sat_wv_min_30km": -52.261
+    "sat_wv_min_30km": -52.261,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0,
+    "sat_phase_missing": 0.0
    },
-   "expected_probability": 0.016201182954326675
+   "expected_probability": 0.014810017957569775
   }
  ]
 }

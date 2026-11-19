@@ -437,7 +437,7 @@ const MIN_HEAT_CHECKS = 24;
 
 function rainVerdict(s) {
     if (!s.checked || s.checked < MIN_RAIN_CHECKS) {
-        return { tone: 'attention', label: 'Collecting data', text: `${s.checked || 0} of ${MIN_RAIN_CHECKS} airport checks so far. A verdict appears once there are enough; keep the scheduler running.` };
+        return { tone: null, label: 'Collecting data', text: `${s.checked || 0} of ${MIN_RAIN_CHECKS} airport checks so far. A verdict appears once there are enough; keep the scheduler running.` };
     }
     if (s.brier_provider !== null && s.brier_model !== null && s.brier_model < s.brier_provider) {
         return { tone: 'ok', label: 'Working well', text: `Closer to what really happened than Open-Meteo's own rain chance, on ${s.checked} airport checks.` };
@@ -447,7 +447,7 @@ function rainVerdict(s) {
 
 function heatVerdict(plus1) {
     if (!plus1.checked || plus1.checked < MIN_HEAT_CHECKS) {
-        return { tone: 'attention', label: 'Collecting data', text: `${plus1.checked || 0} of ${MIN_HEAT_CHECKS} airport readings so far. A verdict appears once there are enough; keep the scheduler running.` };
+        return { tone: null, label: 'Collecting data', text: `${plus1.checked || 0} of ${MIN_HEAT_CHECKS} airport readings so far. A verdict appears once there are enough; keep the scheduler running.` };
     }
     if (plus1.mae_provider === null || plus1.mae_model <= plus1.mae_provider) {
         return { tone: 'ok', label: 'Working well', text: `Missed the airport's heat index by ${num(plus1.mae_model, 1)} °C on average one hour ahead${plus1.mae_provider === null ? '' : ` (Open-Meteo: ${num(plus1.mae_provider, 1)} °C)`}.` };
@@ -460,7 +460,7 @@ function CardHead({ id, title, question, verdict }) {
     return (
         <div className="wx-card-head">
             <Tip text={question} block><h2 className="ui-card-title" id={id}>{title}<Info /></h2></Tip>
-            <Tip text={verdict.text}><span className={`ui-badge ui-badge-${verdict.tone}`}>{verdict.label}</span></Tip>
+            <Tip text={verdict.text}><span className={`ui-badge${verdict.tone ? ` ui-badge-${verdict.tone}` : ''}`}>{verdict.label}</span></Tip>
         </div>
     );
 }
@@ -500,8 +500,9 @@ function RainCard({ rain }) {
                 <Tile label="Predictions" value={s.predictions} tip="Predictions in this period: one every 10 minutes, plus each 'Update now'." />
                 <Tile label="Rain caught" value={s.rain_reports ? `${s.caught} of ${s.rain_reports}` : '-'}
                     tip="Times the airport reported rain while rain mode was already on. Shows '-' until the airport has reported rain." />
-                <Tile label="vs Open-Meteo" value={closer === null ? '-' : closer >= 0 ? `${closer}% closer` : `${-closer}% further`}
-                    tip="How much closer the model's rain chances were to what really happened, compared with Open-Meteo's own. Shows '-' until there are airport checks." />
+                {/* Worse is shown as a multiple: "541% further" read like a broken percentage. */}
+                <Tile label="vs Open-Meteo" value={closer === null ? '-' : closer >= 0 ? `${closer}% closer` : `${(s.brier_model / s.brier_provider).toFixed(1)}× more error`}
+                    tip="How much closer the model's rain chances were to what really happened, compared with Open-Meteo's own (Brier score). When the model did worse, it shows how many times Open-Meteo's error it made. Shows '-' until there are airport checks." />
             </div>
             {points.length === 0 ? <Empty /> : (
                 <>

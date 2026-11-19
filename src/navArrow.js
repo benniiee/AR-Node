@@ -1,25 +1,16 @@
-// Single 3D guidance arrow for the AR view.
-//
-// Replaces the glowing tube, marching chevrons and node spheres: one solid
-// arrow floats ahead of the walker, points at the NEXT node on the route and
-// slides back and forth along that direction (toward the node, then back)
-// so it reads as "go this way".
-//
-// The pool variant puts one plain white arrow on every route node. Every arrow has the same FIXED world size (no scaling with distance)
-// and fades out as the walker closes in on its node, fading back in once
-// the walker has moved far enough away again.
+// 3D guidance arrows for the AR view: one plain white arrow on every route node,
+// pointing at the next one and sliding back and forth along that direction so it
+// reads as "go this way". Every arrow has the same FIXED world size (no scaling
+// with distance) and fades out as the walker closes in on its node, fading back
+// in once the walker has moved far enough away again.
 import * as THREE from 'three';
 
-/** Metres ahead of the camera where the sweep starts. */
-export const NAV_ARROW_NEAR = 3.4;
 /** Length of the back-and-forth sweep in metres. */
 export const NAV_ARROW_SWEEP = 1.4;
 /** Seconds for one full back-and-forth cycle. */
 export const NAV_ARROW_PERIOD = 1.4;
 /** Arrow hovers this far above the ground reference (eye level is 1.3 m above it). */
 export const NAV_ARROW_LIFT = 0.8;
-/** The arrow floating ahead of the walker rides lower, out of the eye line. */
-export const NAV_LEAD_LIFT = 0.4;
 
 // White "this is the way" arrows. The destination carries the green accent,
 // so the arrows read as neutral guidance: pure white, nothing dark around
@@ -50,28 +41,6 @@ export function pingPong(time, period = NAV_ARROW_PERIOD) {
     const k = ((time / period) % 1 + 1) % 1;
     const tri = k < 0.5 ? k * 2 : 2 - k * 2;
     return tri * tri * (3 - 2 * tri);
-}
-
-/**
- * Where the arrow sits and where it points.
- * Pure maths so it can be tested without WebGL.
- * @param {{x:number,z:number}} head camera ground position
- * @param {{x:number,z:number}} target next node
- * @param {number} time seconds
- * @returns {{x:number,z:number,yaw:number,dist:number}|null} null when no target/too close
- */
-export function arrowPlacement(head, target, time) {
-    const dx = target.x - head.x;
-    const dz = target.z - head.z;
-    const dist = Math.hypot(dx, dz);
-    if (!(dist > 0.01)) return null;
-    const ux = dx / dist;
-    const uz = dz / dist;
-    // Never overshoot the node itself.
-    const near = Math.min(NAV_ARROW_NEAR, dist * 0.5);
-    const sweep = Math.min(NAV_ARROW_SWEEP, Math.max(0, dist - near) * 0.6);
-    const d = near + sweep * pingPong(time);
-    return { x: head.x + ux * d, z: head.z + uz * d, yaw: Math.atan2(ux, uz), dist };
 }
 
 /** Shared arrow geometry; each arrow owns its material pair (for fading). */
@@ -233,37 +202,6 @@ export function createNavArrowPool(count = 32) {
             for (const a of arrows) {
                 a.mat.dispose();
             }
-            assets.dispose();
-        },
-    };
-}
-
-export function createNavArrow() {
-    const assets = buildArrowAssets();
-    const { group, mat } = assets.make();
-
-    return {
-        group,
-        /** Hide until a target exists. */
-        hide() { group.visible = false; },
-        /**
-         * @param {{x:number,y:number,z:number}} head camera position (y = ground ref)
-         * @param {{x:number,y:number,z:number}|null} target next node
-         * @param {number} time seconds
-         * @param {number} scale apparent-size scale
-         */
-        update(head, target, time, scale = 1) {
-            if (!target) { group.visible = false; return; }
-            const p = arrowPlacement(head, target, time);
-            if (!p) { group.visible = false; return; }
-            group.visible = true;
-            group.position.set(p.x, head.y + NAV_LEAD_LIFT + Math.sin(time * 2.2) * 0.03, p.z);
-            group.rotation.set(0, p.yaw, 0);
-            group.scale.setScalar(scale);
-        },
-        dispose() {
-            group.parent?.remove(group);
-            mat.dispose();
             assets.dispose();
         },
     };

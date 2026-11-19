@@ -3,3 +3,4 @@ numpy>=1.26
 scikit-learn>=1.4
 requests>=2.31
 matplotlib>=3.8   # optional: only for the calibration plot
+h5py>=3.10    # the live rain model (since Nov 19, 2026) reads the Himawari cloud-phase inputs (cloud_phase.py); without it the app falls back to its model without satellite

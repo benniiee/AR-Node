@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Building;
 use App\Models\Department;
 use App\Models\Node;
+use App\Models\NodeLink;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -220,15 +221,22 @@ class BuildingTest extends TestCase
         $this->getJson('/api/map-data')->assertJsonPath('buildings.0.height_m', null);
     }
 
-    public function test_deleting_a_building_keeps_its_nodes(): void
+    public function test_deleting_a_building_deletes_its_nodes_and_their_stairs(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $building = Building::factory()->create();
-        $node = Node::create($this->nodePayload(['building_id' => $building->id, 'floor_level' => 0]));
+        $ground = Node::create($this->nodePayload(['building_id' => $building->id, 'floor_level' => 0]));
+        $upstairs = Node::create($this->nodePayload(['building_id' => $building->id, 'floor_level' => 1]));
+        $outside = Node::create($this->nodePayload(['floor_level' => 0]));
+        NodeLink::create(['node_a_id' => $ground->id, 'node_b_id' => $upstairs->id]);
 
-        $this->deleteJson("/api/buildings/{$building->id}")->assertOk();
+        $this->deleteJson("/api/buildings/{$building->id}")->assertOk()->assertJsonPath('nodes_deleted', 2);
 
-        $this->assertNull($node->fresh()->building_id);
+        $this->assertModelMissing($ground);
+        $this->assertModelMissing($upstairs);
+        $this->assertSame(0, NodeLink::count());
+        // Nodes of other buildings and outside stay.
+        $this->assertModelExists($outside);
     }
 
     public function test_map_data_includes_building_labels_and_node_buildings(): void

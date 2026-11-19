@@ -165,16 +165,22 @@ class BuildingController extends Controller
     }
 
     /**
-     * Remove a building label (admin only). Its nodes stay on the map and
-     * simply stop being filed under it.
+     * Remove a building (admin only) together with every node filed under it: its rooms,
+     * offices and indoor route nodes, on all floors. Their staircases go with them (the
+     * node_links foreign keys cascade). One transaction, so nothing is left half-removed.
      */
     public function destroy(Request $request, Building $building): JsonResponse
     {
         abort_unless($request->user()->isAdmin(), 403);
 
-        $building->delete();
+        $removed = DB::transaction(function () use ($building): int {
+            $count = $building->nodes()->delete();
+            $building->delete();
 
-        return response()->json(['message' => 'Building deleted']);
+            return $count;
+        });
+
+        return response()->json(['message' => 'Building deleted', 'nodes_deleted' => $removed]);
     }
 
     /**

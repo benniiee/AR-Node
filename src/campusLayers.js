@@ -18,7 +18,7 @@
 // uiTokens.js), so neither is used here.
 import L from 'leaflet';
 import { C, FONT_STACK, TYPE } from './uiTokens.js';
-import { polygonCentroid, floorCountLabel, statusLabel, interiorPoint } from './campusGeometry.js';
+import { polygonCentroid, floorCountLabel, statusLabel, interiorPoint, bridgeKindLabel, deckLevelLabel } from './campusGeometry.js';
 import { floorAria, floorOf } from './floors.js';
 import { doorFrames, doorGapWalls, DOOR_HEIGHT_M } from './doors.js';
 import { planFromLink, stairTreads, walkLine } from './stairGeometry.js';
@@ -39,6 +39,8 @@ export const CAMPUS_COLORS = {
     walkway: { light: '#4b4b56', dark: '#ececf0' },
     // Neutral building edge when no department colour applies.
     building: { light: '#2a2a33', dark: '#ffffff' },
+    // Bridges and other connectors: teal, apart from buildings (white / department) and covered walks (blue).
+    bridge: { light: '#0f766e', dark: '#2dd4bf' },
     planned: { light: '#6b6b76', dark: '#c9c9d2' },
 };
 
@@ -79,6 +81,9 @@ function ensureStyles() {
         .bldg-label.is-construction { border-color: ${C.warning}; }
         .bldg-label.is-construction .bl-meta { color: ${C.warning}; }
         .bldg-label.is-planned { border-style: dashed; border-color: rgba(255,255,255,0.35); }
+        /* Bridge chips: teal accent (the chips are dark glass on both base maps). */
+        .bldg-label.is-bridge { border-color: ${CAMPUS_COLORS.bridge.dark}; }
+        .bldg-label.is-bridge .bl-meta { color: ${CAMPUS_COLORS.bridge.dark}; }
         @keyframes bldgIn { from { opacity: 0; transform: translate(-50%, -40%); } }
         @media (prefers-reduced-motion: reduce) { .bldg-label { animation: none; } }
 
@@ -710,6 +715,44 @@ export function stairRouteLine(link, from, to, liftOf) {
     });
     up.push([top.latitude + l1, top.longitude]);
     return bottom === from ? up : up.reverse();
+}
+
+/** Outline + fill for a bridge deck in a given base-map theme (under construction / planned like buildings). */
+export function bridgeStyle(status, theme = 'dark') {
+    if (status === 'under_construction' || status === 'planned') return buildingStyle(status, theme);
+    const c = pick(CAMPUS_COLORS.bridge, theme);
+    return { color: c, weight: 2.5, opacity: 0.95, lineJoin: 'round', fillColor: c, fillOpacity: theme === 'light' ? 0.28 : 0.32 };
+}
+
+/**
+ * Draw every bridge (and other connector) into `layer` (cleared first): the deck in teal
+ * and a label chip such as "Footbridge · 1 floor up". Same `popup` / `skipId` / `theme`
+ * options as drawBuildings.
+ */
+export function drawBridges(layer, bridges, { popup = null, skipId = null, theme = 'dark' } = {}) {
+    ensureStyles();
+    layer.clearLayers();
+    for (const b of bridges || []) {
+        if (b.id === skipId || !Array.isArray(b.polygon) || b.polygon.length < 3) continue;
+        const latlngs = b.polygon.map((p) => [p.lat, p.lng]);
+        const deck = L.polygon(latlngs, {
+            ...bridgeStyle(b.status, theme), interactive: Boolean(popup), className: popup ? 'campus-hit' : '',
+        }).addTo(layer);
+        if (popup) deck.bindPopup(() => popup(b));
+        // Doors: a light gap across the outline, like a building's on the flat map.
+        for (const d of doorFrames(b.polygon, b.doors)) {
+            const line = [[d.a.lat, d.a.lng], [d.b.lat, d.b.lng]];
+            L.polyline(line, { color: '#16161b', weight: 8, opacity: 0.85, lineCap: 'butt', interactive: false }).addTo(layer);
+            L.polyline(line, { color: '#ffffff', weight: 4, opacity: 1, lineCap: 'butt', interactive: false }).addTo(layer);
+        }
+        const c = polygonCentroid(b.polygon);
+        if (c) {
+            const meta = b.status === 'under_construction' || b.status === 'planned' ? statusLabel(b.status) : deckLevelLabel(b.deck_floor);
+            const html = `<div class="bldg-label is-bridge" data-rank="1" title="${esc(b.name)} · ${esc(bridgeKindLabel(b.kind))}">`
+                + `<span class="bl-name">${esc(b.short_name || b.name)}</span><span class="bl-meta">${esc(meta)}</span></div>`;
+            L.marker([c.lat, c.lng], { icon: L.divIcon({ className: '', html, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layer);
+        }
+    }
 }
 
 /** Draw every pathway into `layer` (cleared first). Same options as drawBuildings. */

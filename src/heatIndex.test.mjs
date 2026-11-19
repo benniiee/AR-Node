@@ -62,6 +62,23 @@ test('summary: rising, easing, steady, missing', () => {
     assert.equal(steady.outlook, 'about the same for the next 3 hours');
 
     assert.equal(heatSummary({ ...base }).outlook, null);
+    assert.equal(rising.hotRisk, null);
     assert.equal(heatSummary({ heat_index_c: null }), null);
     assert.equal(heatSummary(null), null);
+});
+
+test('summary: the hot-hour alert warns about an hour the estimate keeps under the limit', () => {
+    const at = (h) => `2026-04-10T${h}:00:00+08:00`;
+    const mild = { heat_index_c: 33.0, heat_category: 'extreme_caution', heat_mode_c: 40 };
+    const s = heatSummary({ ...mild, heat_forecast: [
+        { hours_ahead: 1, at: at(13), heat_index_c: 37.0, hot_chance: 12, hot_alert: false },
+        { hours_ahead: 2, at: at(14), heat_index_c: 38.5, hot_chance: 22, hot_alert: true },
+    ] });
+    assert.equal(s.hotRisk, 'could reach 40°C by 2 pm');
+    assert.equal(s.warning, true);
+    // Already expected above the limit: the outlook says so, no extra line.
+    const hot = heatSummary({ ...mild, heat_forecast: [{ hours_ahead: 1, at: at(13), heat_index_c: 41.0, hot_alert: true }] });
+    assert.equal(hot.hotRisk, null);
+    // Older states without the field.
+    assert.equal(heatSummary({ ...mild, heat_forecast: [{ hours_ahead: 1, at: at(13), heat_index_c: 38.0 }] }).hotRisk, null);
 });

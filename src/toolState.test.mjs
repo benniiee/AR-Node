@@ -35,6 +35,7 @@ assert.equal(surfaceFor({ tool:'idle', hasPending:false, hasEditing:true }), 'ed
 assert.equal(surfaceFor({ tool:'idle', hasPending:false, hasEditing:false }), 'dock');
 assert.equal(surfaceFor({ tool:'building', hasPending:false, hasEditing:true }), 'campus');
 assert.equal(surfaceFor({ tool:'pathway', hasPending:false, hasEditing:false }), 'campus');
+assert.equal(surfaceFor({ tool:'bridge', hasPending:false, hasEditing:false }), 'campus');
 assert.equal(resolveTool('walls', 'building', true), 'building');
 // Campus areas: managing them and drawing one are two surfaces; neither is the dock.
 assert.equal(surfaceFor({ tool:'areas', hasPending:false, hasEditing:false }), 'areas');

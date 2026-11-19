@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import re
 import sys
 from datetime import datetime, timezone
@@ -53,8 +54,10 @@ from sklearn.preprocessing import StandardScaler
 from common import (HOURLY_CSV, M15_CSV, METAR_CSV, MM_FEATURES, MM_MIN_MODELS, MM_MODELS, MM_VARS, MM_WET_MM,
                     MODEL_JSON, MULTIMODEL_CSV, OBS_FEATURES, OBS_FRESH_MIN, OBS_LAG_MIN, OBS_MAX_AGE_MIN,
                     OBS_RECENT_MIN, PARITY_JSON, REPORTS, SAT_B10_CSV, SAT_COOLING_MIN, SAT_CSV, SAT_FEATURES, SAT_LAG_MIN,
-                    SAT_MAX_AGE_MIN, STEP, TZ, build_features, build_multimodel_features, build_obs_features,
-                    INPUT_DECIMALS, build_sat_features, metar_reports, model_probability, read_satellite, read_series)
+                    SAT_MAX_AGE_MIN, SAT_MOTION_CSV, SAT_PHASE_CSV, STEP, TZ, build_features, build_multimodel_features, build_obs_features,
+                    INPUT_DECIMALS, MOTION_FEATURES, build_sat_features, metar_reports, model_probability, read_motion,
+                    read_phase, read_satellite, read_series)
+from cloud_phase import CLOUD_FEATURES
 from satellite import ATTRIBUTION as SAT_ATTRIBUTION, BAND as SAT_BAND, COLD_C as SAT_COLD_C, WV_BAND as SAT_WV_BAND
 
 RAIN_WX = re.compile(r"(RA|DZ|SH|TS|UP)")
@@ -148,7 +151,12 @@ def calibration(y: np.ndarray, p: np.ndarray) -> list[dict]:
 
 VARIANT_NAMES = {"forecast": "forecast only", "airport": "forecast + airport report",
                  "multimodel": "forecast + several models", "both": "forecast + airport report + several models",
-                 "satellite": "all of the above + satellite"}
+                 "satellite": "all of the above + satellite",
+                 "motion": "all of the above + satellite + cloud motion",
+                 "phase": "all of the above + satellite + cloud phase"}
+SAT_VARIANTS = ("satellite", "motion", "phase")
+# Extra satellite products: (variant, the command that fills its history)
+SAT_EXTRAS = (("motion", "download_satellite.py --motion"), ("phase", "download_satellite.py --cloud"))
 
 
 def load_metar_reports() -> tuple[pd.DataFrame, pd.Series]:
@@ -295,8 +303,11 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, default=20, help="minutes ahead (default 20); other horizons write model_h<N>.json")
     ap.add_argument("--within", action="store_true",
                     help="label = rain in ANY airport report within the next HORIZON minutes (needed for horizons other than 20)")
-    ap.add_argument("--kind", choices=["auto", "logistic", "trees"], default="auto",
-                    help="model type; auto = logistic unless trees clearly win on validation")
+    ap.add_argument("--compare", nargs="*", default=[], metavar="MODEL_JSON",
+                    help="also score these saved models (e.g. a backup of the live one) on this run's test steps, "
+                         "each at its own alert threshold: a like-for-like benchmark")
+    ap.add_argument("--kind", choices=["auto", "logistic", "trees"], default="logistic",
+                    help="model type (default logistic, as in gui.py); auto = logistic unless trees clearly win on validation")
     ap.add_argument("--threshold-mm", type=float, default=0.1, help="rain if at least this many mm (openmeteo label)")
     ap.add_argument("--alert", default="auto",
                     help="probability that turns rain mode on; 'auto' = best F2 score on the validation period")
@@ -307,6 +318,9 @@ def main() -> None:
     ap.add_argument("--drop", default="", help="comma list of features to leave out (e.g. precip_prob_next_hour,fcst_precip_next_hour)")
     ap.add_argument("--station", default="RPMZ", help="airport station (labels and the airport-report inputs)")
     ap.add_argument("--no-satellite", action="store_true", help="ignore the satellite history even if it exists")
+    ap.add_argument("--sequence", action="store_true",
+                    help="experiment: compare a GRU on the last 2 hours of inputs with the logistic regression "
+                         "(sequence_model.py, needs torch); writes reports/sequence_comparison.json, exports nothing")
     a = ap.parse_args()
     if a.alert != "auto":
         try:
@@ -376,7 +390,32 @@ def main() -> None:
               "satellite again (it resumes and adds band 10). Training without satellite for now.")
     elif SAT_CSV.exists() and not a.no_satellite:
         scans = read_satellite()
-        sat = build_sat_features(feats.index, scans, read_satellite(SAT_B10_CSV), m15["wind_direction_10m"].asfreq("15min"))
+        motion = read_motion() if SAT_MOTION_CSV.exists() else None
+        phase = read_phase() if SAT_PHASE_CSV.exists() else None
+        sat = build_sat_features(feats.index, scans, read_satellite(SAT_B10_CSV), m15["wind_direction_10m"].asfreq("15min"),
+                                 motion, phase)
+        extras = {"motion": (motion, MOTION_FEATURES), "phase": (phase, CLOUD_FEATURES)}
+        for name, how in SAT_EXTRAS:
+            data, extra_cols = extras[name]
+            if data is None:
+                continue
+            # An extra product only counts if its history covers the satellite steps; otherwise it would shrink every variant.
+            sat_only = sat[SAT_FEATURES].dropna()
+            covered = sat.loc[sat_only.index, extra_cols].notna().all(axis=1)
+            if name == "phase":  # never NaN (a missing scan is an input): count the steps that really have one
+                covered &= sat.loc[sat_only.index, "sat_phase_missing"].eq(0)
+            labelled = covered.index[y.reindex(covered.index).notna().to_numpy()]
+            share = float(covered.reindex(labelled).mean()) if len(labelled) else 0.0
+            # Cloud phase: NOAA's archive has no phase files from 12 Oct to 25 Nov 2025 (checked Nov 2026), so 91%
+            # is all there is; those steps stay in, with sat_phase_missing = 1.
+            need = 0.90 if name == "phase" else 0.98
+            if share < need:
+                print(f"{VARIANT_NAMES[name]}: covers {share:.0%} of the labelled satellite steps ({need:.0%} needed): skipped. "
+                      f"Let {how} finish, then train again.")
+                sat = sat.drop(columns=extra_cols)
+                extras[name] = (None, extra_cols)
+            else:
+                print(f"{VARIANT_NAMES[name]}: {len(data):,} scans, {share:.1%} of the labelled satellite steps.")
         have = sat.dropna()
         sat_rows = int(len(have))
         # Only labelled steps count: a half-finished download must not shrink training to a few months.
@@ -392,6 +431,9 @@ def main() -> None:
             parts.append(sat)
             richest = variants.get("both") or variants.get("airport") or variants["forecast"]
             variants["satellite"] = richest + [c for c in SAT_FEATURES if c not in drop]
+            for name, (data, extra_cols) in extras.items():
+                if data is not None:
+                    variants[name] = variants["satellite"] + [c for c in extra_cols if c not in drop]
         else:
             print("Satellite history has no scans inside the forecast period: skipped.")
     elif not a.no_satellite:
@@ -443,17 +485,26 @@ def main() -> None:
         print(f"  {VARIANT_NAMES[v]:45s} features={len(fit['cols']):2d}  C={fit['C']:<5}  val Brier={fit['val_brier']:.5f}")
     chosen = a.variant if a.variant != "auto" else min(fits, key=lambda v: fits[v]["val_brier"])
     why = " (lowest validation Brier)" if a.variant == "auto" else " (--variant)"
+    if a.variant == "auto" and chosen in ("motion", "phase"):
+        # An extra satellite product must beat satellite without it by the same clear margin.
+        gain = 1 - fits[chosen]["val_brier"] / fits["satellite"]["val_brier"]
+        if gain < SAT_MIN_GAIN:
+            print(f"{VARIANT_NAMES[chosen]} improves validation Brier by only {gain:.2%} over satellite alone "
+                  f"(< {SAT_MIN_GAIN:.1%} needed)")
+            chosen = "satellite"
+        else:
+            why = f" ({VARIANT_NAMES[chosen]} improves validation Brier by {gain:.2%} over satellite alone)"
     if a.variant == "auto" and chosen == "satellite":
         # Extra inputs always fit a little better by luck (random numbers won by 0.1% in a test),
         # so satellite has to EARN its place: a clear gain on validation, or the app keeps the simpler model.
-        other = min((v for v in fits if v != "satellite"), key=lambda v: fits[v]["val_brier"])
+        other = min((v for v in fits if v not in SAT_VARIANTS), key=lambda v: fits[v]["val_brier"])
         gain = 1 - fits["satellite"]["val_brier"] / fits[other]["val_brier"]
         if gain < SAT_MIN_GAIN:
             print(f"satellite improves validation Brier by only {gain:.2%} (< {SAT_MIN_GAIN:.1%} needed): not exported")
             chosen, why = other, f" (satellite gain {gain:.2%} too small)"
         else:
             why = f" (satellite improves validation Brier by {gain:.2%})"
-    if "satellite" in fits and chosen != "satellite" and a.variant == "auto":
+    if "satellite" in fits and chosen not in SAT_VARIANTS and a.variant == "auto":
         # Every variant above was fitted on the satellite period only. Without satellite, the app's model
         # must learn from the FULL history again, so keep the comparison and train once more without it.
         REPORTS.mkdir(exist_ok=True)
@@ -495,6 +546,12 @@ def main() -> None:
     for v, other in fits.items():
         if v != chosen:
             results[f"variant: {VARIANT_NAMES[v]}"] = metrics(yt, other["predict"](te), alert, starts)
+    if a.sequence:
+        from sequence_model import compare_sequence
+        print("\nsequence experiment (nothing is exported, model files stay as they are):", flush=True)
+        compare_sequence(allf, cols, tr, va, te, fit, alert, starts, metrics, choose_threshold,
+                         REPORTS / f"sequence_comparison{sfx}.json")
+        return
     baseline_keys = ["climatology (month x hour)", "persistence (rain in last 15 min)"]
     results["climatology (month x hour)"] = metrics(yt, p_clim, alert, starts)
     results["persistence (rain in last 15 min)"] = metrics(yt, base.loc[te.index, "persistence"].to_numpy(), 0.5, starts)
@@ -506,6 +563,20 @@ def main() -> None:
         results["raw Open-Meteo probability"] = metrics(yt[ok], base.loc[te.index, "raw_provider"].to_numpy()[ok], alert, starts[ok])
         baseline_keys.append("raw Open-Meteo probability")
 
+    compared = {"y": yt, "rain_start": starts.astype(int), "this_run": p_exp}
+    if "raw_provider" in base:
+        compared["open_meteo"] = base.loc[te.index, "raw_provider"].to_numpy()
+    for path in a.compare:
+        prev = json.loads(Path(path).read_text())
+        if not set(prev["features"]) <= set(te.columns):
+            print(f"--compare {path}: some of its inputs are not in this run, skipped")
+            continue
+        p_prev = np.array([model_probability(prev, r) for r in te[prev["features"]].to_dict("records")])
+        results[f"compare: {Path(path).parent.name}/{Path(path).name}"] = metrics(
+            yt, p_prev, float(prev.get("alert_threshold", alert)), starts)
+        compared[f"{Path(path).parent.name}/{Path(path).name}"] = p_prev
+    if a.compare:  # every test step's chance per model, for benchmark_chart.py
+        pd.DataFrame(compared, index=te.index).to_csv(REPORTS / f"compare_predictions{sfx}.csv")
     table = pd.DataFrame(results).T[["n", "rain_rate", "brier", "roc_auc", "precision", "recall", "start_recall",
                                      "false_alarm_ratio", "false_positive_rate"]]
     print(f"\nTEST period results (alert threshold {alert:.2f}; start_recall = share of the {int(starts.sum())} "
@@ -548,7 +619,7 @@ def main() -> None:
     fallback = None
     if uses_sat:
         # The app scores this when no satellite scan is recent enough (outage, slow download).
-        fb_v = min((v for v in fits if v != "satellite"), key=lambda v: fits[v]["val_brier"])
+        fb_v = min((v for v in fits if v not in SAT_VARIANTS), key=lambda v: fits[v]["val_brier"])
         fb_export, fb_predict, _ = choose_export(fits[fb_v], tr, va, "fallback model type", a.kind)
         fb_alert = choose_threshold(va.y.to_numpy(), fb_predict(va)) if a.alert == "auto" else float(a.alert)
         fallback = {**fb_export, "variant": fb_v, "alert_threshold": fb_alert,
@@ -575,7 +646,8 @@ def main() -> None:
     if uses_sat:
         model["satellite"] = {"band": SAT_BAND, "water_vapour_band": SAT_WV_BAND, "cold_c": SAT_COLD_C, "lag_minutes": SAT_LAG_MIN,
                               "max_age_minutes": SAT_MAX_AGE_MIN, "cooling_minutes": [10, SAT_COOLING_MIN],
-                              "steps_with_satellite": sat_rows}
+                              "steps_with_satellite": sat_rows, "cloud_motion": any(c in MOTION_FEATURES for c in cols),
+                              "cloud_phase": any(c in CLOUD_FEATURES for c in cols)}
         model["fallback"] = fallback
         model["attribution"] += "; " + SAT_ATTRIBUTION
     model_json.write_text(json.dumps(model, indent=2))
@@ -619,7 +691,7 @@ def main() -> None:
         values = {c: float(te.loc[ts, c]) for c in te.columns if c != "y"}
         if uses_sat:
             # The app gets these from `python satellite.py now`; PHP only passes them on.
-            case["satellite_features"] = {c: values[c] for c in SAT_FEATURES}
+            case["satellite_features"] = {c: values[c] for c in SAT_FEATURES + MOTION_FEATURES + CLOUD_FEATURES if c in values}
             case["expected_fallback_probability"] = model_probability(fallback, values)
         case["expected_features"] = {c: values[c] for c in cols}
         case["expected_probability"] = model_probability(model, values)

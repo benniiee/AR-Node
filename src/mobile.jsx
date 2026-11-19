@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import 'leaflet/dist/leaflet.css';
 import MobileNav from './components/MobileNav';
 import MapGate from './components/MapGate';
 import TooltipLayer from './components/TooltipLayer';

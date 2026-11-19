@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Services\HeatIndex;
+use App\Services\Metar;
 use App\Services\RainModel;
 use App\Services\WeatherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -427,6 +428,25 @@ class WeatherTest extends TestCase
         $this->assertTrue($state['raining_now']);
         $this->assertSame('forecast', $state['raining_now_source']);
         $this->assertArrayNotHasKey('airport_report_at', $state);
+        $this->assertSame('forecast', $state['heat_now_source']);
+        $this->assertSame(28.5, $state['temperature_c']);
+    }
+
+    public function test_a_fresh_airport_report_gives_the_heat_index_now(): void
+    {
+        // The forecast says 28.5 C; the airport measured 35 C with a 27 C dew point 20 minutes ago.
+        $raw = 'METAR RPMZ 120700Z 22008KT 9999 FEW020 35/27 Q1008';
+        $this->fakeForecastAndAirport(3, 0.0, $raw, 20);
+
+        $state = app(WeatherService::class)->refresh();
+
+        $this->assertSame('airport', $state['heat_now_source']);
+        $this->assertSame(35.0, $state['temperature_c']);
+        $this->assertSame(Metar::heatIndex($raw), $state['heat_index_c']);
+        $this->assertSame((int) round(Metar::relativeHumidity($raw)), $state['humidity']);
+        $this->assertSame('danger', $state['heat_category']);
+        // Heat mode follows the measured heat index (46.7 C, above the 40 C limit).
+        $this->assertTrue($state['heat_mode']);
     }
 
     public function test_airport_verdict_needs_a_fresh_report(): void
@@ -450,12 +470,12 @@ class WeatherTest extends TestCase
      * A tiny satellite model (rain now + storm-cloud share) with a fallback that has no satellite input,
      * and a forecast whose last completed 15-minute step (10:00) is dry with an 80 degree wind.
      */
-    private function useSatelliteModel(): void
+    private function useSatelliteModel(string $satelliteInput = 'sat_cold_30km'): void
     {
         $path = tempnam(sys_get_temp_dir(), 'rain_model_');
         file_put_contents($path, json_encode([
             'recommended' => true, 'horizon_minutes' => 20, 'alert_threshold' => 0.2,
-            'features' => ['precip_0', 'sat_cold_30km'], 'mean' => [0, 0], 'scale' => [1, 1], 'coef' => [1, 4], 'intercept' => -3,
+            'features' => ['precip_0', $satelliteInput], 'mean' => [0, 0], 'scale' => [1, 1], 'coef' => [1, 4], 'intercept' => -3,
             'fallback' => ['features' => ['precip_0'], 'mean' => [0], 'scale' => [1], 'coef' => [1], 'intercept' => -3, 'alert_threshold' => 0.3],
         ]));
         config(['weather.model_path' => $path]);
@@ -485,6 +505,28 @@ class WeatherTest extends TestCase
         $this->assertStringContainsString(WeatherService::SATELLITE_ATTRIBUTION, $state['attribution']);
         Process::assertRan(fn ($process): bool => $process->command === ['python', 'satellite.py', 'now', '--at', '2026-11-13T10:00', '--wind-dir', '80']
             && str_ends_with(str_replace('\\', '/', (string) $process->path), '/ml'));
+    }
+
+    public function test_a_cloud_motion_model_asks_python_for_the_motion_inputs(): void
+    {
+        $this->useSatelliteModel('sat_adv_cold_20min');
+        Process::fake(['*satellite.py*' => Process::result(output: json_encode(['ok' => true, 'features' => ['sat_adv_cold_20min' => 0.5]]))]);
+
+        $state = app(WeatherService::class)->refresh();
+
+        $this->assertSame(27, $state['rain_probability']);
+        Process::assertRan(fn ($process): bool => $process->command === ['python', 'satellite.py', 'now', '--at', '2026-11-13T10:00', '--wind-dir', '80', '--motion']);
+    }
+
+    public function test_a_cloud_phase_model_asks_python_for_the_phase_inputs(): void
+    {
+        $this->useSatelliteModel('sat_phase_water_10km');
+        Process::fake(['*satellite.py*' => Process::result(output: json_encode(['ok' => true, 'features' => ['sat_phase_water_10km' => 0.5]]))]);
+
+        $state = app(WeatherService::class)->refresh();
+
+        $this->assertSame(27, $state['rain_probability']);
+        Process::assertRan(fn ($process): bool => $process->command === ['python', 'satellite.py', 'now', '--at', '2026-11-13T10:00', '--wind-dir', '80', '--cloud']);
     }
 
     public function test_the_uv_index_and_its_category_are_published(): void

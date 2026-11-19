@@ -24,9 +24,9 @@ import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPU
 import { headingFromOrientationEvent, headingAccuracyFromEvent, createCompassWatcher, compassLabel } from '../heading';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../povMotion';
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
-import { drawBuildings, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine } from '../campusLayers';
 import { sunPosition } from '../sunShadow';
-import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors } from '../campusGeometry';
+import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon } from '../campusGeometry';
 import { LIST_CSS, bindScrollCue } from './ScrollWindow';
 import SatelliteControl, { SATELLITE_CSS } from './SatelliteControl';
 import { useSatelliteSettings, useSatelliteLayer } from '../useSatellite';
@@ -45,14 +45,6 @@ const RouteModel3D = React.lazy(() => import('./RouteModel3D').then((m) => ({
     default: (props) => <><style>{m.ROUTE_MODEL_CSS}</style><m.default {...props} /></>,
 })));
 const LOADING_3D = { display: 'grid', placeItems: 'center', color: C.muted, font: '500 15px/1.4 system-ui, sans-serif' };
-
-// Fix Leaflet default marker icons for bundlers
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
 
 // The "you are here" dot. White core (the palette reserves green for the
 // destination, so user and goal can never be confused) wearing a thin white
@@ -173,6 +165,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // Buildings the route goes into, cut away at the floor being shown.
     const cutawayLayerRef = useRef(null);
     const pathwayLayerRef = useRef(null);
+    const bridgeLayerRef = useRef(null);
     const areaLayerRef = useRef(null);
     const shadowLayerRef = useRef(null);
     // Live sun clock: ticks every minute and when the phone is unlocked again.
@@ -202,6 +195,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // Labelled buildings (name + floor count) and the road/walkway network.
     // Display only: routing still runs on nodes.
     const [buildings, setBuildings] = useState([]);
+    const [bridges, setBridges] = useState([]);
     const [pathways, setPathways] = useState([]);
     // Campus outlines (Campus A, Campus B, ...): the campus picker and the map labels.
     const [campusAreas, setCampusAreas] = useState([]);
@@ -417,6 +411,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 setBorders(data.borders || []);
                 setLinks(data.links || []);
                 setBuildings(data.buildings || []);
+                setBridges(data.bridges || []);
                 setPathways(data.pathways || []);
                 setCampusAreas(data.campus_areas || []);
                 setOfflineCopy(source === 'offline' ? { savedAt } : null);
@@ -445,6 +440,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         setBorders(map.borders || []);
         setLinks(map.links || []);
         setBuildings(map.buildings || []);
+        setBridges(map.bridges || []);
         setPathways(map.pathways || []);
         setCampusAreas(map.campus_areas || []);
         setOfflineCopy(null);
@@ -921,6 +917,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // Sun shadows fall over the paths but under the buildings' roofs.
         shadowLayerRef.current = L.layerGroup().addTo(map);
         buildingLayerRef.current = L.layerGroup().addTo(map);
+        bridgeLayerRef.current = L.layerGroup().addTo(map);
         cutawayLayerRef.current = L.layerGroup().addTo(map);
         bindLabelZoom(map);
         routeLayerRef.current = L.layerGroup().addTo(map);
@@ -1012,6 +1009,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 </div>`;
         };
         drawPathways(pathwayLayerRef.current, pathways, { theme: GPS_FLAVOR });
+        if (bridgeLayerRef.current) drawBridges(bridgeLayerRef.current, bridges, { theme: GPS_FLAVOR });
         drawBuildings(buildingLayerRef.current, buildings, { popup, theme: GPS_FLAVOR, extrude: true, sun: sunForWalls, skipIds: routeBuildingIds });
 
         // Long lists in the popup get the same scroll cue as the rest of the app.
@@ -1022,7 +1020,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         map.on('popupopen', onOpen);
         return () => { map.off('popupopen', onOpen); unbind(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, pathways, nodes, sunWallsKey, routeBuildingKey]);
+    }, [buildings, bridges, pathways, nodes, sunWallsKey, routeBuildingKey]);
 
     // Render node markers — destinations only, and only for the selected
     // floor. Intermediate route nodes stay hidden on the 2D screen; the path
@@ -1050,7 +1048,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             const statusWord = nodeRainLabel(node.path_type, weather);
             const marker = L.marker(
                 [node.latitude + cutawayLift(node), node.longitude],
-                { icon: createDestinationPinIcon(color, 16), zIndexOffset: 500, title: node.name || 'Location' }
+                { icon: createDestinationPinIcon(color, 16, 'pin-hit'), zIndexOffset: 500, title: node.name || 'Location' }
             ).addTo(map);
             const place = nodePlaceLabel(node, buildingsById);
             // Live weather at this node: the campus forecast (refreshed by the
@@ -1159,6 +1157,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 links,
                 // Routes walk around buildings, entering only the one they need.
                 buildings,
+                // Bridges with doors are got on and off only through them.
+                bridges,
             });
             // A whole building: the shortest way to one of its doors (or its
             // ground floor when it has none yet).
@@ -1173,11 +1173,29 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             if (result.success && mapInstance.current) {
                 // Only the part of the route on the floor being shown is
                 // drawn; the rest appears when the student changes floor.
-                const onFloor = result.path.filter((p) => p.type === 'user' || floorOf(p) === activeFloor);
                 // Inside a building the route is drawn on the cut-away floor
                 // plate it walks on, not on the ground under the raised roof.
                 const entered = new Set(result.path.map((p) => p.building_id).filter((id) => id !== null && id !== undefined));
-                const latlngs = onFloor.map((p) => [p.latitude + cutawayLift(p, entered), p.longitude]);
+                // A raised bridge deck is drawn flat on the ground map, so on the ground floor its part of the
+                // route is drawn too: up the stairs' walking line, along the deck, and down again.
+                const onDeck = (p) => activeFloor === 0 && p.building_id == null && floorOf(p) > 0 && (bridges || []).some((br) => br.status !== 'planned'
+                    && Number(br.deck_floor) === floorOf(p) && Array.isArray(br.polygon) && pointInPolygon(+p.latitude, +p.longitude, br.polygon));
+                const shown = (p) => p.type === 'user' || floorOf(p) === activeFloor || onDeck(p);
+                // One line per stretch on this floor: a route that leaves it and comes back is not
+                // joined straight across the gap (it used to draw the ground under a bridge).
+                const segs = [];
+                let seg = null;
+                result.path.forEach((p, i) => {
+                    if (!shown(p)) { seg = null; return; }
+                    const prev = result.path[i - 1];
+                    if (!seg) segs.push(seg = []);
+                    else if (prev && prev.type !== 'user' && floorOf(prev) !== floorOf(p)) {
+                        const link = links.find((l) => (l.node_a_id === prev.id && l.node_b_id === p.id) || (l.node_a_id === p.id && l.node_b_id === prev.id));
+                        if (link) seg.push(...stairRouteLine(link, prev, p, () => 0).slice(1, -1));
+                    }
+                    seg.push([p.latitude + cutawayLift(p, entered), p.longitude]);
+                });
+                const latlngs = segs.flat();
                 // A staircase marker where this floor's route ends (going
                 // up/down) and where it begins (arriving).
                 // Depth: what is on a higher floor than the one shown (stairs
@@ -1260,11 +1278,12 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 // Two strokes: a dark casing under a bright white line, so the
                 // route stands out on the light base map. White (not red): red
                 // means "problem" in this app, and the 3D arrows are white too.
-                L.polyline(latlngs, {
+                const lines = segs.filter((s) => s.length >= 2);
+                L.polyline(lines, {
                     color: ROUTE_CASING, weight: 9, opacity: 0.85,
                     lineJoin: 'round', lineCap: 'round',
                 }).addTo(routeLayerRef.current);
-                L.polyline(latlngs, {
+                L.polyline(lines, {
                     color: C.route, weight: 5, opacity: 0.95,
                     lineJoin: 'round', lineCap: 'round',
                 }).addTo(routeLayerRef.current);
@@ -1287,7 +1306,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // `weather.rain_multiplier` / `weather.raining_now` rather than the
         // whole object: a poll rebuilds it every 5 minutes, and the route
         // only cares about the two values that change routing.
-    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, routeShade]);
+    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, routeShade]);
 
     // A destination on another floor is a normal case now (the route climbs
     // the linked stairs), so it is only dropped when the node itself is gone.
@@ -1870,6 +1889,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 @media (max-height: 520px) and (min-width: 560px) {
                     .mnav-bottom-stack { left: auto; right: 10px; bottom: 10px; transform: none; align-items: flex-end; max-width: calc(100% - 230px); }
                 }
+                /* Location pins are small on purpose; this invisible border makes them a 44 px touch target. */
+                .pin-hit::after { content: ''; position: absolute; inset: -14px; }
                 /* The photo's credit must stay readable while imagery shows. */
                 .leaflet-control-attribution { font-size: 12px !important; }
                 .bp-row { display: flex; align-items: center; gap: 10px; min-height: 44px; }
@@ -1899,6 +1920,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                    give the most-used control a little depth without slowing it down. */
                 .mnav-destination { position: relative; z-index: 1; flex: 1 1 0; min-width: 0; }
                 .mnav-destination.is-open { z-index: 1200; }
+                /* Computers: keep the field (and the list that opens under it) a readable width, so the
+                   map stays visible beside it; the 3D and menu buttons move to the right edge. */
+                @media (min-width: 900px) { .mnav-destination { flex: 0 1 560px; margin-right: auto; } }
                 .mnav-select {
                     width: 100%; min-width: 0; min-height: 54px; padding: 8px 12px;
                     display: flex; align-items: center; gap: 10px; text-align: left;
@@ -2161,7 +2185,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                                 autoCapitalize="off"
                                 spellCheck={false}
                                 enterKeyHint="go"
-                                placeholder={selectedDestName || 'Search places or campus…'}
+                                placeholder={selectedDestName || 'Search places'}
                                 value={destinationOpen ? destQuery : selectedDestName}
                                 onFocus={() => setDestinationOpen(true)}
                                 onChange={(event) => {
@@ -2382,7 +2406,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                         footer={<button type="button" className="ui-btn ui-btn-primary" onClick={() => setRouteModelOpen(false)}>Done</button>}
                     >
                         <React.Suspense fallback={<div role="status" style={{ ...LOADING_3D, height: 'min(64vh, 600px)' }}>Loading the 3D route...</div>}>
-                            <RouteModel3D route={route} buildings={buildings} links={links} height="min(64vh, 600px)" />
+                            <RouteModel3D route={route} buildings={buildings} bridges={bridges} nodes={nodes} links={links} height="min(64vh, 600px)" />
                         </React.Suspense>
                     </StairModal>
                 )}
@@ -2524,7 +2548,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                     <ARView
                         key={arKey} nodes={nodes} borders={borders} route={arRoute} userLocation={userLocation}
                         floor={activeFloor} floors={floors} onFloorChange={setFloor} onExit={exit3D} onWalkedPosition={handleWalkedPosition}
-                        buildings={buildings} pathways={pathways}
+                        buildings={buildings} pathways={pathways} bridges={bridges}
                         destPlace={selectedDest ? nodePlaceLabel(selectedDest, buildingsById) : ''}
                         links={links}
                         satellite={satellite}

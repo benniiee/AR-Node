@@ -73,6 +73,14 @@ return [
 
     'satellite_timeout' => (int) env('WEATHER_SATELLITE_TIMEOUT', 45),
 
+    // Ensemble forecasts recorded every refresh (weather_ensembles) to train a future rain-model input:
+    // the Ensemble API keeps only ~3 days of the past. Free for non-commercial use (10,000 calls a day).
+    'record_ensemble' => (bool) env('WEATHER_RECORD_ENSEMBLE', true),
+
+    'ensemble_url' => env('WEATHER_ENSEMBLE_URL', 'https://ensemble-api.open-meteo.com/v1/ensemble'),
+
+    'ensemble_models' => env('WEATHER_ENSEMBLE_MODELS', 'ecmwf_ifs025,ecmwf_aifs025,gfs025,icon_global'),
+
     // Airport whose reports fill in the prediction history's outcomes (RPMZ = Zamboanga International).
     'metar_station' => env('WEATHER_METAR_STATION', 'RPMZ'),
 

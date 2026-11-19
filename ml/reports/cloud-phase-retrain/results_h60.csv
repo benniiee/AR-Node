@@ -1,0 +1,12 @@
+,n,rain_rate,brier,roc_auc,precision,recall,start_recall,false_alarm_ratio,false_positive_rate
+exported model,4772.0,0.0551,0.03921,0.9131,0.2927,0.6578,0.4379,0.7073,0.0927
+logistic regression (uncalibrated),4772.0,0.0551,0.03896,0.9164,0.3009,0.6464,0.4052,0.6991,0.0876
+gradient boosting (uncalibrated),4772.0,0.0551,0.03921,0.9131,0.2927,0.6578,0.4379,0.7073,0.0927
+variant: forecast only,4772.0,0.0551,0.04708,0.8512,0.2378,0.5551,0.4575,0.7622,0.1038
+variant: forecast + airport report,4772.0,0.0551,0.03978,0.8904,0.3259,0.6084,0.3268,0.6741,0.0734
+variant: forecast + several models,4772.0,0.0551,0.04642,0.8626,0.2568,0.5779,0.4902,0.7432,0.0976
+variant: forecast + airport report + several models,4772.0,0.0551,0.0395,0.8952,0.3306,0.616,0.3399,0.6694,0.0727
+climatology (month x hour),4772.0,0.0551,0.05825,0.5137,0.0583,0.251,0.2092,0.9417,0.2364
+persistence (rain in last 15 min),4772.0,0.0551,0.19719,0.7399,0.1709,0.6692,0.5752,0.8291,0.1894
+persistence (latest airport report),4772.0,0.0551,0.06266,0.6929,0.4297,0.4183,0.0,0.5703,0.0324
+raw Open-Meteo probability,4772.0,0.0551,0.26001,0.8618,0.0873,0.9772,0.9608,0.9127,0.5959

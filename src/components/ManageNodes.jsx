@@ -6,7 +6,7 @@ import { buildingFloors } from '../campusGeometry';
 import { floorOf, floorTag, floorAria } from '../floors';
 
 // ── Manage nodes: one building's rooms and route nodes, floor by floor ──
-// Opened from a building's Edit panel. The map shows the chosen floor cut
+// Opened from a building's (or a bridge's: `belongs`, `floors`, `note`) Edit panel. The map shows the chosen floor cut
 // away inside the building (lower floors grey), the list shows that floor's
 // nodes with Edit / Remove, and department staff add new ones on that floor.
 // Editing or adding a node returns here when it is done.
@@ -47,13 +47,19 @@ export const MANAGE_NODES_CSS = `
 export default function ManageNodes({
     building, nodes, links = [], floor, setFloor, canEditNode, canAdd, onAdd, onEdit, onRemove, onShow, onAddStair, onClose,
     onPrintQr = null,
+    // Which nodes are this place's (default: filed under the building), its floors and the closing hint:
+    // a bridge passes "on its deck", [its deck floor] and its own wording.
+    belongs = null, floors: floorList = null, note = null, addStairLabel = 'Add staircase',
+    // Staircases of the nodes shown: onEditStair(link, nodeHere) opens it, onRemoveStair(link) deletes it.
+    onEditStair = null, onRemoveStair = null,
 }) {
     const id = useId();
     // Which kinds the list shows: everything (in two groups), rooms or route nodes.
     const [kind, setKind] = useState('all');
-    const floors = buildingFloors(building);
+    const floors = floorList || buildingFloors(building);
+    const isMine = belongs || ((n) => n.building_id === building.id);
     const onFloor = nodes
-        .filter((n) => n.building_id === building.id && floorOf(n) === floor)
+        .filter((n) => isMine(n) && floorOf(n) === floor)
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')) || a.id - b.id);
     const rooms = onFloor.filter((n) => n.type === 'location');
     const routeNodes = onFloor.filter((n) => n.type !== 'location');
@@ -69,6 +75,15 @@ export default function ManageNodes({
     const cutOff = floor > 0 && onFloor.length > 0
         && !links.some((l) => onFloorIds.has(l.node_a_id) || onFloorIds.has(l.node_b_id));
     const emptyWhat = kind === 'location' ? 'rooms' : kind === 'route' ? 'route nodes' : 'nodes';
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const stairs = links
+        .filter((l) => onFloorIds.has(l.node_a_id) || onFloorIds.has(l.node_b_id))
+        .map((l) => {
+            const here = byId.get(onFloorIds.has(l.node_a_id) ? l.node_a_id : l.node_b_id);
+            const other = byId.get(here?.id === l.node_a_id ? l.node_b_id : l.node_a_id);
+            return { link: l, here, other };
+        })
+        .filter((s) => s.here && s.other);
 
     const row = (n, index) => {
         const editable = canEditNode(n);
@@ -136,8 +151,8 @@ export default function ManageNodes({
             {cutOff && (
                 <div className="mn-warn" role="status">
                     <b>No staircase reaches {floorAria(floor).toLowerCase()} yet.</b>
-                    <span>Students can't be routed to these rooms until one does. Add a staircase from a route node below.</span>
-                    {onAddStair && <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={onAddStair}>Add staircase</button>}
+                    <span>Students can't be routed here until one does. Add a staircase from a route node below.</span>
+                    {onAddStair && <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={onAddStair}>{addStairLabel}</button>}
                 </div>
             )}
 
@@ -160,9 +175,37 @@ export default function ManageNodes({
                 </p>
             )}
 
-            {onAddStair && nodes.some((n) => n.building_id === building.id && canEditNode(n)) && (
+            {onEditStair && stairs.length > 0 && (
                 <div className="mn-stair">
-                    <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={onAddStair}>Add staircase</button>
+                    <span className="ui-label" style={{ margin: 0 }}>Staircases</span>
+                    <ul className="mn-list">
+                        {stairs.map(({ link, here, other }) => {
+                            const up = floorOf(other) > floorOf(here);
+                            const title = `${up ? 'Up' : 'Down'} to ${floorAria(floorOf(other)).toLowerCase()}`;
+                            return (
+                                <li key={link.id} className="mn-row">
+                                    <button type="button" className="mn-name" onClick={() => onShow(other)} aria-label={`Show where these stairs ${up ? 'arrive' : 'come down'}`}>
+                                        <b>{title}</b>
+                                        <span>{other.name || (other.type === 'location' ? 'Location' : 'Route node')} #{other.id}</span>
+                                    </button>
+                                    {canEditNode(here) ? (
+                                        <span className="mn-actions">
+                                            <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => onEditStair(link, here)} aria-label={`Edit the staircase ${title.toLowerCase()}`}>Edit</button>
+                                            {onRemoveStair && (
+                                                <button type="button" className="ui-btn ui-btn-danger ui-btn-sm" onClick={() => onRemoveStair(link)} aria-label={`Remove the staircase ${title.toLowerCase()}`}>Remove</button>
+                                            )}
+                                        </span>
+                                    ) : <span className="mn-view-only">View only</span>}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            )}
+
+            {onAddStair && nodes.some((n) => isMine(n) && canEditNode(n)) && (
+                <div className="mn-stair">
+                    <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={onAddStair}>{addStairLabel}</button>
                     <span className="ui-hint">Tap the node at one end, then the other end on another floor; shape and slope come last.</span>
                 </div>
             )}
@@ -177,9 +220,9 @@ export default function ManageNodes({
             )}
 
             <p className="ui-hint" style={{ margin: '10px 0 0' }}>
-                {canAdd
+                {note || (canAdd
                     ? 'The map shows this floor inside the building; lower floors are grey.'
-                    : 'The map shows this floor inside the building. Rooms are added by the building’s department staff.'}
+                    : 'The map shows this floor inside the building. Rooms are added by the building’s department staff.')}
             </p>
         </Sheet>
     );

@@ -1,0 +1,31 @@
+all of the above + satellite + cloud phase: covers 2% of the labelled satellite steps (98% needed): skipped. Let download_satellite.py --cloud finish, then train again.
+Satellite: 119,947 scans -> inputs for 70,867 of 169,344 steps (2024-01-01 to 2026-10-30). Every variant is fitted on the steps that HAVE satellite inputs, so the comparison stays fair.
+
+label: metar:RPMZ (nearest report to t+20 min, +-15 min)
+train 2024-04-25 -> 2026-02-20  rows=22,266  rain=0.094  months=23
+val   2026-02-20 -> 2026-06-26  rows=4,771  rain=0.034  months=5
+      WARNING: val covers < 12 months, so it misses part of the wet/dry cycle.
+test  2026-06-26 -> 2026-10-30  rows=4,772  rain=0.051  months=5
+      WARNING: test covers < 12 months, so it misses part of the wet/dry cycle.
+
+variants (validation Brier, lower is better):
+  forecast only                                 features=24  C=0.01   val Brier=0.03134
+  forecast + airport report                     features=33  C=0.01   val Brier=0.02676
+  forecast + several models                     features=28  C=0.01   val Brier=0.03087
+  forecast + airport report + several models    features=37  C=0.01   val Brier=0.02642
+  all of the above + satellite                  features=51  C=0.1    val Brier=0.02369
+exported: all of the above + satellite (satellite improves validation Brier by 10.34%)
+features (51): ['precip_0', 'precip_1', 'precip_2', 'precip_sum_1h', 'precip_sum_3h', 'rain_code_now', 'temp', 'temp_change_1h', 'humidity', 'dewpoint_depression', 'wind_speed', 'wind_gust', 'wind_dir_sin', 'wind_dir_cos', 'cape', 'pressure', 'pressure_change_3h', 'cloud_cover', 'precip_prob_next_hour', 'fcst_precip_next_hour', 'hour_sin', 'hour_cos', 'doy_sin', 'doy_cos', 'obs_rain', 'obs_rain_fresh', 'obs_rain_2h', 'obs_thunder', 'obs_vicinity', 'obs_convective_cloud', 'obs_lightning', 'obs_recent_rain', 'obs_age_min', 'mm_wet_share', 'mm_precip_mean', 'mm_cloud_mean', 'mm_thunder_share', 'sat_bt_campus', 'sat_bt_min_10km', 'sat_bt_min_30km', 'sat_cold_10km', 'sat_cold_30km', 'sat_cooling_20min', 'sat_upwind_cold', 'sat_cooling_10min', 'sat_min_cooling_10min', 'sat_sustained_cooling', 'sat_wv_campus', 'sat_wv_minus_ir_campus', 'sat_wv_minus_ir_10km', 'sat_wv_min_30km']
+model type: validation Brier logistic 0.02369, trees 0.02266 (depth/rate/rounds (3, 0.05, 200)) -> trees, not calibrated (it did not help on validation)
+alert threshold: 0.13 (best F2 score on the validation period)
+
+sequence experiment (nothing is exported, model files stay as they are):
+  GRU seed 0: validation Brier 0.02386 (stopped after 17 epochs)
+  GRU seed 1: validation Brier 0.02445 (stopped after 13 epochs)
+  GRU seed 2: validation Brier 0.02352 (stopped after 16 epochs)
+
+GRU vs logistic regression (validation Brier 0.02364 vs 0.02369, gain 0.20%):
+  TEST logistic regression    Brier 0.03638  AUC 0.9201  rain starts warned 0.4662  dry moments warned 0.102
+  TEST GRU (2-hour window)    Brier 0.03497  AUC 0.9162  rain starts warned 0.4962  dry moments warned 0.0916
+  -> the GRU does not clearly win: the app keeps the logistic regression
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\reports\sequence_comparison.json

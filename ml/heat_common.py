@@ -159,12 +159,38 @@ def airport_heat_index(raw) -> float:
     return float("nan")
 
 
-def airport_hourly(index: pd.DatetimeIndex, path=METAR_CSV, tol_min: int = 15) -> pd.Series:
-    """Airport heat index at each hour of index (local naive): the report nearest to it within tol_min."""
+def airport_reports(path=METAR_CSV) -> pd.DataFrame:
+    """Every airport report with a heat index: columns time (campus time, naive, to the minute) and hi."""
     met = pd.read_csv(path, dtype=str)
     t = pd.to_datetime(met["valid"], utc=True).dt.tz_convert(TZ).dt.tz_localize(None).dt.floor("min")
     rep = pd.DataFrame({"time": t.astype("datetime64[ns]"), "hi": met["metar"].map(airport_heat_index)})
-    rep = rep.dropna().drop_duplicates("time", keep="last").sort_values("time")
+    return rep.dropna().drop_duplicates("time", keep="last").sort_values("time")
+
+
+def airport_hourly(index: pd.DatetimeIndex, path=METAR_CSV, tol_min: int = 15) -> pd.Series:
+    """Airport heat index at each hour of index (local naive): the report nearest to it within tol_min."""
+    rep = airport_reports(path)
     left = pd.DataFrame({"t": pd.DatetimeIndex(index).astype("datetime64[ns]")})
     out = pd.merge_asof(left, rep, left_on="t", right_on="time", direction="nearest", tolerance=pd.Timedelta(minutes=tol_min))
     return pd.Series(out["hi"].to_numpy(), index=index)
+
+
+# The airport heat index the model may read at hour t: the newest report at or before t, at most this old.
+OBS_MAX_AGE_MIN = 90
+OBS_FEATURES = ["obs_heat_index", "obs_minus_forecast"]
+
+
+def add_airport_features(f: pd.DataFrame, reports: pd.DataFrame) -> pd.DataFrame:
+    """Add the airport inputs to build_heat_features() output (NaN where no report is recent enough).
+
+    obs_heat_index      the airport's heat index from its newest report at or before t (<= OBS_MAX_AGE_MIN old)
+    obs_minus_forecast  that minus the forecast heat index at t: how far off the forecast is right now
+    MUST match HeatModel::featuresFromPayload() in app/Services/HeatModel.php.
+    """
+    left = pd.DataFrame({"t": pd.DatetimeIndex(f.index).astype("datetime64[ns]")})
+    o = pd.merge_asof(left, reports[["time", "hi"]], left_on="t", right_on="time", direction="backward",
+                      tolerance=pd.Timedelta(minutes=OBS_MAX_AGE_MIN))
+    f = f.copy()
+    f["obs_heat_index"] = o["hi"].to_numpy()
+    f["obs_minus_forecast"] = f["obs_heat_index"] - f["heat_index"]
+    return f

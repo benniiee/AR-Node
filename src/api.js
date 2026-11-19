@@ -150,6 +150,22 @@ export const api = {
     deletePathway: (id) =>
         request(`/pathways/${id}`, { method: 'DELETE' }),
 
+    // Bridges and other connectors (read: any logged-in user; write: admin only)
+    getBridges: () =>
+        request('/bridges'),
+
+    createBridge: (data) =>
+        request('/bridges', { method: 'POST', body: JSON.stringify(data) }),
+
+    updateBridge: (id, data) =>
+        request(`/bridges/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+    deleteBridge: (id) =>
+        request(`/bridges/${id}`, { method: 'DELETE' }),
+
+    generateBridgeNodes: (id, data = {}) =>
+        request(`/bridges/${id}/route-nodes`, { method: 'POST', body: JSON.stringify(data) }),
+
     // Campus areas (Campus A, Campus B, ...): read by any staff, written by admins.
     getCampusAreas: () =>
         request('/campus-areas'),

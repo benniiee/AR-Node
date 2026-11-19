@@ -17,6 +17,34 @@ export const PATHWAY_KINDS = [
     { value: 'road', label: 'Road' },
 ];
 
+// Connectors people walk THROUGH (app/Models/Bridge.php KINDS). A new kind of connector
+// (a skywalk, a tunnel) is one more entry here and in Bridge::KINDS.
+export const BRIDGE_KINDS = [
+    { value: 'bridge', label: 'Footbridge' },
+];
+
+// Highest deck floor the editor offers (= Bridge::MAX_DECK_FLOOR).
+export const MAX_DECK_FLOOR = 5;
+
+/** A storey's height when none is measured (Bridge::STOREY_M, like buildings on the maps). */
+const STOREY_M = 3.2;
+
+export const bridgeKindLabel = (kind) => BRIDGE_KINDS.find((k) => k.value === kind)?.label || 'Footbridge';
+
+/** Deck height above the ground (m): the measured one, else deck_floor x 3.2 m (0 = at ground level). */
+export function bridgeDeckHeightM(bridge) {
+    const measured = Number(bridge?.deck_height_m);
+    if (Number.isFinite(measured) && measured > 0) return measured;
+    return Math.max(0, Number(bridge?.deck_floor) || 0) * STOREY_M;
+}
+
+/** "At ground level", "1 floor up", "2 floors up". */
+export function deckLevelLabel(deckFloor) {
+    const f = Math.max(0, Number(deckFloor) || 0);
+    if (f === 0) return 'At ground level';
+    return `${f} ${f === 1 ? 'floor' : 'floors'} up`;
+}
+
 export const statusLabel = (status) => BUILDING_STATUSES.find((s) => s.value === status)?.label || 'Existing';
 export const kindLabel = (kind) => PATHWAY_KINDS.find((k) => k.value === kind)?.label || 'Walkway';
 

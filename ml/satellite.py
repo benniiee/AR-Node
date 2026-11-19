@@ -3,8 +3,10 @@
 One module for all three uses, so training and live inputs are the same numbers by construction:
   * download_satellite.py  -> scan_stats() for every history scan -> data/satellite_b13.csv, satellite_b10.csv
   * common.build_sat_features() -> features_at() per 15-minute step, for training
-  * live (ml GUI and the Laravel app):  python satellite.py now --at 2026-11-13T00:15 --wind-dir 80
-    prints one JSON object; WeatherService passes its "features" to RainModel.
+  * live (ml GUI and the Laravel app):  python satellite.py now --at 2026-11-13T00:15 --wind-dir 80 [--motion]
+    prints one JSON object; WeatherService passes its "features" to RainModel. --motion (only when the
+    model reads the cloud-motion inputs) downloads the scan 10 minutes back again for its pixels; --cloud
+    (only when it reads the cloud-phase inputs) adds cloud_phase.py's, and fails without them.
 
 What is read, from the full-disk scan every 10 minutes, only the strip of the image over the campus
 (segment 5 of 10), from NOAA's open copy on AWS (no account):
@@ -13,6 +15,11 @@ What is read, from the full-disk scan every 10 minutes, only the strip of the im
     downpour. Read for the newest scan and the scans 10 and 20 minutes before it (is it growing NOW?).
   * band 10 (7.3 um water vapour): the upper air. Only clouds that reach it look as cold in band 10 as
     in band 13, so "band 10 minus band 13" near 0 marks a deep storm cloud, not just a high thin one.
+  * cloud motion (Nov 2026): the band-13 box around campus in the newest scan is matched against the scan
+    10 minutes before it (block matching: the shift with the smallest mean difference). Moving the clouds
+    on by that shift twice gives the cloud expected over campus in 20 minutes (sat_adv_*), so a storm
+    cloud drifting toward campus counts before it arrives. Simple extrapolation: it cannot see new
+    clouds forming (the cooling inputs cover growth). History: download_satellite.py --motion.
 It cannot see light rain from low, warm clouds.
 
 Data: Japan Meteorological Agency (JMA) Himawari-8/9, distributed by NOAA
@@ -52,6 +59,12 @@ SAT_FEATURES = ["sat_bt_campus", "sat_bt_min_10km", "sat_bt_min_30km", "sat_cold
                 "sat_cooling_20min", "sat_upwind_cold",
                 "sat_cooling_10min", "sat_min_cooling_10min", "sat_sustained_cooling",
                 "sat_wv_campus", "sat_wv_minus_ir_campus", "sat_wv_minus_ir_10km", "sat_wv_min_30km"]
+# Cloud-motion inputs (features_at(..., motion=...)); kept apart from SAT_FEATURES so models trained without
+# them are unchanged. Persistence (no motion, today's campus values) when the earlier scan is missing.
+MOTION_FEATURES = ["sat_motion_kmh", "sat_adv_bt_20min", "sat_adv_cold_20min", "sat_adv_minus_campus"]
+MOTION_KEYS = ["speed_kmh", "shift_e_km", "shift_n_km", "adv_bt", "adv_cold"]
+MOTION_MAX_PX = 6         # search +-6 pixels (2 km) per 10 minutes = up to ~70 km/h
+MOTION_MIN_TEXTURE = 1.0  # deg C: a box flatter than this (clear sky, flat overcast) gives no usable motion
 ATTRIBUTION = "Himawari-8/9 data: Japan Meteorological Agency (JMA), distributed by NOAA (registry.opendata.aws/noaa-himawari)"
 
 # Himawari-9 took over from Himawari-8 on 2022-12-13 at 05:00 UTC.
@@ -208,9 +221,9 @@ def _bt_lookup(h: dict) -> list[float | None]:
     return table
 
 
-def scan_stats(stamp: str, band: int = BAND) -> dict:
-    """Brightness-temperature statistics around campus for one scan and band (13 = cloud tops,
-    10 = water vapour; bands 7-16 share the 2 km grid). Raises ScanMissing when it is not online."""
+def scan_box(stamp: str, band: int = BAND) -> tuple[dict, list[list[float | None]], int]:
+    """(geometry, box, compressed bytes read) for one scan and band: box[dr + r][dc + r] is the brightness
+    temperature (C, None = no valid count) at campus row + dr, column + dc, for |dr|, |dc| <= r."""
     state = {}
 
     def last_row(h: dict) -> int:
@@ -229,11 +242,20 @@ def scan_stats(stamp: str, band: int = BAND) -> dict:
         count = struct.unpack_from("<H", data, base + (r * cols + c) * 2)[0]
         return lut[count] if count < len(lut) else None
 
+    box = [[bt(g["row"] + dr, g["col"] + dc) for dc in range(-g["r"], g["r"] + 1)] for dr in range(-g["r"], g["r"] + 1)]
+    return g, box, read
+
+
+def scan_stats(stamp: str, band: int = BAND, keep_box: bool = False) -> dict:
+    """Brightness-temperature statistics around campus for one scan and band (13 = cloud tops,
+    10 = water vapour; bands 7-16 share the 2 km grid). Raises ScanMissing when it is not online.
+    keep_box adds "geometry" and "box" (scan_box), for motion_stats()."""
+    g, box, read = scan_box(stamp, band)
     campus, near, area = [], [], []
     quad = {"n": [], "e": [], "s": [], "w": []}
     for dr in range(-g["r"], g["r"] + 1):
         for dc in range(-g["r"], g["r"] + 1):
-            v = bt(g["row"] + dr, g["col"] + dc)
+            v = box[dr + g["r"]][dc + g["r"]]
             if v is None:
                 continue
             east, north = dc * g["kx"], dr * g["ky"] * g["north_sign"]
@@ -258,7 +280,67 @@ def scan_stats(stamp: str, band: int = BAND) -> dict:
         "cold_10km": round(share(near), 5), "cold_30km": round(share(area), 5),
         **{f"cold_{q}": round(share(v), 5) for q, v in quad.items()},
         "bytes": read,
+        **({"geometry": g, "box": box} if keep_box else {}),
     }
+
+
+def motion_stats(now: dict, before: dict) -> dict:
+    """Cloud motion between two band-13 scans 10 minutes apart (scan_stats(..., keep_box=True)), and the cloud
+    that motion brings over campus in 20 minutes. Block matching: the shift (up to MOTION_MAX_PX pixels) that
+    makes the earlier box best match the newest one, over the box's inner part. A box with almost no contrast
+    (MOTION_MIN_TEXTURE) or a tie keeps the smallest shift, so clear sky reads as "no motion".
+
+    Returns speed_kmh, shift_e_km / shift_n_km (per 10 minutes, toward east / north), adv_bt (mean of the 3x3
+    pixels the clouds come from, C) and adv_cold (share of pixels colder than COLD_C within NEAR_KM of there).
+    """
+    g, a, b = now["geometry"], now["box"], before["box"]
+    r, m = g["r"], MOTION_MAX_PX
+    inner = r - m
+    vals = [a[r + i][r + j] for i in range(-inner, inner + 1) for j in range(-inner, inner + 1) if a[r + i][r + j] is not None]
+    mean = sum(vals) / len(vals) if vals else 0.0
+    texture = math.sqrt(sum((v - mean) ** 2 for v in vals) / len(vals)) if vals else 0.0
+    best = (0, 0)
+    if texture >= MOTION_MIN_TEXTURE:
+        scored = []
+        for dy in range(-m, m + 1):
+            for dx in range(-m, m + 1):
+                total, n = 0.0, 0
+                for i in range(-inner, inner + 1):
+                    row_a, row_b = a[r + i], b[r + i - dy]
+                    for j in range(-inner, inner + 1):
+                        va, vb = row_a[r + j], row_b[r + j - dx]
+                        if va is not None and vb is not None:
+                            total += abs(va - vb)
+                            n += 1
+                if n:
+                    scored.append((round(total / n, 6), dy * dy + dx * dx, dy, dx))
+        if scored:
+            _, _, dy, dx = min(scored)
+            best = (dy, dx)
+    dy, dx = best
+    # The cloud over campus in 20 minutes is now two shifts upstream (clamped to the box).
+    uy, ux = max(-r + 1, min(r - 1, -2 * dy)), max(-r + 1, min(r - 1, -2 * dx))
+    around = [a[r + uy + i][r + ux + j] for i in (-1, 0, 1) for j in (-1, 0, 1) if a[r + uy + i][r + ux + j] is not None]
+    near = []
+    for i in range(-r, r + 1):
+        for j in range(-r, r + 1):
+            v = a[r + i][r + j]
+            if v is not None and math.hypot((j - ux) * g["kx"], (i - uy) * g["ky"]) <= NEAR_KM:
+                near.append(v)
+    east, north = dx * g["kx"], dy * g["ky"] * g["north_sign"]
+    campus = [a[r + i][r + j] for i in (-1, 0, 1) for j in (-1, 0, 1) if a[r + i][r + j] is not None]
+    return {
+        "speed_kmh": round(math.hypot(east, north) * 6, 3), "shift_e_km": round(east, 3), "shift_n_km": round(north, 3),
+        "adv_bt": round(sum(around) / len(around), 3) if around else round(sum(campus) / len(campus), 3),
+        "adv_cold": round(sum(1 for v in near if v < COLD_C) / len(near), 5) if near else 0.0,
+    }
+
+
+def scan_motion(stamp: str) -> dict:
+    """motion_stats() for scan 'YYYYMMDD_HHMM' and the scan 10 minutes before it (two downloads).
+    Raises ScanMissing when either is not in the archive."""
+    before = (datetime.strptime(stamp, "%Y%m%d_%H%M") - timedelta(minutes=10)).strftime("%Y%m%d_%H%M")
+    return {"stamp": stamp, **motion_stats(scan_stats(stamp, keep_box=True), scan_stats(before, keep_box=True))}
 
 
 def _quadrant(bearing: float) -> str:
@@ -276,9 +358,13 @@ def latest_scan_time(t_utc: datetime) -> datetime:
     return s.replace(minute=s.minute - s.minute % 10, second=0, microsecond=0)
 
 
-def features_at(t_local: datetime, scans: dict, wind_dir: float | None, wv: dict) -> dict | None:
+def features_at(t_local: datetime, scans: dict, wind_dir: float | None, wv: dict, motion: dict | None = None) -> dict | None:
     """Satellite inputs for the 15-minute step t (Asia/Manila, naive), from band-13 scans {stamp: stats}
     and band-10 (water vapour) scans wv {stamp: stats}.
+
+    motion {stamp: motion_stats() or {} when the earlier scan was missing} adds MOTION_FEATURES for the
+    scan used: {} = persistence (no motion, the campus values); a stamp not in motion at all (history not
+    downloaded) = NaN. Without motion (None) they are left out.
 
     Uses the newest band-13 scan online at t, if it is at most MAX_AGE_MIN old, and band 10 of that same
     scan; None = satellite missing (either band). A missing earlier scan makes its cloud-top change 0.
@@ -325,6 +411,20 @@ def features_at(t_local: datetime, scans: dict, wind_dir: float | None, wv: dict
         "sat_wv_minus_ir_10km": float(water["min_10km"]) - float(now["min_10km"]),
         "sat_wv_min_30km": float(water["min_30km"]),
         "sat_age_min": (t_utc - s).total_seconds() / 60.0,
+        **({} if motion is None else _motion_features(motion.get(stamp_of(s)), now)),
+    }
+
+
+def _motion_features(m: dict | None, now: dict) -> dict:
+    if m is None:
+        return {k: float("nan") for k in MOTION_FEATURES}
+    adv_bt = float(m["adv_bt"]) if m else float(now["campus_bt"])
+    return {
+        "sat_motion_kmh": float(m["speed_kmh"]) if m else 0.0,
+        "sat_adv_bt_20min": adv_bt,
+        "sat_adv_cold_20min": float(m["adv_cold"]) if m else float(now["cold_10km"]),
+        # Negative = a colder (taller) cloud is on its way to campus.
+        "sat_adv_minus_campus": adv_bt - float(now["campus_bt"]),
     }
 
 
@@ -343,15 +443,18 @@ def _cache_key(stamp: str, band: int) -> str:
     return stamp if band == BAND else f"b{band}_{stamp}"
 
 
-def live(t_local: datetime, wind_dir: float | None) -> dict:
+def live(t_local: datetime, wind_dir: float | None, with_motion: bool = False) -> dict:
     """Satellite inputs for step t right now: the newest online band-13 scan, the band-13 scans 10 and
-    20 minutes before it, and band 10 of the newest scan (those three are downloaded in parallel)."""
+    20 minutes before it, and band 10 of the newest scan (downloaded in parallel). with_motion adds the
+    cloud-motion inputs, which need the pixels of the newest scan and the one 10 minutes before it."""
     cache = _cached()
 
-    def get(job: tuple[str, int]) -> dict | None:
-        stamp, band = job
+    def get(job: tuple[str, int, bool]) -> dict | None:
+        stamp, band, box = job
         try:
-            return cache.get(_cache_key(stamp, band)) or scan_stats(stamp, band)
+            hit = cache.get(_cache_key(stamp, band))
+            # A cached scan has no box (the cache keeps numbers only): download again when motion needs it.
+            return hit if hit and not box else scan_stats(stamp, band, keep_box=box)
         except (ScanMissing, ValueError):
             return None  # an earlier scan missing: its change counts as 0, as in training
 
@@ -361,19 +464,23 @@ def live(t_local: datetime, wind_dir: float | None) -> dict:
     found = None
     for back in range(0, MAX_AGE_MIN + 1, 10):
         s = first - timedelta(minutes=back)
-        jobs = [(stamp_of(s - timedelta(minutes=m)), BAND) for m in (0, 10, COOLING_MIN)] + [(stamp_of(s), WV_BAND)]
+        jobs = [(stamp_of(s - timedelta(minutes=m)), BAND, with_motion and m in (0, 10)) for m in (0, 10, COOLING_MIN)]
+        jobs.append((stamp_of(s), WV_BAND, False))
         with ThreadPoolExecutor(len(jobs)) as pool:
             results = list(pool.map(get, jobs))
         if results[0] is None:
             continue
         found = stamp_of(s)
-        fetched = {_cache_key(stamp, band): r for (stamp, band), r in zip(jobs, results) if r is not None}
+        newest, before = results[0], results[1]
+        motion = {found: motion_stats(newest, before) if before and "box" in before else {}} if with_motion else None
+        fetched = {_cache_key(stamp, band): {k: v for k, v in r.items() if k not in ("box", "geometry")}
+                   for (stamp, band, _), r in zip(jobs, results) if r is not None}
         break
     if found is None:
         return {"ok": False, "error": "no satellite scan online in the last {} minutes".format(MAX_AGE_MIN)}
     scans = {k: v for k, v in fetched.items() if not k.startswith("b")}
     wv = {k[len(f"b{WV_BAND}_"):]: v for k, v in fetched.items() if k.startswith(f"b{WV_BAND}_")}
-    feats = features_at(t_local, scans, wind_dir, wv)
+    feats = features_at(t_local, scans, wind_dir, wv, motion)
     keep = {k: v for k, v in sorted({**cache, **fetched}.items(), key=lambda kv: kv[0][-13:])[-16:]}
     try:
         CACHE.write_text(json.dumps(keep))
@@ -392,6 +499,10 @@ def main() -> None:
     now = sub.add_parser("now", help="satellite inputs for one 15-minute step, as JSON")
     now.add_argument("--at", help="the step, local Asia/Manila time like 2026-11-13T00:15 (default: latest step)")
     now.add_argument("--wind-dir", type=float, default=None, help="10 m wind direction at that step (degrees)")
+    now.add_argument("--motion", action="store_true", help="also the cloud-motion inputs (two more downloads)")
+    now.add_argument("--cloud", action="store_true", help="also the cloud-phase inputs (cloud_phase.py, needs h5py)")
+    mo = sub.add_parser("motion", help="cloud motion of one scan against the scan 10 minutes earlier, as JSON")
+    mo.add_argument("stamp", help="scan start in UTC, YYYYMMDD_HHMM")
     one = sub.add_parser("scan", help="statistics of one scan, as JSON")
     one.add_argument("stamp", help="scan start in UTC, YYYYMMDD_HHMM")
     one.add_argument("--band", type=int, default=BAND, help=f"{BAND} = cloud tops (default), {WV_BAND} = water vapour")
@@ -399,13 +510,19 @@ def main() -> None:
     try:
         if a.cmd == "scan":
             out = {"ok": True, **scan_stats(a.stamp, a.band)}
+        elif a.cmd == "motion":
+            out = {"ok": True, **scan_motion(a.stamp)}
         else:
             if a.at:
                 t = datetime.strptime(a.at, "%Y-%m-%dT%H:%M")
             else:
                 n = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=8)
                 t = n.replace(minute=n.minute - n.minute % 15, second=0, microsecond=0)
-            out = live(t, a.wind_dir)
+            out = live(t, a.wind_dir, a.motion)
+            if a.cloud and out.get("ok"):
+                import cloud_phase  # needs h5py; only a model with cloud-phase inputs asks for it
+                # No scan online in the last MAX_AGE_MIN minutes comes back as sat_phase_missing = 1, as in training.
+                out = {**out, "features": {**out["features"], **cloud_phase.live(t)}}
     except Exception as exc:  # network, parsing: report it, never a traceback (the app reads stdout)
         out = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     sys.stdout.write(json.dumps(out) + "\n")

@@ -129,15 +129,23 @@ class Metar
     public static function heatIndex(?string $raw): ?float
     {
         $pair = self::temperatureDewPoint($raw);
+        $humidity = self::relativeHumidity($raw);
+
+        return ($pair === null || $humidity === null) ? null : round(HeatIndex::celsius($pair[0], $humidity), 1);
+    }
+
+    /** Relative humidity (%) from the report's temperature and dew point (Magnus formula, Alduchov and Eskridge constants), or null. */
+    public static function relativeHumidity(?string $raw): ?float
+    {
+        $pair = self::temperatureDewPoint($raw);
         if ($pair === null) {
             return null;
         }
 
         [$temperature, $dewPoint] = $pair;
         $saturation = fn (float $t): float => exp(17.625 * $t / (243.04 + $t));
-        $humidity = min(100.0, 100.0 * $saturation($dewPoint) / $saturation($temperature));
 
-        return round(HeatIndex::celsius($temperature, $humidity), 1);
+        return min(100.0, 100.0 * $saturation($dewPoint) / $saturation($temperature));
     }
 
     /**

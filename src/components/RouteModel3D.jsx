@@ -7,6 +7,8 @@ import { buildingHeightM } from '../sunShadow';
 import { doorFrames, DOOR_HEIGHT_M } from '../doors';
 import { planFromLink, stairTreads, walkLine } from '../stairGeometry';
 import { makeLabel, disposeTree } from './StairPreview3D';
+import { pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
+import { convexHull, clipToConvex } from '../planarGeometry';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -20,6 +22,13 @@ const ROUTE = 0xffffff;
 const ROUTE_EDGE = 0x16161b;
 const GO = 0x22c55e;
 const STAIR = 0xffb02e;
+// Bridges: a teal deck and roof (the campus footbridge's colour), apart from the grey buildings.
+const BRIDGE_DECK = 0x99d8cc;
+const BRIDGE_SIDE = 0x0f766e;
+const BRIDGE_ROOF = 0x2dd4bf;
+const DECK_SLAB_M = 0.35;
+const RAIL_M = 1.05;
+const ROOF_CLEAR_M = 2.6;
 
 /**
  * A person at real size (about 1.7 m), standing on the ground at `foot` and
@@ -81,7 +90,7 @@ function screenLabel(text, opts = {}, size = 0.05) {
  * follow: the live 3D view walks a person along instead of the fixed one at the
  * start, and draws the roads and walkways (`pathways`) on the ground.
  */
-export function buildScene(group, { route, buildings, links, pathways = [], follow = false }) {
+export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], nodes = [], follow = false }) {
     const path = route?.path || [];
     const byId = new Map((buildings || []).map((b) => [b.id, b]));
     const inside = new Map();
@@ -97,9 +106,17 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
     if (!originLL) return { target: new THREE.Vector3(), radius: 20 };
     const xz = (lat, lng) => { const [e, n] = toLocalMeters(+lat, +lng, originLL.lat, originLL.lng); return { x: e, z: -n }; };
     const storey = (b) => buildingHeightM(b) / Math.max(1, Number(b.floors) || 1);
+    // A raised route node outside every building is on a bridge deck: at the deck's height.
+    const deckOf = (p) => (bridges || []).find((br) => Number(br.deck_floor) === floorOf(p)
+        && Array.isArray(br.polygon) && pointInPolygon(+p.latitude, +p.longitude, br.polygon));
+    // Any other raised node outside a building: its measured elevation, else 3.2 m a floor.
     const yOf = (p) => {
         const b = p.building_id != null ? byId.get(p.building_id) : null;
-        return b ? Math.max(0, floorOf(p)) * storey(b) : 0;
+        if (b) return Math.max(0, floorOf(p)) * storey(b);
+        if (floorOf(p) <= 0) return 0;
+        const deck = deckOf(p);
+        if (deck) return bridgeDeckHeightM(deck);
+        return Number(p.elevation) > 0.5 ? Number(p.elevation) : floorOf(p) * 3.2;
     };
 
     let radius = 12;
@@ -123,7 +140,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
         }
     }
     // Ground.
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(400, 64), new THREE.MeshStandardMaterial({ color: 0x1f2024, roughness: 1 }));
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(400, 64), new THREE.MeshStandardMaterial({ color: follow ? 0x2c2e35 : 0x1f2024, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.02;
     group.add(ground);
@@ -276,8 +293,117 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
         group.add(tag);
     }
 
+    // Bridges and other connectors: the deck at its height on pillars, railings along its
+    // long sides (the short ends stay open: that is where people walk on), and a roof
+    // when it has one. Planned ones are not built yet, so not drawn.
+    const deckTop = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.85 });
+    const deckSide = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9 });
+    const railMat = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+    const roofMat = new THREE.MeshStandardMaterial({ color: BRIDGE_ROOF, roughness: 0.6, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
+    const bridgeEdge = new THREE.LineBasicMaterial({ color: 0x5eead4 });
+    // Stairs that come up under a deck: the part of the deck over their steps is a stairwell.
+    // Such a deck is drawn see-through (and casts no shadow over the steps) with the opening outlined.
+    const stairwells = new Map();
+    if (bridges?.length) {
+        const nodeById = new Map([...(nodes || []), ...path].filter((n) => n?.id != null).map((n) => [n.id, n]));
+        for (const l of links || []) {
+            const a = nodeById.get(l.node_a_id);
+            const b = nodeById.get(l.node_b_id);
+            const deck = a && b ? deckOf(a) || deckOf(b) : null;
+            if (!deck) continue;
+            const { plan, bottom } = planFromLink(l, a, b);
+            const base = xz(bottom.latitude, bottom.longitude);
+            const hull = convexHull(stairTreads(plan).flatMap((t) => t.ring.map(([e, n]) => ({ x: base.x + e, z: base.z - n }))));
+            const well = clipToConvex(deck.polygon.map((p) => xz(p.lat, p.lng)), hull);
+            if (well.length >= 3) stairwells.set(deck.id, [...(stairwells.get(deck.id) || []), well]);
+        }
+    }
+    const seeTop = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.85, transparent: true, opacity: 0.38, depthWrite: false });
+    const seeSide = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false });
+    const wellEdge = new THREE.LineBasicMaterial({ color: STAIR });
+    for (const br of bridges || []) {
+        if (br.status === 'planned' || !Array.isArray(br.polygon) || br.polygon.length < 3) continue;
+        const ring = br.polygon.map((p) => xz(p.lat, p.lng));
+        for (const p of ring) radius = Math.max(radius, Math.hypot(p.x, p.z));
+        const h = bridgeDeckHeightM(br);
+        const shape = new THREE.Shape(ring.map((p) => new THREE.Vector2(p.x, -p.z)));
+        const slab = Math.min(DECK_SLAB_M, Math.max(0.05, h));
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: slab, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        const wells = stairwells.get(br.id) || [];
+        const deck = new THREE.Mesh(geo, wells.length ? [seeTop, seeSide] : [deckTop, deckSide]);
+        deck.position.y = Math.max(0, h - slab);
+        group.add(deck);
+        for (const well of wells) {
+            group.add(new THREE.LineLoop(
+                new THREE.BufferGeometry().setFromPoints(well.map((p) => new THREE.Vector3(p.x, h + 0.02, p.z))), wellEdge,
+            ));
+        }
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), bridgeEdge);
+        edges.position.y = deck.position.y;
+        group.add(edges);
+        // Long sides: the edges running along the deck's walking line.
+        const line = (br.centre_line || []).map((p) => xz(p.lat, p.lng));
+        const axis = line.length >= 2 ? new THREE.Vector2(line[1].x - line[0].x, line[1].z - line[0].z).normalize() : null;
+        for (let i = 0; i < ring.length; i += 1) {
+            const a = ring[i];
+            const c = ring[(i + 1) % ring.length];
+            const dir = new THREE.Vector2(c.x - a.x, c.z - a.z);
+            if (dir.length() < 0.2 || (axis && Math.abs(dir.normalize().dot(axis)) < 0.7)) continue;
+            const rail = new THREE.BufferGeometry();
+            rail.setAttribute('position', new THREE.Float32BufferAttribute([
+                a.x, h, a.z, c.x, h, c.z, c.x, h + RAIL_M, c.z, a.x, h, a.z, c.x, h + RAIL_M, c.z, a.x, h + RAIL_M, a.z,
+            ], 3));
+            rail.computeVertexNormals();
+            group.add(new THREE.Mesh(rail, railMat));
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x, h + RAIL_M, a.z), new THREE.Vector3(c.x, h + RAIL_M, c.z)]), bridgeEdge));
+        }
+        // Pillars under a raised deck, and posts holding the roof.
+        for (const p of ring) {
+            if (h > 0.6) {
+                const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, h - slab, 10), postMat);
+                pillar.position.set(p.x, (h - slab) / 2, p.z);
+                group.add(pillar);
+            }
+            if (br.roofed) {
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, ROOF_CLEAR_M, 8), postMat);
+                post.position.set(p.x, h + ROOF_CLEAR_M / 2, p.z);
+                group.add(post);
+            }
+        }
+        if (br.roofed) {
+            const roofGeo = new THREE.ShapeGeometry(shape);
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.rotation.x = -Math.PI / 2;
+            roof.position.y = h + ROOF_CLEAR_M;
+            group.add(roof);
+        }
+        const cx = ring.reduce((sum, p) => sum + p.x, 0) / ring.length;
+        const cz = ring.reduce((sum, p) => sum + p.z, 0) / ring.length;
+        const tag = screenLabel(br.short_name || br.name, { bg: '#0f2e2a', fg: '#ccfbf1', border: 'rgba(45, 212, 191, 0.6)' }, 0.036);
+        tag.position.set(cx, h + (br.roofed ? ROOF_CLEAR_M + 1.2 : RAIL_M + 1.2), cz);
+        group.add(tag);
+    }
+
     // The route as one polyline in 3D; floor changes climb the stairs.
     const linkFor = (a, b) => (links || []).find((l) => (l.node_a_id === a.id && l.node_b_id === b.id) || (l.node_a_id === b.id && l.node_b_id === a.id));
+    const stepMat = new THREE.MeshStandardMaterial({ color: STAIR, roughness: 0.8 });
+    const drawnLinks = new Set();
+    /** The steps of one staircase, scaled to the real heights of its two ends (yOf). */
+    const drawSteps = (plan, bottom, top) => {
+        const y0 = yOf(bottom);
+        const y1 = yOf(top);
+        const base = xz(bottom.latitude, bottom.longitude);
+        for (const t of stairTreads(plan)) {
+            const s = new THREE.Shape(t.ring.map(([e, n]) => new THREE.Vector2(base.x + e, -(base.z - n))));
+            const geo = new THREE.ExtrudeGeometry(s, { depth: 0.12, bevelEnabled: false });
+            geo.rotateX(-Math.PI / 2);
+            const mesh = new THREE.Mesh(geo, stepMat);
+            mesh.position.y = y0 + (plan.rise > 0 ? t.u / plan.rise : 0) * (y1 - y0) - 0.12;
+            group.add(mesh);
+        }
+    };
     const pts = [];
     const push = (v) => { const last = pts[pts.length - 1]; if (!last || last.distanceTo(v) > 0.05) pts.push(v); };
     // Follow view: the user's start point is not part of the fixed ribbon. The
@@ -291,25 +417,29 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
         const prev = path[i - 1];
         if (prev && prev.type !== 'user' && p.type !== 'user' && floorOf(prev) !== floorOf(p)) {
             const link = linkFor(prev, p) || {};
+            if (link.id != null) drawnLinks.add(link.id);
             const { plan, bottom, top } = planFromLink(link, prev, p);
             const y0 = yOf(bottom);
             const y1 = yOf(top);
             const base = xz(bottom.latitude, bottom.longitude);
             const climb = walkLine(plan).map((q) => new THREE.Vector3(base.x + q.e, y0 + (plan.rise > 0 ? q.u / plan.rise : 0) * (y1 - y0) + 0.25, base.z - q.n));
             (bottom === prev ? climb : climb.reverse()).forEach(push);
-            // The steps themselves.
-            const stepMat = new THREE.MeshStandardMaterial({ color: STAIR, roughness: 0.8 });
-            for (const t of stairTreads(plan)) {
-                const s = new THREE.Shape(t.ring.map(([e, n]) => new THREE.Vector2(base.x + e, -(base.z - n))));
-                const geo = new THREE.ExtrudeGeometry(s, { depth: 0.12, bevelEnabled: false });
-                geo.rotateX(-Math.PI / 2);
-                const mesh = new THREE.Mesh(geo, stepMat);
-                mesh.position.y = y0 + (plan.rise > 0 ? t.u / plan.rise : 0) * (y1 - y0) - 0.12;
-                group.add(mesh);
-            }
+            drawSteps(plan, bottom, top);
         }
         push(new THREE.Vector3(here.x, yOf(p) + 0.25, here.z));
     });
+    // Every staircase up to a bridge deck, on the route or not: a bridge is seen with its stairs.
+    if (bridges?.length && nodes?.length) {
+        const nodeById = new Map(nodes.map((n) => [n.id, n]));
+        for (const l of links || []) {
+            if (drawnLinks.has(l.id)) continue;
+            const a = nodeById.get(l.node_a_id);
+            const b = nodeById.get(l.node_b_id);
+            if (!a || !b || !(deckOf(a) || deckOf(b))) continue;
+            const { plan, bottom, top } = planFromLink(l, a, b);
+            drawSteps(plan, bottom, top);
+        }
+    }
     if (pts.length >= 2) {
         const curve = new THREE.CurvePath();
         for (let i = 1; i < pts.length; i += 1) curve.add(new THREE.LineCurve3(pts[i - 1], pts[i]));
@@ -354,7 +484,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], foll
     return { target: new THREE.Vector3(0, 3, 0), radius, xz, toLatLng, routePts: pts, stops };
 }
 
-export default function RouteModel3D({ route, buildings, links, height = 420 }) {
+export default function RouteModel3D({ route, buildings, links, bridges = [], nodes = [], height = 420 }) {
     const hostRef = useRef(null);
     const stateRef = useRef(null);
 
@@ -386,7 +516,7 @@ export default function RouteModel3D({ route, buildings, links, height = 420 }) 
             keys: new Set(), joy: { x: 0, y: 0 }, last: 0, home: new THREE.Vector3(),
         };
         stateRef.current = s;
-        const built = buildScene(group, { route, buildings, links });
+        const built = buildScene(group, { route, buildings, links, bridges, nodes });
         s.target.copy(built.target);
         s.home.copy(built.target);
         s.base = built.radius * 2.6 + 10;

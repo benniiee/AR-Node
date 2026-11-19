@@ -30,14 +30,36 @@ class HeatModelParityTest extends TestCase
 
         foreach ($parity['cases'] as $case) {
             $now = new DateTimeImmutable($case['now'], new DateTimeZone('Asia/Manila'));
-            $features = $model->featuresFromPayload(['hourly' => $case['hourly']], $now);
+            $payload = ['hourly' => $case['hourly']];
+            $reports = $case['airport_reports'] ?? null;
+            $features = $model->featuresFromPayload($payload, $now, $reports);
+            $scorer = $model;
+            if ($case['expects_fallback'] ?? false) {
+                // No airport report: the main model cannot score, the one trained without airport inputs does.
+                $this->assertNull($features, 'main model scored without an airport report at '.$case['now']);
+                $scorer = $model->withoutAirport();
+                $this->assertNotNull($scorer, 'heat_model.json has no fallback model');
+                $features = $scorer->featuresFromPayload($payload, $now);
+            }
 
             $this->assertNotNull($features, 'features missing for '.$case['now']);
             foreach ($case['expected_features'] as $name => $expected) {
                 $this->assertEqualsWithDelta($expected, $features[$name], 1e-6, "feature {$name} at {$case['now']}");
             }
             foreach ($case['expected_heat_index'] as $hoursAhead => $expected) {
-                $this->assertEqualsWithDelta($expected, $model->score($features, (int) $hoursAhead), 1e-6, "+{$hoursAhead} h at {$case['now']}");
+                $this->assertEqualsWithDelta($expected, $scorer->score($features, (int) $hoursAhead), 1e-6, "+{$hoursAhead} h at {$case['now']}");
+            }
+            foreach ($case['expected_hot_chance'] ?? [] as $hoursAhead => $expected) {
+                $this->assertEqualsWithDelta($expected, $scorer->hotChance($features, (int) $hoursAhead), 1e-9, "hot chance +{$hoursAhead} h at {$case['now']}");
+            }
+
+            // forecast() picks the same model and adds the hot-hour fields only where the model has them.
+            $items = $model->forecast($payload, $now, null, $reports)['items'];
+            $this->assertCount(3, $items);
+            foreach ($items as $item) {
+                $this->assertSame('model', $item['source']);
+                $this->assertEqualsWithDelta($case['expected_heat_index'][(string) $item['hours_ahead']], $item['heat_index_c'], 0.051);
+                $this->assertSame(isset($case['expected_hot_chance'][(string) $item['hours_ahead']]), isset($item['hot_chance']));
             }
         }
     }

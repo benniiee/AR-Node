@@ -14,6 +14,8 @@ export const TOOL_WALLS = 'walls';
 // Campus features: label/outline a building, draw a road or walkway.
 export const TOOL_BUILDING = 'building';
 export const TOOL_PATHWAY = 'pathway';
+// Bridges and other connectors: drawn like a building outline.
+export const TOOL_BRIDGE = 'bridge';
 // Campus areas: outline and name a campus (Campus A, Campus B, ...).
 export const TOOL_AREA = 'area';
 // Manage campus areas: the outlines are shown (and only here), tap one to edit it.
@@ -35,7 +37,7 @@ export function resolveMode(current, mode) {
 /** Which single surface the bottom stack shows for the current state. */
 export function surfaceFor({ tool, hasPending, hasEditing, hasManaging = false }) {
     if (tool === TOOL_WALLS) return 'walls';
-    if (tool === TOOL_BUILDING || tool === TOOL_PATHWAY) return 'campus';
+    if (tool === TOOL_BUILDING || tool === TOOL_PATHWAY || tool === TOOL_BRIDGE) return 'campus';
     if (tool === TOOL_AREA) return 'area';
     if (tool === TOOL_AREAS) return 'areas';
     if (tool === TOOL_PIN) return 'pin';

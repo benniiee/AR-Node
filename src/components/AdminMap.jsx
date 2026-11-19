@@ -6,7 +6,7 @@ import AdminStudents from './AdminStudents';
 import AdminWeather from './AdminWeather';
 import { C, TYPE, PANEL_RADIUS, RADIUS, MAP_ZOOM_CSS, ELEVATION, PILL, TAP } from '../uiTokens';
 import { usePresence, useHold, Collapse } from '../motion';
-import { IDLE, TOOL_ADD, TOOL_MOVE, TOOL_PIN, TOOL_WALLS, TOOL_BUILDING, TOOL_PATHWAY, TOOL_AREA, TOOL_AREAS, resolveTool, resolveMode, surfaceFor } from '../toolState';
+import { IDLE, TOOL_ADD, TOOL_MOVE, TOOL_PIN, TOOL_WALLS, TOOL_BUILDING, TOOL_PATHWAY, TOOL_BRIDGE, TOOL_AREA, TOOL_AREAS, resolveTool, resolveMode, surfaceFor } from '../toolState';
 import CampusEditor, { CAMPUS_EDITOR_CSS } from './CampusEditor';
 import CampusAreaEditor from './CampusAreaEditor';
 import QrSheet from './QrSheet';
@@ -17,8 +17,8 @@ import ScrollWindow from './ScrollWindow';
 import SunTimeSlider from './SunTimeSlider';
 import { useSatelliteSettings, useSatelliteLayer } from '../useSatellite';
 import { sunPosition } from '../sunShadow';
-import { drawBuildings, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS } from '../campusLayers';
-import { buildingAt, nodePlaceLabel, floorCountLabel, statusLabel, kindLabel, interiorPoint } from '../campusGeometry';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS } from '../campusLayers';
+import { buildingAt, nodePlaceLabel, floorCountLabel, statusLabel, kindLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, bridgeDeckHeightM, pointInPolygon } from '../campusGeometry';
 import {
     MAP_CONTROLS_CSS, ToolDock, ActionBar, Sheet, NodeForm, MenuToggle, MenuAction, StairLinks, NewStairModal,
 } from './MapControls';
@@ -29,14 +29,6 @@ import { planFromLink, fitYaw, footprint, centreline, stairRise, normalizeFlight
 import { createDestinationPinIcon } from '../mapIcons';
 import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPUS_MIN_ZOOM, CAMPUS_MAX_ZOOM, CAMPUS_MAP_LOCK, GPS_HIDDEN_LAYERS, GPS_FLAVOR } from '../campusMap';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation, createHeadingListener } from '../povMotion';
-
-// Fix Leaflet default marker icon paths for bundlers
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
 
 // ── Theme: ARNode black / white / green ─────────────────────────────
 // Same HUD language as the mobile screens (see src/uiTokens.js): near-black
@@ -242,6 +234,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const guideLiftRef = useRef(0);
     const [guideLift, setGuideLift] = useState(0);
     const pathwayLayerRef = useRef(null);
+    const bridgeLayerRef = useRef(null);
     const shadowLayerRef = useRef(null);
     const drawingBorderRef = useRef(null);
 
@@ -259,6 +252,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // ({ buildingId }). Last step, after both ends: { sourceId, otherId }
     // opens the shape / slope dialog.
     const [stairStart, setStairStart] = useState(null);
+    // Connect a bridge to the ground: { bridgeId }. Tap a deck node, then the stairs
+    // flow (stairPick, filtered to the ground floor) picks the existing ground node.
+    const [bridgeConnect, setBridgeConnect] = useState(null);
+    // Manage nodes for a bridge: the nodes on its deck, like a building's floor list.
+    const [manageBridgeId, setManageBridgeId] = useState(null);
     const [stairConfig, setStairConfig] = useState(null);
     // ONE active map tool (see toolState.js). The old flags below are derived
     // from it, and their setters are shims over it, so starting a tool always
@@ -286,6 +284,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // Labelled buildings and the road/walkway network (admin-edited).
     const [buildings, setBuildings] = useState([]);
     const [pathways, setPathways] = useState([]);
+    const [bridges, setBridges] = useState([]);
     const [showCampus, setShowCampus] = useState(true);
     const [campusOpen, setCampusOpen] = useState(false);
     // Campus areas (named outlines) and the "show one campus" filter.
@@ -551,11 +550,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             userLocation.longitude,
             0,
             borders,
-            { buildings },
+            { buildings, bridges, links },
         );
         setRouteResult(result);
         drawRoute(result);
-    }, [userLocation, selectedDestination, nodes, borders, drawRoute, buildings]);
+    }, [userLocation, selectedDestination, nodes, borders, drawRoute, buildings, bridges, links]);
     const loadData = useCallback(async () => {
         try {
             const nodesData = await api.getNodes();
@@ -582,6 +581,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 setBuildings(b);
                 setPathways(p);
             } catch { /* older backend without buildings/pathways */ }
+            try {
+                setBridges(await api.getBridges());
+            } catch { setBridges([]); /* older backend without bridges */ }
             try {
                 setCampusAreas(await api.getCampusAreas());
             } catch { setCampusAreas([]); /* older backend without campus areas */ }
@@ -663,6 +665,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         pathwayLayerRef.current = L.layerGroup().addTo(map);
         shadowLayerRef.current = L.layerGroup().addTo(map);
         buildingLayerRef.current = L.layerGroup().addTo(map);
+        // Bridges over the roads between buildings: above the buildings.
+        bridgeLayerRef.current = L.layerGroup().addTo(map);
         // "Which floor": the cut-away guide while placing a node in a building.
         floorGuideLayerRef.current = L.layerGroup().addTo(map);
         bindLabelZoom(map);
@@ -732,6 +736,14 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // Floor guide: while a node is being added (or moved / edited) inside a
     // building, show that building cut away at the chosen floor.
     const manageBuilding = manageBuildingId != null ? buildings.find((b) => b.id === manageBuildingId) || null : null;
+    const manageBridge = manageBridgeId != null ? bridges.find((b) => b.id === manageBridgeId) || null : null;
+    /** A node on bridge br's deck (= Bridge::deckNodes()): inside its outline, in no building, and raised
+     *  (any floor above the ground) for a raised deck, on the ground for one at ground level. */
+    const onDeckOf = (br) => (n) => Boolean(br) && n.building_id == null
+        && (Number(br.deck_floor) > 0 ? floorOf(n) > 0 : floorOf(n) === 0)
+        && pointInPolygon(n.latitude, n.longitude, br.polygon);
+    // Manage nodes for a bridge: the floors its deck nodes are on (normally just the deck's).
+    const bridgeFloors = (br) => [...new Set([Number(br.deck_floor) || 0, ...nodes.filter(onDeckOf(br)).map((n) => floorOf(n))])].sort((a, b) => a - b);
     const guideBuilding = (() => {
         if (stairPick || swapPick || stairConfig) return null;
         const adding = tool === TOOL_ADD && !isAdmin && formBuilding !== '';
@@ -779,7 +791,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
 
         // Student view mirrors /map: destinations only. While a tool or an edit
         // is open the working parts come back, so nothing being edited hides.
-        const studentOnly = isStudentView && tool === IDLE && !editingNode && !stairPick && !swapPick && !manageBuilding && !stairStart;
+        const studentOnly = isStudentView && tool === IDLE && !editingNode && !stairPick && !swapPick && !manageBuilding && !stairStart && !bridgeConnect;
         const inCampus = campusMatcher(campusFilter, campusAreas);
         nodes.forEach(node => {
             // One campus at a time when the filter is set (never hides the node being edited).
@@ -838,6 +850,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             } else if (stairStart) {
                 // First end of a new staircase: this building's nodes on the floor shown.
                 pickRole = inGuide && nodeFloor === guideFloor && canEditNode(node) ? 'candidate' : 'muted';
+            } else if (bridgeConnect) {
+                // First end: a route node on the bridge's deck (its floor, inside its outline).
+                const br = bridges.find((x) => x.id === bridgeConnect.bridgeId);
+                pickRole = node.type === 'route' && onDeckOf(br)(node) ? 'candidate' : 'muted';
             } else if (stairPick) {
                 const src = nodes.find((n) => n.id === stairPick.sourceId);
                 const joined = links.some((l) => (l.node_a_id === stairPick.sourceId && l.node_b_id === node.id)
@@ -873,13 +889,15 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     swapPick
                         ? (pickRole === 'source' ? `Swap: ${esc(node.name || 'this office')}` : esc(node.name || 'Location'))
                         : stairStart ? esc(node.name || 'Route node')
+                        : bridgeConnect ? 'Deck node'
                         : (pickRole === 'source' ? `This node \u00b7 Floor ${floorTag(floorOf(node))}` : `Floor ${floorTag(floorOf(node))}`),
                     { permanent: true, direction: 'top', offset: [0, -10], className: 'stair-pick-tip' },
                 );
             }
             if (pickRole === 'candidate') {
                 marker.on('click', () => {
-                    (swapPick ? window.__pickSwapOffice : stairStart ? window.__pickStairStart : window.__pickStairEnd)?.(node.id);
+                    (swapPick ? window.__pickSwapOffice : stairStart ? window.__pickStairStart
+                        : bridgeConnect ? window.__pickBridgeDeck : window.__pickStairEnd)?.(node.id);
                 });
                 markersRef.current[node.id] = marker;
                 return;
@@ -921,9 +939,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
 
             markersRef.current[node.id] = marker;
         });
-    }, [nodes, tool, editingNode, stairPick, swapPick, stairStart, links, buildings, isStudentView, guideBuilding?.id, guideFloor, manageBuilding?.id, focusKey, manageOnlyFloor, campusFilter, campusAreas]);
+    }, [nodes, tool, editingNode, stairPick, swapPick, stairStart, bridgeConnect, bridges, links, buildings, isStudentView, guideBuilding?.id, guideFloor, manageBuilding?.id, focusKey, manageOnlyFloor, campusFilter, campusAreas]);
 
-    const isCampusTool = tool === TOOL_BUILDING || tool === TOOL_PATHWAY;
+    const isCampusTool = tool === TOOL_BUILDING || tool === TOOL_PATHWAY || tool === TOOL_BRIDGE;
 
     // Labelled buildings + pathways. The one being edited is drawn by the
     // editor as a draft instead, so it is not shown twice.
@@ -931,7 +949,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         const bLayer = buildingLayerRef.current;
         const pLayer = pathwayLayerRef.current;
         if (!mapInstance.current || !bLayer || !pLayer) return;
-        if (!showCampus) { bLayer.clearLayers(); pLayer.clearLayers(); return; }
+        const brLayer = bridgeLayerRef.current;
+        if (!showCampus) { bLayer.clearLayers(); pLayer.clearLayers(); brLayer?.clearLayers(); return; }
         const editingId = (mode) => (isCampusTool && campusEdit?.mode === mode ? campusEdit.record?.id ?? null : null);
         const buildingPopup = (b) => {
             const inside = nodes.filter((n) => n.building_id === b.id && n.type === 'location').length;
@@ -966,8 +985,25 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 { label: 'Remove pathway', call: ['__deletePathway', p.id], kind: 'danger', wide: true },
             ] : [],
         });
+        const bridgePopup = (br) => popupCard({
+            swatch: CAMPUS_COLORS.bridge.dark, round: false, title: br.name, tag: br.short_name,
+            lines: [
+                esc(bridgeKindLabel(br.kind)),
+                `<span class="ui-num">${esc(deckLevelLabel(br.deck_floor))}${br.deck_floor > 0 ? `, deck about ${esc(bridgeDeckHeightM(br).toFixed(1))} m up` : ''}</span>`,
+                `<span class="pp-muted">${br.roofed ? 'Roofed: sheltered when it rains' : 'No roof'}</span>`,
+            ],
+            badge: statusBadge(br.status),
+            actions: isAdmin ? [
+                { label: 'Edit', call: ['__editBridge', br.id] },
+                { label: 'Move / reshape', call: ['__moveBridge', br.id] },
+                { label: 'Manage nodes', call: ['__manageBridge', br.id] },
+                ...(Number(br.deck_floor) > 0 ? [{ label: 'Connect to ground', call: ['__connectBridge', br.id], wide: true }] : []),
+                { label: 'Remove bridge', call: ['__deleteBridge', br.id], kind: 'danger', wide: true },
+            ] : [],
+        });
         // Colours follow the base map of the current view (light / dark).
         drawPathways(pLayer, pathways, { popup: pathwayPopup, skipId: editingId('pathway'), theme: mapTheme });
+        if (brLayer) drawBridges(brLayer, bridges, { popup: bridgePopup, skipId: editingId('bridge'), theme: mapTheme });
         // Solid roofs only where shadows are drawn (Student view); Admin view
         // keeps the see-through fill so the base-map outline shows for tracing.
         // Student view: 2.5D buildings (lifted roofs, sun-shaded walls), like /map.
@@ -979,7 +1015,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             xray: new Set((routeResult?.path || []).map((p) => p.building_id).filter((id) => id !== null && id !== undefined)),
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, pathways, showCampus, campusEdit, isCampusTool, nodes, isAdmin, mapTheme, isStudentView, sunWallsKey, routeResult, campusFilter, campusAreas]);
+    }, [buildings, pathways, bridges, showCampus, campusEdit, isCampusTool, nodes, isAdmin, mapTheme, isStudentView, sunWallsKey, routeResult, campusFilter, campusAreas]);
 
     // Campus outlines: only in Manage campus areas (and, for context, while one of
     // them is being drawn or edited). Anywhere else they would sit over the whole
@@ -1359,7 +1395,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setRouteResult(null);
 
             try {
-                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings });
+                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links });
                 setRouteResult(result);
                 drawRoute(result);
             } catch (err) {
@@ -1436,18 +1472,55 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             const p = pathways.find((x) => x.id === id);
             if (p) startCampus('pathway', p, 'shape');
         };
+        const nodeWord = (n) => `${n} ${n === 1 ? 'node' : 'nodes'}`;
         window.__deleteBuilding = async (id) => {
             const b = buildings.find((x) => x.id === id);
+            const inside = nodes.filter((n) => n.building_id === id).length;
             if (!b || !(await confirmAction({
                 title: `Remove ${b.name}?`,
-                message: 'The outline and label go. Rooms filed under it stay on the map, just without a building.',
+                message: inside
+                    ? `The building and the ${nodeWord(inside)} filed under it (rooms, offices and indoor routes on every floor) are deleted, with their staircases. This cannot be undone.`
+                    : 'The outline and label are deleted. No nodes are filed under it.',
                 confirmLabel: 'Remove building', tone: 'danger',
             }))) return;
             try {
-                await api.deleteBuilding(id);
+                const res = await api.deleteBuilding(id);
                 mapInstance.current?.closePopup();
                 loadData();
-                showToast('Building removed');
+                showToast(res?.nodes_deleted ? `Building and ${nodeWord(res.nodes_deleted)} removed` : 'Building removed');
+            } catch (err) { onError(err.message); }
+        };
+        window.__editBridge = (id) => {
+            const br = bridges.find((x) => x.id === id);
+            if (br) startCampus('bridge', br);
+        };
+        window.__manageBridge = (id) => {
+            const br = bridges.find((x) => x.id === id);
+            if (br) openManageBridge(br);
+        };
+        window.__connectBridge = (id) => {
+            const br = bridges.find((x) => x.id === id);
+            if (br) startBridgeConnect(br);
+        };
+        window.__moveBridge = (id) => {
+            const br = bridges.find((x) => x.id === id);
+            if (br) startCampus('bridge', br, 'shape');
+        };
+        window.__deleteBridge = async (id) => {
+            const br = bridges.find((x) => x.id === id);
+            const onDeck = br ? nodes.filter(onDeckOf(br)).length : 0;
+            if (!br || !(await confirmAction({
+                title: `Remove ${br.name}?`,
+                message: onDeck
+                    ? `The bridge and the ${nodeWord(onDeck)} on its deck are deleted, with the staircases up to them. The ground routes the stairs came down to stay. This cannot be undone.`
+                    : 'The outline and label are deleted. There are no nodes on its deck.',
+                confirmLabel: 'Remove bridge', tone: 'danger',
+            }))) return;
+            try {
+                const res = await api.deleteBridge(id);
+                mapInstance.current?.closePopup();
+                loadData();
+                showToast(res?.nodes_deleted ? `Bridge and ${nodeWord(res.nodes_deleted)} removed` : 'Bridge removed');
             } catch (err) { onError(err.message); }
         };
         window.__editPathway = (id) => {
@@ -1488,6 +1561,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             delete window.__deleteBuilding;
             delete window.__editPathway;
             delete window.__deletePathway;
+            delete window.__editBridge;
+            delete window.__connectBridge;
+            delete window.__manageBridge;
+            delete window.__moveBridge;
+            delete window.__deleteBridge;
         };
     });
 
@@ -1871,8 +1949,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         setSwapPick(null);
         setCampusOpen(false);
         mapInstance.current?.closePopup();
+        setManageBridgeId(null);
         setCampusEdit({ mode, record, startStep, key: Date.now() });
-        setTool(mode === 'building' ? TOOL_BUILDING : TOOL_PATHWAY);
+        setTool(mode === 'building' ? TOOL_BUILDING : mode === 'bridge' ? TOOL_BRIDGE : TOOL_PATHWAY);
     };
     const endCampus = () => {
         setCampusEdit(null);
@@ -2013,6 +2092,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         setConfirmDelete(false);
         setStairPick({ sourceId: editingNode.id, floor: null });
     };
+    // Connect a bridge: the tapped deck node is the top of the stairs; next, its ground end.
+    window.__pickBridgeDeck = (id) => {
+        setBridgeConnect(null);
+        setStairPick({ sourceId: id, floor: 0 });
+    };
     // From Manage nodes: tap the first end on the floor shown.
     window.__pickStairStart = (id) => {
         setStairStart(null);
@@ -2025,7 +2109,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         setStairPick(null);
         setStairConfig({ sourceId: pick.sourceId, otherId });
     };
-    useEffect(() => () => { delete window.__pickStairStart; }, []);
+    useEffect(() => () => { delete window.__pickStairStart; delete window.__pickBridgeDeck; }, []);
     // `patch` holds only what changed: yaw_deg, flights (+ angle_deg), landing_m or angle_deg.
     const updateStairLink = async (link, patch) => {
         try {
@@ -2163,12 +2247,51 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     };
 
     // Exactly one surface owns the bottom of the screen at any time.
-    const surface = swapPick ? 'swap-pick' : stairPick ? 'stair-pick' : stairStart ? 'stair-start' : surfaceFor({ tool, hasPending: !!pendingNode, hasEditing: !!editingNode, hasManaging: !!manageBuilding });
+    const surface = swapPick ? 'swap-pick' : stairPick ? 'stair-pick' : stairStart ? 'stair-start' : bridgeConnect ? 'bridge-connect' : surfaceFor({ tool, hasPending: !!pendingNode, hasEditing: !!editingNode, hasManaging: !!manageBuilding || !!manageBridge });
+
+    // Connect a raised bridge to the ground routes, from its popup or Edit panel.
+    const startBridgeConnect = (br) => {
+        endCampus();
+        setEditingNode(null);
+        setManageBuildingId(null);
+        mapInstance.current?.closePopup();
+        setBridgeConnect({ bridgeId: br.id });
+        const c = interiorPoint(br.polygon);
+        if (c) revealPoint(c.lat, c.lng);
+    };
+
+    // Manage nodes for a bridge: its deck's nodes, from its Edit panel or popup.
+    const openManageBridge = (br) => {
+        endCampus();
+        setEditingNode(null);
+        setManageBuildingId(null);
+        mapInstance.current?.closePopup();
+        setManageBridgeId(br.id);
+        setManageFloor(Number(br.deck_floor) || 0);
+        const c = interiorPoint(br.polygon);
+        if (c) revealPoint(c.lat, c.lng);
+    };
+    // "Add node on the deck": Add node with the pin in the deck's middle, on the deck's
+    // floor, in no building, sheltered under a roof. The pin can still be moved before saving.
+    const addNodeOnBridge = (br) => {
+        const c = interiorPoint(br.polygon);
+        if (!c) return;
+        mapInstance.current?.closePopup();
+        setCampusEdit(null);
+        enterAddNodeMode();
+        setPendingNode({ latitude: c.lat, longitude: c.lng });
+        setFormType('route');
+        setFormBuilding('');
+        setFormPathType(br.roofed ? 'inside' : 'outside');
+        setFormFloor(String(Number(br.deck_floor) || 0));
+        revealPoint(c.lat, c.lng);
+    };
 
     // Manage nodes, opened from a building's Edit panel.
     const openManageNodes = (b) => {
         endCampus();
         setEditingNode(null);
+        setManageBridgeId(null);
         mapInstance.current?.closePopup();
         setManageFloor(0);
         setManageBuildingId(b.id);
@@ -2709,10 +2832,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     <div className="mt-card mt-menu mt-enter ui-stagger" role="group" aria-label="Campus tools">
                         <MenuAction label={`Label a building (${buildings.length} labelled)`} onClick={() => startCampus('building')} />
                         <MenuAction label={`Add a road or walkway (${pathways.length} drawn)`} onClick={() => startCampus('pathway')} />
+                        <MenuAction label={`Add a bridge (${bridges.length} drawn)`} onClick={() => startCampus('bridge')} />
                         <MenuAction label={`Manage campus areas (${campusAreas.length} drawn)`} onClick={startManageAreas} />
                         <p className="ui-hint" style={{ margin: '4px 12px 8px' }}>
                             Adopt a shape from the base map or draw a new one (e.g. a building under construction).
-                            Tap a building or pathway on the map to edit it. To swap two offices, open one and choose Swap.
+                            Tap a building, bridge or pathway on the map to edit it. To swap two offices, open one and choose Swap.
                         </p>
                     </div>
                 )}
@@ -2742,9 +2866,12 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         onClose={endCampus}
                         onSaved={(message) => { endCampus(); loadData(); showToast(message); }}
                         // Edit is where a building's nodes are managed.
-                        onManageNodes={openManageNodes}
+                        onManageNodes={campusEdit.mode === 'bridge' ? openManageBridge : openManageNodes}
+                        onConnectBridge={startBridgeConnect}
                         canChangeDepartment={isAdmin}
                         nodes={nodes}
+                        borders={borders}
+                        links={links}
                         startStep={campusEdit.startStep}
                         theme={mapTheme}
                     />
@@ -2797,6 +2924,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         onAdd={(floor) => addNodeInBuilding(manageBuilding, floor)}
                         onEdit={(n) => window.__editNode?.(n.id)}
                         onRemove={(n) => window.__deleteNode?.(n.id)}
+                        onEditStair={(link, here) => window.__editNode?.(here.id)}
+                        onRemoveStair={async (link) => {
+                            if (await confirmAction({ title: 'Remove this staircase?', message: 'The two nodes stay; routes can no longer change floors here.', confirmLabel: 'Remove staircase', tone: 'danger' })) removeStairLink(link);
+                        }}
                         // Pan to the node where it is drawn (on its floor plate).
                         onAddStair={() => { mapInstance.current?.closePopup(); setStairStart({ buildingId: manageBuilding.id }); }}
                         onShow={(n) => {
@@ -2812,12 +2943,59 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     />
                 )}
 
+                {surface === 'manage' && manageBridge && !manageBuilding && (
+                    <ManageNodes
+                        building={manageBridge}
+                        belongs={onDeckOf(manageBridge)}
+                        floors={bridgeFloors(manageBridge)}
+                        floor={bridgeFloors(manageBridge).includes(manageFloor) ? manageFloor : Number(manageBridge.deck_floor) || 0}
+                        setFloor={setManageFloor}
+                        nodes={nodes}
+                        links={links}
+                        canEditNode={canEditNode}
+                        canAdd={isAdmin}
+                        onAdd={() => addNodeOnBridge(manageBridge)}
+                        onEdit={(n) => window.__editNode?.(n.id)}
+                        onRemove={(n) => window.__deleteNode?.(n.id)}
+                        onEditStair={(link, here) => window.__editNode?.(here.id)}
+                        onRemoveStair={async (link) => {
+                            if (await confirmAction({ title: 'Remove this staircase?', message: 'The two nodes stay; routes can no longer change floors here.', confirmLabel: 'Remove staircase', tone: 'danger' })) removeStairLink(link);
+                        }}
+                        // A raised deck reaches the ground routes by stairs: the Connect to ground flow.
+                        onAddStair={Number(manageBridge.deck_floor) > 0 ? () => startBridgeConnect(manageBridge) : null}
+                        addStairLabel="Connect to ground"
+                        onShow={(n) => {
+                            const at = markersRef.current[n.id]?.getLatLng();
+                            if (at) revealPoint(at.lat, at.lng);
+                        }}
+                        onClose={() => setManageBridgeId(null)}
+                        note={Number(manageBridge.deck_floor) > 0
+                            ? `The nodes on the deck (${deckLevelLabel(manageBridge.deck_floor).toLowerCase()}). Connect to ground joins a deck node to a ground route node with stairs.`
+                            : 'The nodes on the deck, at ground level: they join the paths around it directly.'}
+                    />
+                )}
+
                 {qrSheet && (
                     <QrSheet
                         title={qrSheet.title} subtitle={qrSheet.subtitle} nodes={qrSheet.nodes}
                         buildingsById={buildingsById} onClose={() => setQrSheet(null)}
                     />
                 )}
+
+                {surface === 'bridge-connect' && (() => {
+                    const br = bridges.find((x) => x.id === bridgeConnect.bridgeId);
+                    const onDeck = br ? nodes.filter((n) => n.type === 'route' && onDeckOf(br)(n)).length : 0;
+                    return (
+                        <ActionBar
+                            title={`Connect ${br?.short_name || br?.name || 'the bridge'} to the ground`}
+                            hint={onDeck === 0
+                                ? 'This deck has no route nodes yet. Edit the bridge and press Lay route nodes first.'
+                                : 'Tap the highlighted deck node at the end where the stairs are. Next, tap the ground route node the stairs come down to, then set their shape and slope.'}
+                        >
+                            <button className="ui-btn ui-btn-primary" onClick={() => setBridgeConnect(null)}>Cancel</button>
+                        </ActionBar>
+                    );
+                })()}
 
                 {surface === 'stair-start' && manageBuilding && (
                     <ActionBar title="Add staircase" hint={`Tap the node at one end of the stairs on ${floorAria(guideFloor ?? 0).toLowerCase()}.`}>

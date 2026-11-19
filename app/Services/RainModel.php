@@ -149,6 +149,18 @@ class RainModel
         ];
     }
 
+    /** Whether the model reads the Himawari cloud-motion inputs (`satellite.py now --motion`; none trained yet, see README). */
+    public function needsCloudMotion(): bool
+    {
+        return $this->usesFeaturesStartingWith('sat_adv_') || $this->usesFeaturesStartingWith('sat_motion_');
+    }
+
+    /** Whether the model reads the Himawari cloud-phase inputs (`satellite.py now --cloud`; the models since Nov 19, 2026 do). */
+    public function needsCloudPhase(): bool
+    {
+        return $this->usesFeaturesStartingWith('sat_phase_');
+    }
+
     /** Whether the model reads several forecast models (mm_* features). */
     public function needsMultiModel(): bool
     {

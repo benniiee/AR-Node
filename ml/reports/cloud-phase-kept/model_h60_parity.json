@@ -1,0 +1,4567 @@
+{
+ "timezone": "Asia/Manila",
+ "cases": [
+  {
+   "now": "2026-06-26T18:45",
+   "minutely_15": {
+    "time": [
+     "2026-06-26T16:00",
+     "2026-06-26T16:15",
+     "2026-06-26T16:30",
+     "2026-06-26T16:45",
+     "2026-06-26T17:00",
+     "2026-06-26T17:15",
+     "2026-06-26T17:30",
+     "2026-06-26T17:45",
+     "2026-06-26T18:00",
+     "2026-06-26T18:15",
+     "2026-06-26T18:30",
+     "2026-06-26T18:45"
+    ],
+    "precipitation": [
+     0.2,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "temperature_2m": [
+     30.0,
+     29.8,
+     29.5,
+     29.3,
+     29.0,
+     28.8,
+     28.6,
+     28.4,
+     28.2,
+     28.1,
+     27.9,
+     27.8
+    ],
+    "relative_humidity_2m": [
+     63.0,
+     65.0,
+     66.0,
+     68.0,
+     69.0,
+     70.0,
+     72.0,
+     73.0,
+     74.0,
+     75.0,
+     76.0,
+     78.0
+    ],
+    "dew_point_2m": [
+     22.3,
+     22.4,
+     22.6,
+     22.8,
+     22.9,
+     22.9,
+     23.0,
+     23.0,
+     23.1,
+     23.2,
+     23.3,
+     23.5
+    ],
+    "wind_speed_10m": [
+     8.6,
+     9.0,
+     9.4,
+     9.8,
+     9.9,
+     9.9,
+     9.6,
+     9.1,
+     9.0,
+     8.8,
+     9.0,
+     8.9
+    ],
+    "wind_direction_10m": [
+     112.0,
+     106.0,
+     101.0,
+     95.0,
+     91.0,
+     87.0,
+     84.0,
+     80.0,
+     75.0,
+     70.0,
+     64.0,
+     58.0
+    ],
+    "wind_gusts_10m": [
+     23.4,
+     23.4,
+     23.4,
+     23.8,
+     23.8,
+     23.8,
+     23.8,
+     23.4,
+     23.0,
+     22.3,
+     21.2,
+     20.2
+    ],
+    "cape": [
+     770.0,
+     880.0,
+     1060.0,
+     1250.0,
+     1380.0,
+     1430.0,
+     1440.0,
+     1440.0,
+     1460.0,
+     1520.0,
+     1600.0,
+     1670.0
+    ],
+    "weather_code": [
+     53.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-06-26T15:00",
+     "2026-06-26T16:00",
+     "2026-06-26T17:00",
+     "2026-06-26T18:00",
+     "2026-06-26T19:00"
+    ],
+    "pressure_msl": [
+     1009.3,
+     1009.3,
+     1009.7,
+     1010.2,
+     1011.0
+    ],
+    "cloud_cover": [
+     77.0,
+     95.0,
+     98.0,
+     98.0,
+     97.0
+    ],
+    "precipitation_probability": [
+     49.0,
+     48.0,
+     43.0,
+     32.0,
+     17.0
+    ],
+    "precipitation": [
+     0.0,
+     0.7,
+     0.1,
+     0.0,
+     0.0
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-06-26T13:00",
+     "raw": "RPMZ 260500Z 18005KT 120V270 9999 FEW016CB 32/25 Q1011 RMK A2985 CB N/S"
+    },
+    {
+     "time": "2026-06-26T14:00",
+     "raw": "RPMZ 260600Z 13006KT 080V180 9999 FEW016CB 30/25 Q1010 RMK A2983 CB N"
+    },
+    {
+     "time": "2026-06-26T15:00",
+     "raw": "RPMZ 260700Z 03007KT 350V100 9999 TS FEW016CB BKN090 29/24 Q1010 RMK A2983 CB N-NE"
+    },
+    {
+     "time": "2026-06-26T16:00",
+     "raw": "RPMZ 260800Z 04004KT 010V080 9999 FEW017 SCT090 29/24 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-06-26T17:00",
+     "raw": "RPMZ 260900Z 04004KT 9999 FEW017 SCT300 29/24 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-06-26T18:00",
+     "raw": "RPMZ 261000Z 04005KT 350V060 9999 FEW017 BKN300 29/24 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-06-26T19:00",
+     "raw": "RPMZ 261100Z 04004KT 010V070 9999 FEW017 SCT090 28/24 Q1011 RMK A2985"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-06-26T17:00",
+     "2026-06-26T18:00",
+     "2026-06-26T19:00",
+     "2026-06-26T20:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     0.1,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     98.0,
+     98.0,
+     97.0,
+     99.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     51.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.1,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     95.0,
+     95.0,
+     96.0,
+     96.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     51.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.0,
+     0.0,
+     0.9,
+     0.7
+    ],
+    "cloud_cover_gfs_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_gfs_seamless": [
+     3.0,
+     3.0,
+     53.0,
+     53.0
+    ],
+    "precipitation_icon_seamless": [
+     0.1,
+     0.1,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_icon_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_icon_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_jma_seamless": [
+     1.4,
+     1.4,
+     1.4,
+     1.4
+    ],
+    "cloud_cover_jma_seamless": [
+     85.0,
+     86.0,
+     87.0,
+     86.0
+    ],
+    "weather_code_jma_seamless": [
+     61.0,
+     61.0,
+     61.0,
+     61.0
+    ],
+    "precipitation_cma_grapes_global": [
+     1.7,
+     0.3,
+     0.3,
+     0.3
+    ],
+    "cloud_cover_cma_grapes_global": [
+     89.0,
+     59.0,
+     30.0,
+     0.0
+    ],
+    "weather_code_cma_grapes_global": [
+     80.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     12.0,
+     12.0,
+     0.0,
+     48.0
+    ],
+    "weather_code_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.4,
+     1.1,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     51.0,
+     55.0,
+     3.0,
+     3.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": -12.822,
+    "sat_bt_min_10km": -21.804,
+    "sat_bt_min_30km": -35.791,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 2.795,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 4.459,
+    "sat_min_cooling_10min": 3.411,
+    "sat_sustained_cooling": -4.459,
+    "sat_wv_campus": -29.987,
+    "sat_wv_minus_ir_campus": -17.165,
+    "sat_wv_minus_ir_10km": -11.79,
+    "sat_wv_min_30km": -41.044,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_fallback_probability": 0.019852718792781686,
+   "expected_features": {
+    "precip_0": 0.0,
+    "precip_1": 0.0,
+    "precip_2": 0.0,
+    "precip_sum_1h": 0.0,
+    "precip_sum_3h": 0.2,
+    "rain_code_now": 0.0,
+    "temp": 27.8,
+    "temp_change_1h": -0.6,
+    "humidity": 78.0,
+    "dewpoint_depression": 4.3,
+    "wind_speed": 8.9,
+    "wind_gust": 20.2,
+    "wind_dir_sin": 0.848048096,
+    "wind_dir_cos": 0.529919264,
+    "cape": 1670.0,
+    "pressure": 1010.2,
+    "pressure_change_3h": 0.9,
+    "cloud_cover": 98.0,
+    "precip_prob_next_hour": 17.0,
+    "fcst_precip_next_hour": 0.0,
+    "hour_sin": -0.98078528,
+    "hour_cos": 0.195090322,
+    "doy_sin": 0.096612702,
+    "doy_cos": -0.995322051,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 0.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 45.0,
+    "mm_wet_share": 0.333333333,
+    "mm_precip_mean": 0.288888889,
+    "mm_cloud_mean": 83.333333333,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": -12.822,
+    "sat_bt_min_10km": -21.804,
+    "sat_bt_min_30km": -35.791,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 2.795,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 4.459,
+    "sat_min_cooling_10min": 3.411,
+    "sat_sustained_cooling": -4.459,
+    "sat_wv_campus": -29.987,
+    "sat_wv_minus_ir_campus": -17.165,
+    "sat_wv_minus_ir_10km": -11.79,
+    "sat_wv_min_30km": -41.044,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_probability": 0.009444629122294664
+  },
+  {
+   "now": "2026-07-28T08:45",
+   "minutely_15": {
+    "time": [
+     "2026-07-28T06:00",
+     "2026-07-28T06:15",
+     "2026-07-28T06:30",
+     "2026-07-28T06:45",
+     "2026-07-28T07:00",
+     "2026-07-28T07:15",
+     "2026-07-28T07:30",
+     "2026-07-28T07:45",
+     "2026-07-28T08:00",
+     "2026-07-28T08:15",
+     "2026-07-28T08:30",
+     "2026-07-28T08:45"
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.3,
+     0.3,
+     0.3,
+     0.3,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "temperature_2m": [
+     25.0,
+     25.2,
+     25.3,
+     25.6,
+     25.8,
+     26.2,
+     26.6,
+     27.0,
+     27.4,
+     27.6,
+     27.8,
+     28.0
+    ],
+    "relative_humidity_2m": [
+     90.0,
+     90.0,
+     90.0,
+     89.0,
+     88.0,
+     86.0,
+     83.0,
+     80.0,
+     78.0,
+     77.0,
+     76.0,
+     76.0
+    ],
+    "dew_point_2m": [
+     23.2,
+     23.4,
+     23.5,
+     23.7,
+     23.7,
+     23.7,
+     23.5,
+     23.3,
+     23.2,
+     23.2,
+     23.3,
+     23.3
+    ],
+    "wind_speed_10m": [
+     2.5,
+     3.1,
+     3.6,
+     4.2,
+     4.4,
+     4.4,
+     4.4,
+     4.4,
+     4.5,
+     4.6,
+     4.5,
+     4.6
+    ],
+    "wind_direction_10m": [
+     82.0,
+     90.0,
+     93.0,
+     97.0,
+     102.0,
+     109.0,
+     120.0,
+     128.0,
+     133.0,
+     132.0,
+     127.0,
+     121.0
+    ],
+    "wind_gusts_10m": [
+     5.0,
+     6.5,
+     8.6,
+     10.8,
+     13.0,
+     15.1,
+     17.3,
+     19.1,
+     19.8,
+     19.1,
+     17.6,
+     15.8
+    ],
+    "cape": [
+     1020.0,
+     1120.0,
+     1230.0,
+     1310.0,
+     1360.0,
+     1340.0,
+     1280.0,
+     1210.0,
+     1170.0,
+     1180.0,
+     1210.0,
+     1250.0
+    ],
+    "weather_code": [
+     45.0,
+     45.0,
+     45.0,
+     45.0,
+     45.0,
+     55.0,
+     55.0,
+     55.0,
+     55.0,
+     2.0,
+     1.0,
+     1.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-07-28T05:00",
+     "2026-07-28T06:00",
+     "2026-07-28T07:00",
+     "2026-07-28T08:00",
+     "2026-07-28T09:00"
+    ],
+    "pressure_msl": [
+     1010.2,
+     1010.8,
+     1011.6,
+     1012.0,
+     1012.0
+    ],
+    "cloud_cover": [
+     100.0,
+     96.0,
+     90.0,
+     58.0,
+     41.0
+    ],
+    "precipitation_probability": [
+     12.0,
+     13.0,
+     14.0,
+     16.0,
+     19.0
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.1,
+     1.1,
+     0.0
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-07-28T05:00",
+     "raw": "RPMZ 272100Z VRB02KT 9999 FEW017 BKN090 25/24 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-07-28T06:00",
+     "raw": "RPMZ 272200Z VRB02KT 9999 FEW017 BKN090 25/24 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-07-28T07:00",
+     "raw": "RPMZ 272300Z VRB02KT 9999 FEW017 BKN090 26/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-07-28T08:00",
+     "raw": "RPMZ 280000Z 03004KT 350V080 9999 FEW017 BKN090 28/25 Q1012 RMK A2988"
+    },
+    {
+     "time": "2026-07-28T09:00",
+     "raw": "RPMZ 280100Z 07004KT 020V100 9999 FEW017 SCT090 30/25 Q1012 RMK A2988"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-07-28T07:00",
+     "2026-07-28T08:00",
+     "2026-07-28T09:00",
+     "2026-07-28T10:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     0.1,
+     1.1,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     90.0,
+     58.0,
+     41.0,
+     58.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     51.0,
+     55.0,
+     1.0,
+     2.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.1,
+     0.1,
+     0.1,
+     0.1
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     59.0,
+     46.0,
+     53.0,
+     68.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     51.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.0,
+     0.3,
+     0.7,
+     0.0
+    ],
+    "cloud_cover_gfs_seamless": [
+     99.0,
+     49.0,
+     14.0,
+     5.0
+    ],
+    "weather_code_gfs_seamless": [
+     3.0,
+     51.0,
+     53.0,
+     0.0
+    ],
+    "precipitation_icon_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_icon_seamless": [
+     66.0,
+     56.0,
+     59.0,
+     54.0
+    ],
+    "weather_code_icon_seamless": [
+     2.0,
+     2.0,
+     2.0,
+     2.0
+    ],
+    "precipitation_jma_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_jma_seamless": [
+     34.0,
+     36.0,
+     40.0,
+     46.0
+    ],
+    "weather_code_jma_seamless": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_cma_grapes_global": [
+     1.9,
+     1.9,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_cma_grapes_global": [
+     7.0,
+     0.0,
+     1.0,
+     1.0
+    ],
+    "weather_code_cma_grapes_global": [
+     80.0,
+     80.0,
+     0.0,
+     0.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     8.0,
+     17.0,
+     17.0,
+     17.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     8.0,
+     20.0,
+     8.0,
+     12.0
+    ],
+    "weather_code_gem_seamless": [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.0,
+     0.1,
+     0.1,
+     0.1
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     66.0,
+     66.0,
+     73.0,
+     73.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     2.0,
+     51.0,
+     51.0,
+     51.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": 2.364,
+    "sat_bt_min_10km": -1.713,
+    "sat_bt_min_30km": -7.059,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 0.936,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 1.904,
+    "sat_min_cooling_10min": 0.762,
+    "sat_sustained_cooling": -1.904,
+    "sat_wv_campus": -17.279,
+    "sat_wv_minus_ir_campus": -19.643,
+    "sat_wv_minus_ir_10km": -15.873,
+    "sat_wv_min_30km": -18.934,
+    "sat_phase_water_10km": 0.36232,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.62319,
+    "sat_phase_cloudy_30km": 0.97008
+   },
+   "expected_fallback_probability": 0.009940811395184795,
+   "expected_features": {
+    "precip_0": 0.0,
+    "precip_1": 0.0,
+    "precip_2": 0.0,
+    "precip_sum_1h": 0.3,
+    "precip_sum_3h": 1.2,
+    "rain_code_now": 0.0,
+    "temp": 28.0,
+    "temp_change_1h": 1.0,
+    "humidity": 76.0,
+    "dewpoint_depression": 4.7,
+    "wind_speed": 4.6,
+    "wind_gust": 15.8,
+    "wind_dir_sin": 0.857167301,
+    "wind_dir_cos": -0.515038075,
+    "cape": 1250.0,
+    "pressure": 1012.0,
+    "pressure_change_3h": 1.8,
+    "cloud_cover": 58.0,
+    "precip_prob_next_hour": 19.0,
+    "fcst_precip_next_hour": 0.0,
+    "hour_sin": 0.751839807,
+    "hour_cos": -0.659345815,
+    "doy_sin": -0.438306723,
+    "doy_cos": -0.898825465,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 0.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 45.0,
+    "mm_wet_share": 0.333333333,
+    "mm_precip_mean": 0.1,
+    "mm_cloud_mean": 38.666666667,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": 2.364,
+    "sat_bt_min_10km": -1.713,
+    "sat_bt_min_30km": -7.059,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 0.936,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 1.904,
+    "sat_min_cooling_10min": 0.762,
+    "sat_sustained_cooling": -1.904,
+    "sat_wv_campus": -17.279,
+    "sat_wv_minus_ir_campus": -19.643,
+    "sat_wv_minus_ir_10km": -15.873,
+    "sat_wv_min_30km": -18.934,
+    "sat_phase_water_10km": 0.36232,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.62319,
+    "sat_phase_cloudy_30km": 0.97008
+   },
+   "expected_probability": 0.005497420717343769
+  },
+  {
+   "now": "2026-08-28T18:30",
+   "minutely_15": {
+    "time": [
+     "2026-08-28T15:45",
+     "2026-08-28T16:00",
+     "2026-08-28T16:15",
+     "2026-08-28T16:30",
+     "2026-08-28T16:45",
+     "2026-08-28T17:00",
+     "2026-08-28T17:15",
+     "2026-08-28T17:30",
+     "2026-08-28T17:45",
+     "2026-08-28T18:00",
+     "2026-08-28T18:15",
+     "2026-08-28T18:30"
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "temperature_2m": [
+     31.5,
+     31.3,
+     31.1,
+     30.9,
+     30.7,
+     30.5,
+     30.3,
+     30.0,
+     29.7,
+     29.5,
+     29.4,
+     29.2
+    ],
+    "relative_humidity_2m": [
+     54.0,
+     55.0,
+     55.0,
+     56.0,
+     56.0,
+     57.0,
+     58.0,
+     59.0,
+     60.0,
+     61.0,
+     62.0,
+     63.0
+    ],
+    "dew_point_2m": [
+     21.0,
+     21.0,
+     21.0,
+     21.0,
+     21.0,
+     21.0,
+     21.0,
+     21.1,
+     21.1,
+     21.2,
+     21.3,
+     21.4
+    ],
+    "wind_speed_10m": [
+     16.6,
+     15.8,
+     15.0,
+     14.1,
+     13.4,
+     12.8,
+     12.4,
+     12.4,
+     12.2,
+     11.8,
+     11.2,
+     10.1
+    ],
+    "wind_direction_10m": [
+     253.0,
+     251.0,
+     250.0,
+     247.0,
+     244.0,
+     242.0,
+     240.0,
+     239.0,
+     237.0,
+     236.0,
+     233.0,
+     231.0
+    ],
+    "wind_gusts_10m": [
+     43.2,
+     42.5,
+     41.4,
+     39.6,
+     37.8,
+     36.0,
+     34.2,
+     32.4,
+     30.6,
+     29.2,
+     28.1,
+     27.0
+    ],
+    "cape": [
+     570.0,
+     600.0,
+     610.0,
+     610.0,
+     610.0,
+     600.0,
+     580.0,
+     560.0,
+     540.0,
+     530.0,
+     540.0,
+     550.0
+    ],
+    "weather_code": [
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     2.0,
+     2.0,
+     2.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-08-28T15:00",
+     "2026-08-28T16:00",
+     "2026-08-28T17:00",
+     "2026-08-28T18:00",
+     "2026-08-28T19:00"
+    ],
+    "pressure_msl": [
+     1009.6,
+     1009.6,
+     1009.9,
+     1010.5,
+     1011.2
+    ],
+    "cloud_cover": [
+     99.0,
+     93.0,
+     89.0,
+     79.0,
+     41.0
+    ],
+    "precipitation_probability": [
+     20.0,
+     26.0,
+     29.0,
+     24.0,
+     15.0
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.1,
+     0.1
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-08-28T13:00",
+     "raw": "RPMZ 280500Z 27006KT 200V320 9000 FEW017 BKN300 31/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-08-28T14:00",
+     "raw": "RPMZ 280600Z 28009KT 240V310 9000 FEW017 BKN300 31/24 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-08-28T15:00",
+     "raw": "RPMZ 280700Z 27011KT 9000 FEW017 BKN300 32/25 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-08-28T16:00",
+     "raw": "RPMZ 280800Z 25010KT 9000 FEW017 BKN300 31/24 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-08-28T17:00",
+     "raw": "RPMZ 280900Z 26008KT 230V290 9000 FEW016CB SCT300 30/25 Q1010 RMK A2983 CB NE"
+    },
+    {
+     "time": "2026-08-28T18:00",
+     "raw": "RPMZ 281000Z 21004KT 150V260 9000 FEW016CB SCT090 BKN300 30/25 Q1011 RMK A2985 CB NE"
+    },
+    {
+     "time": "2026-08-28T19:00",
+     "raw": "RPMZ 281100Z 27005KT 9999 FEW016CB BKN090 29/24 Q1011 RMK A2985 CB NE"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-08-28T17:00",
+     "2026-08-28T18:00",
+     "2026-08-28T19:00",
+     "2026-08-28T20:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     0.0,
+     0.1,
+     0.1,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     89.0,
+     79.0,
+     41.0,
+     70.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     3.0,
+     51.0,
+     51.0,
+     2.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     91.0,
+     91.0,
+     89.0,
+     88.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gfs_seamless": [
+     100.0,
+     100.0,
+     94.0,
+     95.0
+    ],
+    "weather_code_gfs_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_icon_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_icon_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_icon_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_jma_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_jma_seamless": [
+     58.0,
+     63.0,
+     68.0,
+     71.0
+    ],
+    "weather_code_jma_seamless": [
+     2.0,
+     2.0,
+     2.0,
+     2.0
+    ],
+    "precipitation_cma_grapes_global": [
+     0.6,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_cma_grapes_global": [
+     59.0,
+     39.0,
+     20.0,
+     0.0
+    ],
+    "weather_code_cma_grapes_global": [
+     53.0,
+     1.0,
+     1.0,
+     0.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     89.0,
+     95.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     76.0,
+     68.0,
+     36.0,
+     36.0
+    ],
+    "weather_code_gem_seamless": [
+     2.0,
+     2.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     89.0,
+     92.0,
+     93.0,
+     99.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": 10.408,
+    "sat_bt_min_10km": 8.881,
+    "sat_bt_min_30km": -48.395,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.00945,
+    "sat_cooling_20min": -3.578,
+    "sat_upwind_cold": 0.01863,
+    "sat_cooling_10min": -0.275,
+    "sat_min_cooling_10min": 0.0,
+    "sat_sustained_cooling": 0.275,
+    "sat_wv_campus": -17.651,
+    "sat_wv_minus_ir_campus": -28.059,
+    "sat_wv_minus_ir_10km": -27.136,
+    "sat_wv_min_30km": -54.581,
+    "sat_phase_water_10km": 0.85507,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.14493,
+    "sat_phase_cloudy_30km": 0.99528
+   },
+   "expected_fallback_probability": 0.019891371412984533,
+   "expected_features": {
+    "precip_0": 0.0,
+    "precip_1": 0.0,
+    "precip_2": 0.0,
+    "precip_sum_1h": 0.0,
+    "precip_sum_3h": 0.0,
+    "rain_code_now": 0.0,
+    "temp": 29.2,
+    "temp_change_1h": -0.8,
+    "humidity": 63.0,
+    "dewpoint_depression": 7.8,
+    "wind_speed": 10.1,
+    "wind_gust": 27.0,
+    "wind_dir_sin": -0.777145961,
+    "wind_dir_cos": -0.629320391,
+    "cape": 550.0,
+    "pressure": 1010.5,
+    "pressure_change_3h": 0.9,
+    "cloud_cover": 79.0,
+    "precip_prob_next_hour": 15.0,
+    "fcst_precip_next_hour": 0.1,
+    "hour_sin": -0.991444861,
+    "hour_cos": 0.130526192,
+    "doy_sin": -0.834370124,
+    "doy_cos": -0.551204587,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 1.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 30.0,
+    "mm_wet_share": 0.111111111,
+    "mm_precip_mean": 0.011111111,
+    "mm_cloud_mean": 80.777777778,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": 10.408,
+    "sat_bt_min_10km": 8.881,
+    "sat_bt_min_30km": -48.395,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.00945,
+    "sat_cooling_20min": -3.578,
+    "sat_upwind_cold": 0.01863,
+    "sat_cooling_10min": -0.275,
+    "sat_min_cooling_10min": 0.0,
+    "sat_sustained_cooling": 0.275,
+    "sat_wv_campus": -17.651,
+    "sat_wv_minus_ir_campus": -28.059,
+    "sat_wv_minus_ir_10km": -27.136,
+    "sat_wv_min_30km": -54.581,
+    "sat_phase_water_10km": 0.85507,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.14493,
+    "sat_phase_cloudy_30km": 0.99528
+   },
+   "expected_probability": 0.024744831845594676
+  },
+  {
+   "now": "2026-09-29T11:30",
+   "minutely_15": {
+    "time": [
+     "2026-09-29T08:45",
+     "2026-09-29T09:00",
+     "2026-09-29T09:15",
+     "2026-09-29T09:30",
+     "2026-09-29T09:45",
+     "2026-09-29T10:00",
+     "2026-09-29T10:15",
+     "2026-09-29T10:30",
+     "2026-09-29T10:45",
+     "2026-09-29T11:00",
+     "2026-09-29T11:15",
+     "2026-09-29T11:30"
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "temperature_2m": [
+     30.5,
+     30.7,
+     30.8,
+     31.0,
+     31.1,
+     31.1,
+     31.2,
+     31.2,
+     31.1,
+     31.1,
+     31.1,
+     31.1
+    ],
+    "relative_humidity_2m": [
+     59.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0,
+     58.0
+    ],
+    "dew_point_2m": [
+     21.4,
+     21.5,
+     21.5,
+     21.6,
+     21.7,
+     21.8,
+     21.9,
+     22.0,
+     22.0,
+     22.0,
+     22.0,
+     21.9
+    ],
+    "wind_speed_10m": [
+     2.5,
+     3.4,
+     4.8,
+     6.3,
+     7.8,
+     8.8,
+     9.3,
+     9.4,
+     9.6,
+     9.7,
+     9.9,
+     10.2
+    ],
+    "wind_direction_10m": [
+     184.0,
+     186.0,
+     191.0,
+     195.0,
+     199.0,
+     203.0,
+     208.0,
+     212.0,
+     218.0,
+     223.0,
+     228.0,
+     233.0
+    ],
+    "wind_gusts_10m": [
+     14.0,
+     15.1,
+     17.3,
+     20.2,
+     23.4,
+     25.6,
+     26.6,
+     27.4,
+     27.7,
+     28.1,
+     28.4,
+     28.8
+    ],
+    "cape": [
+     740.0,
+     740.0,
+     780.0,
+     840.0,
+     910.0,
+     960.0,
+     990.0,
+     1020.0,
+     1030.0,
+     1030.0,
+     1010.0,
+     970.0
+    ],
+    "weather_code": [
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-09-29T08:00",
+     "2026-09-29T09:00",
+     "2026-09-29T10:00",
+     "2026-09-29T11:00",
+     "2026-09-29T12:00"
+    ],
+    "pressure_msl": [
+     1015.2,
+     1015.3,
+     1015.3,
+     1014.7,
+     1013.6
+    ],
+    "cloud_cover": [
+     83.0,
+     85.0,
+     80.0,
+     98.0,
+     100.0
+    ],
+    "precipitation_probability": [
+     0.0,
+     17.0,
+     41.0,
+     61.0,
+     75.0
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-09-29T06:00",
+     "raw": "RPMZ 282200Z 04002KT 9999 FEW017 BKN300 24/24 Q1014 RMK A2994"
+    },
+    {
+     "time": "2026-09-29T07:00",
+     "raw": "RPMZ 282300Z 04002KT 9999 FEW017 BKN300 26/25 Q1015 RMK A2997"
+    },
+    {
+     "time": "2026-09-29T08:00",
+     "raw": "RPMZ 290000Z 08003KT 030V110 9999 FEW017 BKN300 30/25 Q1015 RMK A2997"
+    },
+    {
+     "time": "2026-09-29T09:00",
+     "raw": "RPMZ 290100Z 17004KT 110V240 9999 FEW017 SCT300 30/24 Q1015 RMK A2997"
+    },
+    {
+     "time": "2026-09-29T10:00",
+     "raw": "RPMZ 290200Z 19004KT 120V260 9999 FEW017 31/24 Q1015 RMK A2997"
+    },
+    {
+     "time": "2026-09-29T11:00",
+     "raw": "RPMZ 290300Z 18005KT 090V250 9999 FEW017 SCT300 31/25 Q1015 RMK A2997"
+    },
+    {
+     "time": "2026-09-29T12:00",
+     "raw": "RPMZ 290400Z 25005KT 170V290 9999 FEW016CB 31/26 Q1014 RMK A2994 CB N  S"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-09-29T10:00",
+     "2026-09-29T11:00",
+     "2026-09-29T12:00",
+     "2026-09-29T13:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     0.0,
+     0.0,
+     0.0,
+     0.1
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     80.0,
+     98.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     3.0,
+     3.0,
+     3.0,
+     51.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.2,
+     0.2,
+     0.3,
+     0.3
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     91.0,
+     96.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     51.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.1,
+     1.2,
+     0.5,
+     0.0
+    ],
+    "cloud_cover_gfs_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_gfs_seamless": [
+     51.0,
+     55.0,
+     53.0,
+     3.0
+    ],
+    "precipitation_icon_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_icon_seamless": [
+     52.0,
+     100.0,
+     100.0,
+     59.0
+    ],
+    "weather_code_icon_seamless": [
+     2.0,
+     3.0,
+     3.0,
+     2.0
+    ],
+    "precipitation_jma_seamless": [
+     0.9,
+     0.9,
+     0.9,
+     0.9
+    ],
+    "cloud_cover_jma_seamless": [
+     73.0,
+     81.0,
+     87.0,
+     92.0
+    ],
+    "weather_code_jma_seamless": [
+     53.0,
+     53.0,
+     53.0,
+     53.0
+    ],
+    "precipitation_cma_grapes_global": [
+     0.0,
+     0.0,
+     0.5,
+     0.5
+    ],
+    "cloud_cover_cma_grapes_global": [
+     7.0,
+     10.0,
+     7.0,
+     3.0
+    ],
+    "weather_code_cma_grapes_global": [
+     0.0,
+     0.0,
+     53.0,
+     53.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     91.0,
+     100.0,
+     98.0,
+     100.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.2,
+     1.1,
+     0.9
+    ],
+    "cloud_cover_gem_seamless": [
+     48.0,
+     56.0,
+     56.0,
+     20.0
+    ],
+    "weather_code_gem_seamless": [
+     1.0,
+     51.0,
+     55.0,
+     53.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     85.0,
+     87.0,
+     97.0,
+     97.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": 25.241,
+    "sat_bt_min_10km": 16.984,
+    "sat_bt_min_30km": -5.664,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 0.171,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -0.086,
+    "sat_min_cooling_10min": 1.937,
+    "sat_sustained_cooling": -0.257,
+    "sat_wv_campus": -18.387,
+    "sat_wv_minus_ir_campus": -43.628,
+    "sat_wv_minus_ir_10km": -36.08,
+    "sat_wv_min_30km": -28.696,
+    "sat_phase_water_10km": 0.5942,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.74488
+   },
+   "expected_fallback_probability": 0.02250188447074011,
+   "expected_features": {
+    "precip_0": 0.0,
+    "precip_1": 0.0,
+    "precip_2": 0.0,
+    "precip_sum_1h": 0.0,
+    "precip_sum_3h": 0.0,
+    "rain_code_now": 0.0,
+    "temp": 31.1,
+    "temp_change_1h": -0.1,
+    "humidity": 58.0,
+    "dewpoint_depression": 9.2,
+    "wind_speed": 10.2,
+    "wind_gust": 28.8,
+    "wind_dir_sin": -0.79863551,
+    "wind_dir_cos": -0.601815023,
+    "cape": 970.0,
+    "pressure": 1014.7,
+    "pressure_change_3h": -0.5,
+    "cloud_cover": 98.0,
+    "precip_prob_next_hour": 75.0,
+    "fcst_precip_next_hour": 0.0,
+    "hour_sin": 0.130526192,
+    "hour_cos": -0.991444861,
+    "doy_sin": -0.999444617,
+    "doy_cos": -0.033323526,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 0.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 30.0,
+    "mm_wet_share": 0.555555556,
+    "mm_precip_mean": 0.366666667,
+    "mm_cloud_mean": 80.888888889,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": 25.241,
+    "sat_bt_min_10km": 16.984,
+    "sat_bt_min_30km": -5.664,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 0.171,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -0.086,
+    "sat_min_cooling_10min": 1.937,
+    "sat_sustained_cooling": -0.257,
+    "sat_wv_campus": -18.387,
+    "sat_wv_minus_ir_campus": -43.628,
+    "sat_wv_minus_ir_10km": -36.08,
+    "sat_wv_min_30km": -28.696,
+    "sat_phase_water_10km": 0.5942,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.74488
+   },
+   "expected_probability": 0.0011031607622724914
+  },
+  {
+   "now": "2026-09-17T08:45",
+   "minutely_15": {
+    "time": [
+     "2026-09-17T06:00",
+     "2026-09-17T06:15",
+     "2026-09-17T06:30",
+     "2026-09-17T06:45",
+     "2026-09-17T07:00",
+     "2026-09-17T07:15",
+     "2026-09-17T07:30",
+     "2026-09-17T07:45",
+     "2026-09-17T08:00",
+     "2026-09-17T08:15",
+     "2026-09-17T08:30",
+     "2026-09-17T08:45"
+    ],
+    "precipitation": [
+     0.7,
+     0.6,
+     0.6,
+     0.6,
+     0.6,
+     0.6,
+     0.6,
+     0.6,
+     0.6,
+     0.3,
+     0.3,
+     0.3
+    ],
+    "temperature_2m": [
+     24.8,
+     24.8,
+     24.8,
+     24.9,
+     25.0,
+     25.4,
+     26.0,
+     26.5,
+     26.8,
+     26.8,
+     26.6,
+     26.4
+    ],
+    "relative_humidity_2m": [
+     94.0,
+     95.0,
+     95.0,
+     95.0,
+     94.0,
+     93.0,
+     90.0,
+     87.0,
+     86.0,
+     85.0,
+     86.0,
+     86.0
+    ],
+    "dew_point_2m": [
+     23.9,
+     23.9,
+     24.0,
+     24.0,
+     24.1,
+     24.1,
+     24.2,
+     24.3,
+     24.3,
+     24.2,
+     24.0,
+     23.8
+    ],
+    "wind_speed_10m": [
+     14.6,
+     14.7,
+     14.8,
+     14.9,
+     14.9,
+     14.8,
+     14.6,
+     14.3,
+     14.7,
+     15.8,
+     17.5,
+     19.2
+    ],
+    "wind_direction_10m": [
+     238.0,
+     239.0,
+     241.0,
+     243.0,
+     245.0,
+     246.0,
+     246.0,
+     246.0,
+     246.0,
+     246.0,
+     245.0,
+     244.0
+    ],
+    "wind_gusts_10m": [
+     32.4,
+     32.4,
+     32.0,
+     31.7,
+     31.3,
+     31.3,
+     31.3,
+     31.3,
+     32.4,
+     34.6,
+     37.4,
+     40.7
+    ],
+    "cape": [
+     1040.0,
+     1040.0,
+     1030.0,
+     1020.0,
+     1050.0,
+     1140.0,
+     1280.0,
+     1410.0,
+     1450.0,
+     1370.0,
+     1200.0,
+     1030.0
+    ],
+    "weather_code": [
+     81.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     55.0,
+     55.0,
+     55.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-09-17T05:00",
+     "2026-09-17T06:00",
+     "2026-09-17T07:00",
+     "2026-09-17T08:00",
+     "2026-09-17T09:00"
+    ],
+    "pressure_msl": [
+     1009.1,
+     1009.3,
+     1010.7,
+     1011.1,
+     1011.6
+    ],
+    "cloud_cover": [
+     95.0,
+     99.0,
+     100.0,
+     100.0,
+     98.0
+    ],
+    "precipitation_probability": [
+     100.0,
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "precipitation": [
+     1.9,
+     2.7,
+     2.4,
+     2.3,
+     1.0
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-09-17T05:00",
+     "raw": "RPMZ 162100Z 28004KT 9999 FEW016 BKN090 26/25 Q1009 RMK A2980"
+    },
+    {
+     "time": "2026-09-17T06:00",
+     "raw": "RPMZ 162200Z 25005KT 210V080 8000 FEW016CB BKN090 27/25 Q1009 RMK A2980 CB W-NW"
+    },
+    {
+     "time": "2026-09-17T07:00",
+     "raw": "RPMZ 162300Z 27006KT 9999 FEW015 BKN090 26/25 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-09-17T08:00",
+     "raw": "RPMZ 170000Z 27007KT 9000 -SHRA BKN015 BKN090 28/26 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-17T09:00",
+     "raw": "RPMZ 170100Z 29006KT 260V320 8000 SCT015 BKN090 29/26 Q1011 RMK A2985"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-09-17T07:00",
+     "2026-09-17T08:00",
+     "2026-09-17T09:00",
+     "2026-09-17T10:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     2.4,
+     2.3,
+     1.0,
+     2.5
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     100.0,
+     100.0,
+     98.0,
+     100.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     80.0,
+     80.0,
+     55.0,
+     81.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     4.2,
+     4.2,
+     2.5,
+     2.5
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     81.0,
+     81.0,
+     81.0,
+     81.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.4,
+     0.4,
+     0.1,
+     0.3
+    ],
+    "cloud_cover_gfs_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     63.0
+    ],
+    "weather_code_gfs_seamless": [
+     51.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_icon_seamless": [
+     0.9,
+     0.6,
+     0.2,
+     1.2
+    ],
+    "cloud_cover_icon_seamless": [
+     96.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_icon_seamless": [
+     80.0,
+     80.0,
+     3.0,
+     95.0
+    ],
+    "precipitation_jma_seamless": [
+     1.2,
+     1.2,
+     0.2,
+     0.2
+    ],
+    "cloud_cover_jma_seamless": [
+     80.0,
+     78.0,
+     78.0,
+     79.0
+    ],
+    "weather_code_jma_seamless": [
+     55.0,
+     55.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_cma_grapes_global": [
+     3.2,
+     3.2,
+     0.6,
+     0.6
+    ],
+    "cloud_cover_cma_grapes_global": [
+     27.0,
+     0.0,
+     27.0,
+     55.0
+    ],
+    "weather_code_cma_grapes_global": [
+     81.0,
+     81.0,
+     53.0,
+     53.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.1,
+     0.1,
+     0.1,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     100.0,
+     97.0,
+     98.0,
+     100.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     51.0,
+     51.0,
+     51.0,
+     3.0
+    ],
+    "precipitation_gem_seamless": [
+     0.8,
+     0.7,
+     0.9,
+     0.5
+    ],
+    "cloud_cover_gem_seamless": [
+     56.0,
+     68.0,
+     20.0,
+     32.0
+    ],
+    "weather_code_gem_seamless": [
+     53.0,
+     53.0,
+     53.0,
+     53.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     2.3,
+     2.0,
+     0.7,
+     0.4
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     80.0,
+     80.0,
+     53.0,
+     51.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": -12.966,
+    "sat_bt_min_10km": -21.846,
+    "sat_bt_min_30km": -36.535,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 2.084,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 1.72,
+    "sat_min_cooling_10min": 4.0,
+    "sat_sustained_cooling": -1.72,
+    "sat_wv_campus": -26.417,
+    "sat_wv_minus_ir_campus": -13.451,
+    "sat_wv_minus_ir_10km": -10.841,
+    "sat_wv_min_30km": -45.592,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_fallback_probability": 0.6467827138698193,
+   "expected_features": {
+    "precip_0": 0.3,
+    "precip_1": 0.3,
+    "precip_2": 0.3,
+    "precip_sum_1h": 1.5,
+    "precip_sum_3h": 6.4,
+    "rain_code_now": 1.0,
+    "temp": 26.4,
+    "temp_change_1h": -0.1,
+    "humidity": 86.0,
+    "dewpoint_depression": 2.6,
+    "wind_speed": 19.2,
+    "wind_gust": 40.7,
+    "wind_dir_sin": -0.898794046,
+    "wind_dir_cos": -0.438371147,
+    "cape": 1030.0,
+    "pressure": 1011.1,
+    "pressure_change_3h": 2.0,
+    "cloud_cover": 100.0,
+    "precip_prob_next_hour": 100.0,
+    "fcst_precip_next_hour": 1.0,
+    "hour_sin": 0.751839807,
+    "hour_cos": -0.659345815,
+    "doy_sin": -0.971395285,
+    "doy_cos": -0.237468316,
+    "obs_rain": 1.0,
+    "obs_rain_fresh": 0.625,
+    "obs_rain_2h": 1.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 0.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 45.0,
+    "mm_wet_share": 1.0,
+    "mm_precip_mean": 0.7,
+    "mm_cloud_mean": 82.555555556,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": -12.966,
+    "sat_bt_min_10km": -21.846,
+    "sat_bt_min_30km": -36.535,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 2.084,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 1.72,
+    "sat_min_cooling_10min": 4.0,
+    "sat_sustained_cooling": -1.72,
+    "sat_wv_campus": -26.417,
+    "sat_wv_minus_ir_campus": -13.451,
+    "sat_wv_minus_ir_10km": -10.841,
+    "sat_wv_min_30km": -45.592,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_probability": 0.6112047304446977
+  },
+  {
+   "now": "2026-09-11T22:30",
+   "minutely_15": {
+    "time": [
+     "2026-09-11T19:45",
+     "2026-09-11T20:00",
+     "2026-09-11T20:15",
+     "2026-09-11T20:30",
+     "2026-09-11T20:45",
+     "2026-09-11T21:00",
+     "2026-09-11T21:15",
+     "2026-09-11T21:30",
+     "2026-09-11T21:45",
+     "2026-09-11T22:00",
+     "2026-09-11T22:15",
+     "2026-09-11T22:30"
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "temperature_2m": [
+     29.4,
+     29.4,
+     29.4,
+     29.2,
+     29.1,
+     28.9,
+     28.8,
+     28.7,
+     28.6,
+     28.5,
+     28.4,
+     28.3
+    ],
+    "relative_humidity_2m": [
+     66.0,
+     65.0,
+     66.0,
+     66.0,
+     67.0,
+     68.0,
+     68.0,
+     69.0,
+     70.0,
+     71.0,
+     72.0,
+     72.0
+    ],
+    "dew_point_2m": [
+     22.3,
+     22.3,
+     22.3,
+     22.3,
+     22.3,
+     22.3,
+     22.4,
+     22.5,
+     22.6,
+     22.7,
+     22.8,
+     22.8
+    ],
+    "wind_speed_10m": [
+     7.6,
+     7.1,
+     6.5,
+     5.8,
+     5.1,
+     4.5,
+     4.0,
+     3.4,
+     2.9,
+     2.5,
+     2.2,
+     1.7
+    ],
+    "wind_direction_10m": [
+     97.0,
+     99.0,
+     98.0,
+     97.0,
+     96.0,
+     95.0,
+     95.0,
+     96.0,
+     97.0,
+     94.0,
+     85.0,
+     72.0
+    ],
+    "wind_gusts_10m": [
+     20.5,
+     19.8,
+     18.7,
+     17.3,
+     15.8,
+     14.4,
+     13.0,
+     11.9,
+     10.4,
+     9.4,
+     8.3,
+     7.2
+    ],
+    "cape": [
+     1260.0,
+     1290.0,
+     1250.0,
+     1170.0,
+     1080.0,
+     1030.0,
+     1020.0,
+     1040.0,
+     1070.0,
+     1090.0,
+     1100.0,
+     1120.0
+    ],
+    "weather_code": [
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-09-11T19:00",
+     "2026-09-11T20:00",
+     "2026-09-11T21:00",
+     "2026-09-11T22:00",
+     "2026-09-11T23:00"
+    ],
+    "pressure_msl": [
+     1011.0,
+     1011.7,
+     1012.5,
+     1012.8,
+     1013.0
+    ],
+    "cloud_cover": [
+     10.0,
+     48.0,
+     31.0,
+     18.0,
+     23.0
+    ],
+    "precipitation_probability": [
+     34.0,
+     14.0,
+     5.0,
+     2.0,
+     0.0
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-09-11T17:00",
+     "raw": "RPMZ 110900Z 11006KT 080V150 9000 FEW017 SCT300 31/23 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-09-11T18:00",
+     "raw": "RPMZ 111000Z 09007KT 9000 FEW017 BKN300 29/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-11T19:00",
+     "raw": "RPMZ 111100Z 06004KT 020V090 9000 FEW016CB BKN300 28/25 Q1011 RMK A2985 CB N"
+    },
+    {
+     "time": "2026-09-11T20:00",
+     "raw": "RPMZ 111200Z 03003KT 9000 FEW017 BKN300 28/24 Q1012 RMK A2988"
+    },
+    {
+     "time": "2026-09-11T21:00",
+     "raw": "RPMZ 111300Z 04004KT 9000 FEW016CB BKN300 27/24 Q1013 RMK A2991 CB/OCNL LTG N"
+    },
+    {
+     "time": "2026-09-11T23:00",
+     "raw": "RPMZ 111500Z 04002KT 9999 FEW017 26/24 Q1013 RMK A2991"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-09-11T21:00",
+     "2026-09-11T22:00",
+     "2026-09-11T23:00",
+     "2026-09-12T00:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     31.0,
+     18.0,
+     23.0,
+     29.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     1.0,
+     0.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     35.0,
+     31.0,
+     27.0,
+     21.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.0,
+     0.0,
+     0.1,
+     0.0
+    ],
+    "cloud_cover_gfs_seamless": [
+     10.0,
+     100.0,
+     100.0,
+     70.0
+    ],
+    "weather_code_gfs_seamless": [
+     0.0,
+     3.0,
+     51.0,
+     2.0
+    ],
+    "precipitation_icon_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_icon_seamless": [
+     51.0,
+     60.0,
+     69.0,
+     60.0
+    ],
+    "weather_code_icon_seamless": [
+     2.0,
+     2.0,
+     2.0,
+     2.0
+    ],
+    "precipitation_jma_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_jma_seamless": [
+     14.0,
+     13.0,
+     13.0,
+     14.0
+    ],
+    "weather_code_jma_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "precipitation_cma_grapes_global": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_cma_grapes_global": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "weather_code_cma_grapes_global": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     0.0,
+     38.0,
+     31.0,
+     72.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     0.0,
+     1.0,
+     1.0,
+     2.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     8.0,
+     12.0,
+     32.0,
+     24.0
+    ],
+    "weather_code_gem_seamless": [
+     0.0,
+     0.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     85.0,
+     91.0,
+     89.0,
+     85.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": 22.088,
+    "sat_bt_min_10km": 19.519,
+    "sat_bt_min_30km": -7.411,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 0.035,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 0.04,
+    "sat_min_cooling_10min": 0.0,
+    "sat_sustained_cooling": -0.04,
+    "sat_wv_campus": -14.559,
+    "sat_wv_minus_ir_campus": -36.647,
+    "sat_wv_minus_ir_10km": -34.412,
+    "sat_wv_min_30km": -27.498,
+    "sat_phase_water_10km": 0.57971,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.58268
+   },
+   "expected_fallback_probability": 0.02328994074366758,
+   "expected_features": {
+    "precip_0": 0.0,
+    "precip_1": 0.0,
+    "precip_2": 0.0,
+    "precip_sum_1h": 0.0,
+    "precip_sum_3h": 0.0,
+    "rain_code_now": 0.0,
+    "temp": 28.3,
+    "temp_change_1h": -0.4,
+    "humidity": 72.0,
+    "dewpoint_depression": 5.5,
+    "wind_speed": 1.7,
+    "wind_gust": 7.2,
+    "wind_dir_sin": 0.951056516,
+    "wind_dir_cos": 0.309016994,
+    "cape": 1120.0,
+    "pressure": 1012.8,
+    "pressure_change_3h": 1.8,
+    "cloud_cover": 18.0,
+    "precip_prob_next_hour": 0.0,
+    "fcst_precip_next_hour": 0.0,
+    "hour_sin": -0.382683432,
+    "hour_cos": 0.923879533,
+    "doy_sin": -0.941758934,
+    "doy_cos": -0.33628873,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 1.0,
+    "obs_lightning": 1.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 90.0,
+    "mm_wet_share": 0.111111111,
+    "mm_precip_mean": 0.011111111,
+    "mm_cloud_mean": 40.333333333,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": 22.088,
+    "sat_bt_min_10km": 19.519,
+    "sat_bt_min_30km": -7.411,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": 0.035,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": 0.04,
+    "sat_min_cooling_10min": 0.0,
+    "sat_sustained_cooling": -0.04,
+    "sat_wv_campus": -14.559,
+    "sat_wv_minus_ir_campus": -36.647,
+    "sat_wv_minus_ir_10km": -34.412,
+    "sat_wv_min_30km": -27.498,
+    "sat_phase_water_10km": 0.57971,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.58268
+   },
+   "expected_probability": 0.0004652244513255544
+  },
+  {
+   "now": "2026-09-17T14:30",
+   "minutely_15": {
+    "time": [
+     "2026-09-17T11:45",
+     "2026-09-17T12:00",
+     "2026-09-17T12:15",
+     "2026-09-17T12:30",
+     "2026-09-17T12:45",
+     "2026-09-17T13:00",
+     "2026-09-17T13:15",
+     "2026-09-17T13:30",
+     "2026-09-17T13:45",
+     "2026-09-17T14:00",
+     "2026-09-17T14:15",
+     "2026-09-17T14:30"
+    ],
+    "precipitation": [
+     0.5,
+     0.5,
+     0.7,
+     0.7,
+     0.7,
+     0.7,
+     0.4,
+     0.4,
+     0.4,
+     0.4,
+     0.4,
+     0.4
+    ],
+    "temperature_2m": [
+     25.4,
+     25.4,
+     25.5,
+     25.5,
+     25.5,
+     25.6,
+     25.8,
+     25.9,
+     26.1,
+     26.2,
+     26.2,
+     26.1
+    ],
+    "relative_humidity_2m": [
+     94.0,
+     94.0,
+     94.0,
+     94.0,
+     94.0,
+     94.0,
+     93.0,
+     93.0,
+     92.0,
+     92.0,
+     91.0,
+     91.0
+    ],
+    "dew_point_2m": [
+     24.4,
+     24.4,
+     24.4,
+     24.4,
+     24.5,
+     24.5,
+     24.6,
+     24.7,
+     24.7,
+     24.7,
+     24.7,
+     24.6
+    ],
+    "wind_speed_10m": [
+     15.2,
+     15.1,
+     14.6,
+     13.9,
+     13.2,
+     12.1,
+     10.6,
+     8.8,
+     7.4,
+     6.9,
+     8.0,
+     10.5
+    ],
+    "wind_direction_10m": [
+     265.0,
+     269.0,
+     270.0,
+     269.0,
+     267.0,
+     266.0,
+     267.0,
+     271.0,
+     276.0,
+     275.0,
+     265.0,
+     254.0
+    ],
+    "wind_gusts_10m": [
+     33.5,
+     32.0,
+     31.3,
+     30.6,
+     29.9,
+     29.5,
+     29.2,
+     29.2,
+     28.8,
+     28.8,
+     28.4,
+     28.4
+    ],
+    "cape": [
+     1090.0,
+     1160.0,
+     1210.0,
+     1240.0,
+     1270.0,
+     1300.0,
+     1330.0,
+     1360.0,
+     1370.0,
+     1380.0,
+     1360.0,
+     1330.0
+    ],
+    "weather_code": [
+     80.0,
+     80.0,
+     81.0,
+     81.0,
+     81.0,
+     81.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-09-17T11:00",
+     "2026-09-17T12:00",
+     "2026-09-17T13:00",
+     "2026-09-17T14:00",
+     "2026-09-17T15:00"
+    ],
+    "pressure_msl": [
+     1011.3,
+     1010.9,
+     1010.1,
+     1009.6,
+     1009.5
+    ],
+    "cloud_cover": [
+     100.0,
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "precipitation_probability": [
+     100.0,
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "precipitation": [
+     3.2,
+     1.9,
+     2.6,
+     1.5,
+     1.4
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-09-17T09:00",
+     "raw": "RPMZ 170100Z 29006KT 260V320 8000 SCT015 BKN090 29/26 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-17T10:00",
+     "raw": "RPMZ 170200Z 25006KT 200V280 9000 SCT015 BKN090 29/26 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-17T11:00",
+     "raw": "RPMZ 170300Z 25006KT 170V300 8000 FEW015 SCT090 BKN300 30/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-17T12:00",
+     "raw": "RPMZ 170400Z 27007KT 230V300 7000 FEW015 BKN090 30/25 Q1010 RMK A2983"
+    },
+    {
+     "time": "2026-09-17T12:35",
+     "raw": "RPMZ 170435Z 27008KT 230V300 7000 TS FEW016CB BKN090 30/26 Q1010 RMK A2983 CB NW"
+    },
+    {
+     "time": "2026-09-17T13:00",
+     "raw": "RPMZ 170500Z 26009KT 7000 FEW016CB BKN090 30/25 Q1009 RETS RMK A2980 CB NW E-SE"
+    },
+    {
+     "time": "2026-09-17T14:00",
+     "raw": "RPMZ 170600Z 27008KT 240V300 7000 FEW016CB BKN090 30/25 Q1009 RMK A2980 CB N-NE S SW"
+    },
+    {
+     "time": "2026-09-17T15:00",
+     "raw": "RPMZ 170700Z 29011KT 9000 VCSH FEW016CB BKN090 28/25 Q1009 RMK A2980 CB NW-N  VCSH NW-N"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-09-17T13:00",
+     "2026-09-17T14:00",
+     "2026-09-17T15:00",
+     "2026-09-17T16:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     2.6,
+     1.5,
+     1.4,
+     1.0
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     81.0,
+     80.0,
+     80.0,
+     55.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     2.4,
+     2.4,
+     1.4,
+     1.4
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     80.0,
+     80.0,
+     80.0,
+     80.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.0,
+     0.1,
+     0.6,
+     0.8
+    ],
+    "cloud_cover_gfs_seamless": [
+     78.0,
+     63.0,
+     68.0,
+     74.0
+    ],
+    "weather_code_gfs_seamless": [
+     2.0,
+     51.0,
+     53.0,
+     53.0
+    ],
+    "precipitation_icon_seamless": [
+     2.1,
+     2.3,
+     3.1,
+     2.3
+    ],
+    "cloud_cover_icon_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_icon_seamless": [
+     95.0,
+     95.0,
+     95.0,
+     95.0
+    ],
+    "precipitation_jma_seamless": [
+     0.2,
+     0.2,
+     0.4,
+     0.4
+    ],
+    "cloud_cover_jma_seamless": [
+     83.0,
+     83.0,
+     83.0,
+     82.0
+    ],
+    "weather_code_jma_seamless": [
+     51.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_cma_grapes_global": [
+     2.8,
+     2.8,
+     3.5,
+     3.5
+    ],
+    "cloud_cover_cma_grapes_global": [
+     27.0,
+     0.0,
+     32.0,
+     65.0
+    ],
+    "weather_code_cma_grapes_global": [
+     81.0,
+     81.0,
+     81.0,
+     81.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     1.7,
+     0.2,
+     1.9
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     3.0,
+     95.0,
+     51.0,
+     95.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     48.0,
+     56.0,
+     68.0,
+     80.0
+    ],
+    "weather_code_gem_seamless": [
+     1.0,
+     2.0,
+     2.0,
+     3.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.1,
+     0.0,
+     0.6,
+     0.8
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     51.0,
+     3.0,
+     53.0,
+     53.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": 0.866,
+    "sat_bt_min_10km": -21.124,
+    "sat_bt_min_30km": -63.237,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.23937,
+    "sat_cooling_20min": 3.916,
+    "sat_upwind_cold": 0.09317,
+    "sat_cooling_10min": 6.714,
+    "sat_min_cooling_10min": 15.144,
+    "sat_sustained_cooling": -6.714,
+    "sat_wv_campus": -23.557,
+    "sat_wv_minus_ir_campus": -24.423,
+    "sat_wv_minus_ir_10km": -16.073,
+    "sat_wv_min_30km": -64.089,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_fallback_probability": 0.2874882331437074,
+   "expected_features": {
+    "precip_0": 0.4,
+    "precip_1": 0.4,
+    "precip_2": 0.4,
+    "precip_sum_1h": 1.6,
+    "precip_sum_3h": 6.2,
+    "rain_code_now": 1.0,
+    "temp": 26.1,
+    "temp_change_1h": 0.2,
+    "humidity": 91.0,
+    "dewpoint_depression": 1.5,
+    "wind_speed": 10.5,
+    "wind_gust": 28.4,
+    "wind_dir_sin": -0.961261696,
+    "wind_dir_cos": -0.275637356,
+    "cape": 1330.0,
+    "pressure": 1009.6,
+    "pressure_change_3h": -1.7,
+    "cloud_cover": 100.0,
+    "precip_prob_next_hour": 100.0,
+    "fcst_precip_next_hour": 1.4,
+    "hour_sin": -0.608761429,
+    "hour_cos": -0.79335334,
+    "doy_sin": -0.971395285,
+    "doy_cos": -0.237468316,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 1.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 1.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 30.0,
+    "mm_wet_share": 0.888888889,
+    "mm_precip_mean": 1.244444444,
+    "mm_cloud_mean": 78.0,
+    "mm_thunder_share": 0.111111111,
+    "sat_bt_campus": 0.866,
+    "sat_bt_min_10km": -21.124,
+    "sat_bt_min_30km": -63.237,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.23937,
+    "sat_cooling_20min": 3.916,
+    "sat_upwind_cold": 0.09317,
+    "sat_cooling_10min": 6.714,
+    "sat_min_cooling_10min": 15.144,
+    "sat_sustained_cooling": -6.714,
+    "sat_wv_campus": -23.557,
+    "sat_wv_minus_ir_campus": -24.423,
+    "sat_wv_minus_ir_10km": -16.073,
+    "sat_wv_min_30km": -64.089,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_probability": 0.20523605997624228
+  },
+  {
+   "now": "2026-10-21T01:30",
+   "minutely_15": {
+    "time": [
+     "2026-10-20T22:45",
+     "2026-10-20T23:00",
+     "2026-10-20T23:15",
+     "2026-10-20T23:30",
+     "2026-10-20T23:45",
+     "2026-10-21T00:00",
+     "2026-10-21T00:15",
+     "2026-10-21T00:30",
+     "2026-10-21T00:45",
+     "2026-10-21T01:00",
+     "2026-10-21T01:15",
+     "2026-10-21T01:30"
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "temperature_2m": [
+     27.5,
+     27.5,
+     27.4,
+     27.3,
+     27.2,
+     27.2,
+     27.1,
+     27.1,
+     27.0,
+     27.0,
+     26.9,
+     26.9
+    ],
+    "relative_humidity_2m": [
+     81.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     79.0,
+     79.0,
+     79.0,
+     79.0,
+     79.0,
+     79.0,
+     79.0
+    ],
+    "dew_point_2m": [
+     23.9,
+     23.8,
+     23.6,
+     23.5,
+     23.4,
+     23.3,
+     23.2,
+     23.2,
+     23.2,
+     23.1,
+     23.1,
+     23.0
+    ],
+    "wind_speed_10m": [
+     5.6,
+     5.8,
+     6.0,
+     6.1,
+     6.3,
+     6.5,
+     6.5,
+     6.7,
+     6.7,
+     6.5,
+     6.3,
+     5.7
+    ],
+    "wind_direction_10m": [
+     327.0,
+     326.0,
+     327.0,
+     328.0,
+     329.0,
+     330.0,
+     330.0,
+     329.0,
+     329.0,
+     328.0,
+     329.0,
+     328.0
+    ],
+    "wind_gusts_10m": [
+     11.5,
+     11.9,
+     12.2,
+     12.2,
+     12.6,
+     12.6,
+     13.0,
+     13.0,
+     13.3,
+     13.3,
+     13.3,
+     13.3
+    ],
+    "cape": [
+     1530.0,
+     1460.0,
+     1420.0,
+     1410.0,
+     1400.0,
+     1400.0,
+     1410.0,
+     1420.0,
+     1430.0,
+     1420.0,
+     1360.0,
+     1280.0
+    ],
+    "weather_code": [
+     2.0,
+     2.0,
+     2.0,
+     2.0,
+     2.0,
+     2.0,
+     2.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-10-20T22:00",
+     "2026-10-20T23:00",
+     "2026-10-21T00:00",
+     "2026-10-21T01:00",
+     "2026-10-21T02:00"
+    ],
+    "pressure_msl": [
+     1011.0,
+     1010.8,
+     1010.3,
+     1010.0,
+     1009.9
+    ],
+    "cloud_cover": [
+     82.0,
+     73.0,
+     64.0,
+     23.0,
+     66.0
+    ],
+    "precipitation_probability": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-10-20T20:00",
+     "raw": "RPMZ 201200Z 29003KT 9999 FEW017 BKN300 28/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-10-20T21:00",
+     "raw": "RPMZ 201300Z VRB01KT 9999 FEW017 BKN300 27/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-10-21T02:00",
+     "raw": "RPMZ 201800Z 03002KT 9999 FEW017 SCT300 24/24 Q1010 RMK A2983"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-10-21T00:00",
+     "2026-10-21T01:00",
+     "2026-10-21T02:00",
+     "2026-10-21T03:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     64.0,
+     23.0,
+     66.0,
+     94.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     2.0,
+     1.0,
+     2.0,
+     3.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     25.0,
+     34.0,
+     45.0,
+     58.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     1.0,
+     1.0,
+     1.0,
+     2.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gfs_seamless": [
+     18.0,
+     15.0,
+     19.0,
+     21.0
+    ],
+    "weather_code_gfs_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "precipitation_icon_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_icon_seamless": [
+     100.0,
+     100.0,
+     67.0,
+     88.0
+    ],
+    "weather_code_icon_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_jma_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.1
+    ],
+    "cloud_cover_jma_seamless": [
+     65.0,
+     59.0,
+     54.0,
+     51.0
+    ],
+    "weather_code_jma_seamless": [
+     2.0,
+     2.0,
+     2.0,
+     51.0
+    ],
+    "precipitation_cma_grapes_global": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_cma_grapes_global": [
+     2.0,
+     1.0,
+     0.0,
+     26.0
+    ],
+    "weather_code_cma_grapes_global": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     61.0,
+     66.0,
+     3.0,
+     0.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     2.0,
+     2.0,
+     0.0,
+     0.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "weather_code_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     100.0,
+     95.0,
+     73.0,
+     80.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     3.0,
+     3.0,
+     2.0,
+     3.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": 21.979,
+    "sat_bt_min_10km": 19.704,
+    "sat_bt_min_30km": 17.389,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": -0.058,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -0.034,
+    "sat_min_cooling_10min": -0.079,
+    "sat_sustained_cooling": 0.024,
+    "sat_wv_campus": -14.897,
+    "sat_wv_minus_ir_campus": -36.876,
+    "sat_wv_minus_ir_10km": -35.153,
+    "sat_wv_min_30km": -16.201,
+    "sat_phase_water_10km": 0.69565,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.53071
+   },
+   "expected_fallback_probability": 0.015128232822519362,
+   "expected_features": {
+    "precip_0": 0.0,
+    "precip_1": 0.0,
+    "precip_2": 0.0,
+    "precip_sum_1h": 0.0,
+    "precip_sum_3h": 0.0,
+    "rain_code_now": 0.0,
+    "temp": 26.9,
+    "temp_change_1h": -0.2,
+    "humidity": 79.0,
+    "dewpoint_depression": 3.9,
+    "wind_speed": 5.7,
+    "wind_gust": 13.3,
+    "wind_dir_sin": -0.529919264,
+    "wind_dir_cos": 0.848048096,
+    "cape": 1280.0,
+    "pressure": 1010.0,
+    "pressure_change_3h": -1.0,
+    "cloud_cover": 23.0,
+    "precip_prob_next_hour": 0.0,
+    "fcst_precip_next_hour": 0.0,
+    "hour_sin": 0.382683432,
+    "hour_cos": 0.923879533,
+    "doy_sin": -0.941033635,
+    "doy_cos": 0.338313018,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 0.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 240.0,
+    "mm_wet_share": 0.0,
+    "mm_precip_mean": 0.0,
+    "mm_cloud_mean": 43.666666667,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": 21.979,
+    "sat_bt_min_10km": 19.704,
+    "sat_bt_min_30km": 17.389,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.0,
+    "sat_cooling_20min": -0.058,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -0.034,
+    "sat_min_cooling_10min": -0.079,
+    "sat_sustained_cooling": 0.024,
+    "sat_wv_campus": -14.897,
+    "sat_wv_minus_ir_campus": -36.876,
+    "sat_wv_minus_ir_10km": -35.153,
+    "sat_wv_min_30km": -16.201,
+    "sat_phase_water_10km": 0.69565,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.0,
+    "sat_phase_cloudy_30km": 0.53071
+   },
+   "expected_probability": 0.0009508453863887655
+  },
+  {
+   "now": "2026-09-13T05:30",
+   "minutely_15": {
+    "time": [
+     "2026-09-13T02:45",
+     "2026-09-13T03:00",
+     "2026-09-13T03:15",
+     "2026-09-13T03:30",
+     "2026-09-13T03:45",
+     "2026-09-13T04:00",
+     "2026-09-13T04:15",
+     "2026-09-13T04:30",
+     "2026-09-13T04:45",
+     "2026-09-13T05:00",
+     "2026-09-13T05:15",
+     "2026-09-13T05:30"
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     0.4,
+     0.4,
+     0.4,
+     0.4,
+     0.3,
+     0.3,
+     0.3,
+     0.3,
+     0.1,
+     0.1
+    ],
+    "temperature_2m": [
+     26.7,
+     26.5,
+     26.3,
+     26.0,
+     25.8,
+     25.5,
+     25.3,
+     25.1,
+     24.9,
+     24.8,
+     24.8,
+     24.7
+    ],
+    "relative_humidity_2m": [
+     87.0,
+     88.0,
+     89.0,
+     90.0,
+     91.0,
+     91.0,
+     93.0,
+     94.0,
+     95.0,
+     95.0,
+     95.0,
+     95.0
+    ],
+    "dew_point_2m": [
+     24.3,
+     24.4,
+     24.3,
+     24.2,
+     24.1,
+     24.0,
+     24.0,
+     24.0,
+     24.0,
+     24.0,
+     24.0,
+     23.9
+    ],
+    "wind_speed_10m": [
+     3.3,
+     3.7,
+     4.3,
+     5.0,
+     5.5,
+     5.4,
+     4.0,
+     2.6,
+     3.2,
+     4.2,
+     4.1,
+     3.1
+    ],
+    "wind_direction_10m": [
+     283.0,
+     284.0,
+     292.0,
+     300.0,
+     306.0,
+     307.0,
+     297.0,
+     258.0,
+     207.0,
+     192.0,
+     195.0,
+     211.0
+    ],
+    "wind_gusts_10m": [
+     7.2,
+     7.6,
+     8.3,
+     9.4,
+     10.4,
+     11.2,
+     11.9,
+     12.6,
+     13.0,
+     13.0,
+     12.2,
+     10.8
+    ],
+    "cape": [
+     1960.0,
+     2020.0,
+     1960.0,
+     1820.0,
+     1640.0,
+     1490.0,
+     1370.0,
+     1250.0,
+     1150.0,
+     1070.0,
+     1010.0,
+     960.0
+    ],
+    "weather_code": [
+     45.0,
+     45.0,
+     80.0,
+     80.0,
+     80.0,
+     80.0,
+     55.0,
+     55.0,
+     55.0,
+     55.0,
+     51.0,
+     51.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-09-13T02:00",
+     "2026-09-13T03:00",
+     "2026-09-13T04:00",
+     "2026-09-13T05:00",
+     "2026-09-13T06:00"
+    ],
+    "pressure_msl": [
+     1011.4,
+     1010.9,
+     1011.1,
+     1011.5,
+     1011.7
+    ],
+    "cloud_cover": [
+     25.0,
+     41.0,
+     80.0,
+     70.0,
+     66.0
+    ],
+    "precipitation_probability": [
+     12.0,
+     24.0,
+     41.0,
+     55.0,
+     60.0
+    ],
+    "precipitation": [
+     0.0,
+     0.0,
+     1.6,
+     1.1,
+     0.3
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-09-13T02:00",
+     "raw": "RPMZ 121800Z VRB02KT 9999 FEW015CB SCT016 BKN090 26/24 Q1012 RMK A2988 CB W"
+    },
+    {
+     "time": "2026-09-13T05:00",
+     "raw": "RPMZ 122100Z 27006KT 9000 FEW016CB SCT300 26/23 Q1011 RMK A2985 CB NW  E"
+    },
+    {
+     "time": "2026-09-13T06:00",
+     "raw": "RPMZ 122200Z 27007KT 230V300 9000 FEW015CB SCT016 BKN300 25/24 Q1012 RMK A2988 CB SE SW NW"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-09-13T04:00",
+     "2026-09-13T05:00",
+     "2026-09-13T06:00",
+     "2026-09-13T07:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     1.6,
+     1.1,
+     0.3,
+     0.1
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     80.0,
+     70.0,
+     66.0,
+     24.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     80.0,
+     55.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.4,
+     0.4,
+     0.1,
+     0.1
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     55.0,
+     67.0,
+     78.0,
+     90.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     51.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.1,
+     0.9,
+     1.2,
+     0.5
+    ],
+    "cloud_cover_gfs_seamless": [
+     89.0,
+     97.0,
+     86.0,
+     66.0
+    ],
+    "weather_code_gfs_seamless": [
+     51.0,
+     53.0,
+     55.0,
+     53.0
+    ],
+    "precipitation_icon_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "cloud_cover_icon_seamless": [
+     24.0,
+     14.0,
+     41.0,
+     77.0
+    ],
+    "weather_code_icon_seamless": [
+     1.0,
+     1.0,
+     1.0,
+     80.0
+    ],
+    "precipitation_jma_seamless": [
+     0.1,
+     0.1,
+     0.1,
+     0.1
+    ],
+    "cloud_cover_jma_seamless": [
+     80.0,
+     82.0,
+     84.0,
+     86.0
+    ],
+    "weather_code_jma_seamless": [
+     51.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_cma_grapes_global": [
+     3.1,
+     3.1,
+     0.2,
+     0.2
+    ],
+    "cloud_cover_cma_grapes_global": [
+     58.0,
+     87.0,
+     58.0,
+     29.0
+    ],
+    "weather_code_cma_grapes_global": [
+     81.0,
+     81.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.1,
+     0.3
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     92.0,
+     97.0,
+     89.0,
+     95.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     3.0,
+     3.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_gem_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     32.0,
+     20.0,
+     20.0,
+     48.0
+    ],
+    "weather_code_gem_seamless": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.1
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     99.0,
+     97.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     51.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": 16.876,
+    "sat_bt_min_10km": 5.354,
+    "sat_bt_min_30km": -61.497,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.07244,
+    "sat_cooling_20min": 1.741,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -0.137,
+    "sat_min_cooling_10min": -2.85,
+    "sat_sustained_cooling": -1.878,
+    "sat_wv_campus": -15.164,
+    "sat_wv_minus_ir_campus": -32.04,
+    "sat_wv_minus_ir_10km": -22.28,
+    "sat_wv_min_30km": -63.378,
+    "sat_phase_water_10km": 0.76812,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.11594,
+    "sat_phase_cloudy_30km": 0.98583
+   },
+   "expected_fallback_probability": 0.14970382916965497,
+   "expected_features": {
+    "precip_0": 0.1,
+    "precip_1": 0.1,
+    "precip_2": 0.3,
+    "precip_sum_1h": 0.8,
+    "precip_sum_3h": 3.0,
+    "rain_code_now": 1.0,
+    "temp": 24.7,
+    "temp_change_1h": -0.4,
+    "humidity": 95.0,
+    "dewpoint_depression": 0.8,
+    "wind_speed": 3.1,
+    "wind_gust": 10.8,
+    "wind_dir_sin": -0.515038075,
+    "wind_dir_cos": -0.857167301,
+    "cape": 960.0,
+    "pressure": 1011.5,
+    "pressure_change_3h": 0.1,
+    "cloud_cover": 70.0,
+    "precip_prob_next_hour": 60.0,
+    "fcst_precip_next_hour": 0.3,
+    "hour_sin": 0.991444861,
+    "hour_cos": 0.130526192,
+    "doy_sin": -0.952769292,
+    "doy_cos": -0.303695038,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 1.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 30.0,
+    "mm_wet_share": 0.666666667,
+    "mm_precip_mean": 0.222222222,
+    "mm_cloud_mean": 70.111111111,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": 16.876,
+    "sat_bt_min_10km": 5.354,
+    "sat_bt_min_30km": -61.497,
+    "sat_cold_10km": 0.0,
+    "sat_cold_30km": 0.07244,
+    "sat_cooling_20min": 1.741,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -0.137,
+    "sat_min_cooling_10min": -2.85,
+    "sat_sustained_cooling": -1.878,
+    "sat_wv_campus": -15.164,
+    "sat_wv_minus_ir_campus": -32.04,
+    "sat_wv_minus_ir_10km": -22.28,
+    "sat_wv_min_30km": -63.378,
+    "sat_phase_water_10km": 0.76812,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 0.11594,
+    "sat_phase_cloudy_30km": 0.98583
+   },
+   "expected_probability": 0.13822133008563947
+  },
+  {
+   "now": "2026-09-06T17:30",
+   "minutely_15": {
+    "time": [
+     "2026-09-06T14:45",
+     "2026-09-06T15:00",
+     "2026-09-06T15:15",
+     "2026-09-06T15:30",
+     "2026-09-06T15:45",
+     "2026-09-06T16:00",
+     "2026-09-06T16:15",
+     "2026-09-06T16:30",
+     "2026-09-06T16:45",
+     "2026-09-06T17:00",
+     "2026-09-06T17:15",
+     "2026-09-06T17:30"
+    ],
+    "precipitation": [
+     0.1,
+     0.1,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "temperature_2m": [
+     31.2,
+     31.1,
+     30.9,
+     30.7,
+     30.5,
+     30.4,
+     30.2,
+     30.1,
+     29.9,
+     29.8,
+     29.6,
+     29.4
+    ],
+    "relative_humidity_2m": [
+     58.0,
+     58.0,
+     59.0,
+     60.0,
+     61.0,
+     62.0,
+     63.0,
+     63.0,
+     64.0,
+     65.0,
+     66.0,
+     67.0
+    ],
+    "dew_point_2m": [
+     22.0,
+     22.0,
+     22.0,
+     22.0,
+     22.1,
+     22.2,
+     22.3,
+     22.4,
+     22.5,
+     22.6,
+     22.6,
+     22.7
+    ],
+    "wind_speed_10m": [
+     6.4,
+     5.9,
+     6.0,
+     6.6,
+     7.1,
+     7.2,
+     6.7,
+     5.7,
+     4.7,
+     3.9,
+     3.1,
+     2.3
+    ],
+    "wind_direction_10m": [
+     205.0,
+     215.0,
+     226.0,
+     235.0,
+     243.0,
+     245.0,
+     243.0,
+     235.0,
+     227.0,
+     214.0,
+     201.0,
+     184.0
+    ],
+    "wind_gusts_10m": [
+     25.2,
+     24.5,
+     23.4,
+     22.7,
+     21.6,
+     20.9,
+     20.5,
+     20.5,
+     20.5,
+     19.8,
+     18.4,
+     16.2
+    ],
+    "cape": [
+     980.0,
+     920.0,
+     910.0,
+     940.0,
+     980.0,
+     1050.0,
+     1150.0,
+     1270.0,
+     1400.0,
+     1490.0,
+     1530.0,
+     1540.0
+    ],
+    "weather_code": [
+     51.0,
+     51.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ]
+   },
+   "hourly": {
+    "time": [
+     "2026-09-06T14:00",
+     "2026-09-06T15:00",
+     "2026-09-06T16:00",
+     "2026-09-06T17:00",
+     "2026-09-06T18:00"
+    ],
+    "pressure_msl": [
+     1010.5,
+     1010.4,
+     1010.6,
+     1011.0,
+     1011.8
+    ],
+    "cloud_cover": [
+     98.0,
+     100.0,
+     100.0,
+     99.0,
+     99.0
+    ],
+    "precipitation_probability": [
+     20.0,
+     40.0,
+     65.0,
+     75.0,
+     58.0
+    ],
+    "precipitation": [
+     0.4,
+     0.2,
+     0.1,
+     0.0,
+     0.0
+    ]
+   },
+   "metars": [
+    {
+     "time": "2026-09-06T12:00",
+     "raw": "RPMZ 060400Z 15006KT 090V200 6000 FEW017 BKN300 33/25 Q1012 RMK A2988"
+    },
+    {
+     "time": "2026-09-06T13:00",
+     "raw": "RPMZ 060500Z 16005KT 100V230 6000 FEW017 BKN300 32/25 Q1012 RMK A2988"
+    },
+    {
+     "time": "2026-09-06T14:00",
+     "raw": "RPMZ 060600Z 15005KT 100V210 6000 FEW017 BKN090 31/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-06T15:00",
+     "raw": "RPMZ 060700Z 21004KT 150V300 7000 FEW017 BKN300 31/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-06T16:00",
+     "raw": "RPMZ 060800Z 27007KT 200V290 7000 FEW017 BKN300 30/26 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-06T17:00",
+     "raw": "RPMZ 060900Z 24005KT 210V270 7000 FEW017 BKN300 30/25 Q1011 RMK A2985"
+    },
+    {
+     "time": "2026-09-06T18:00",
+     "raw": "RPMZ 061000Z 30003KT 270V330 8000 FEW017 BKN300 29/25 Q1012 RMK A2988"
+    }
+   ],
+   "multi_model": {
+    "time": [
+     "2026-09-06T16:00",
+     "2026-09-06T17:00",
+     "2026-09-06T18:00",
+     "2026-09-06T19:00"
+    ],
+    "precipitation_ecmwf_ifs": [
+     0.1,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs": [
+     100.0,
+     99.0,
+     99.0,
+     99.0
+    ],
+    "weather_code_ecmwf_ifs": [
+     51.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_ecmwf_ifs025": [
+     0.1,
+     0.1,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ecmwf_ifs025": [
+     99.0,
+     99.0,
+     99.0,
+     99.0
+    ],
+    "weather_code_ecmwf_ifs025": [
+     51.0,
+     51.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_gfs_seamless": [
+     0.0,
+     0.0,
+     0.1,
+     0.0
+    ],
+    "cloud_cover_gfs_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_gfs_seamless": [
+     3.0,
+     3.0,
+     51.0,
+     3.0
+    ],
+    "precipitation_icon_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_icon_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_icon_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_jma_seamless": [
+     0.1,
+     0.1,
+     0.1,
+     0.1
+    ],
+    "cloud_cover_jma_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_jma_seamless": [
+     51.0,
+     51.0,
+     51.0,
+     51.0
+    ],
+    "precipitation_cma_grapes_global": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_cma_grapes_global": [
+     46.0,
+     69.0,
+     46.0,
+     23.0
+    ],
+    "weather_code_cma_grapes_global": [
+     1.0,
+     2.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_ukmo_global_deterministic_10km": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_ukmo_global_deterministic_10km": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_ukmo_global_deterministic_10km": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ],
+    "precipitation_gem_seamless": [
+     0.9,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_gem_seamless": [
+     48.0,
+     24.0,
+     36.0,
+     24.0
+    ],
+    "weather_code_gem_seamless": [
+     53.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "precipitation_meteofrance_seamless": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "cloud_cover_meteofrance_seamless": [
+     100.0,
+     100.0,
+     100.0,
+     100.0
+    ],
+    "weather_code_meteofrance_seamless": [
+     3.0,
+     3.0,
+     3.0,
+     3.0
+    ]
+   },
+   "satellite_features": {
+    "sat_bt_campus": -22.967,
+    "sat_bt_min_10km": -47.742,
+    "sat_bt_min_30km": -49.189,
+    "sat_cold_10km": 0.27536,
+    "sat_cold_30km": 0.27087,
+    "sat_cooling_20min": -5.158,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -4.409,
+    "sat_min_cooling_10min": -2.846,
+    "sat_sustained_cooling": 0.749,
+    "sat_wv_campus": -39.011,
+    "sat_wv_minus_ir_campus": -16.044,
+    "sat_wv_minus_ir_10km": -4.132,
+    "sat_wv_min_30km": -52.261,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_fallback_probability": 0.01621151541592578,
+   "expected_features": {
+    "precip_0": 0.0,
+    "precip_1": 0.0,
+    "precip_2": 0.0,
+    "precip_sum_1h": 0.0,
+    "precip_sum_3h": 0.2,
+    "rain_code_now": 0.0,
+    "temp": 29.4,
+    "temp_change_1h": -0.7,
+    "humidity": 67.0,
+    "dewpoint_depression": 6.7,
+    "wind_speed": 2.3,
+    "wind_gust": 16.2,
+    "wind_dir_sin": -0.069756474,
+    "wind_dir_cos": -0.99756405,
+    "cape": 1540.0,
+    "pressure": 1011.0,
+    "pressure_change_3h": 0.5,
+    "cloud_cover": 99.0,
+    "precip_prob_next_hour": 58.0,
+    "fcst_precip_next_hour": 0.0,
+    "hour_sin": -0.991444861,
+    "hour_cos": -0.130526192,
+    "doy_sin": -0.90938822,
+    "doy_cos": -0.415948392,
+    "obs_rain": 0.0,
+    "obs_rain_fresh": 0.0,
+    "obs_rain_2h": 0.0,
+    "obs_thunder": 0.0,
+    "obs_vicinity": 0.0,
+    "obs_convective_cloud": 0.0,
+    "obs_lightning": 0.0,
+    "obs_recent_rain": 0.0,
+    "obs_age_min": 30.0,
+    "mm_wet_share": 0.222222222,
+    "mm_precip_mean": 0.022222222,
+    "mm_cloud_mean": 87.888888889,
+    "mm_thunder_share": 0.0,
+    "sat_bt_campus": -22.967,
+    "sat_bt_min_10km": -47.742,
+    "sat_bt_min_30km": -49.189,
+    "sat_cold_10km": 0.27536,
+    "sat_cold_30km": 0.27087,
+    "sat_cooling_20min": -5.158,
+    "sat_upwind_cold": 0.0,
+    "sat_cooling_10min": -4.409,
+    "sat_min_cooling_10min": -2.846,
+    "sat_sustained_cooling": 0.749,
+    "sat_wv_campus": -39.011,
+    "sat_wv_minus_ir_campus": -16.044,
+    "sat_wv_minus_ir_10km": -4.132,
+    "sat_wv_min_30km": -52.261,
+    "sat_phase_water_10km": 0.0,
+    "sat_phase_supercooled_10km": 0.0,
+    "sat_phase_ice_10km": 1.0,
+    "sat_phase_cloudy_30km": 1.0
+   },
+   "expected_probability": 0.01800033253217994
+  }
+ ]
+}

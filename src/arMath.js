@@ -170,61 +170,6 @@ export function enuToLatLon(anchorLat, anchorLng, x, z, elevation = 0) {
 }
 
 
-// ── Destination-anchored world frame (classic 3D view) ─────────────
-// The destination is the fixed origin of the ENU world (x = east, y = up,
-// z = −north, matching the frame documented at the top of this file).
-// Nodes are placed ONCE from the destination's fixed coordinates — no live
-// sensor input — so the constellation is rigid. Per frame only the CAMERA
-// moves (inverse of the user's live position + heading). GPS/heading noise
-// then shifts the whole world rigidly instead of swimming each node.
-/**
- * Offset of `point` ({latitude, longitude}) from `dest`, in world meters.
- * Returns { x, z, dist, bearing } with bearing clockwise-from-north.
- */
-export function destFrameOffset(dest, point) {
-    const { dist, bearing } = bearingAndDistance(dest.latitude, dest.longitude, point.latitude, point.longitude);
-    const rad = (bearing * Math.PI) / 180;
-
-    return { x: Math.sin(rad) * dist, z: -Math.cos(rad) * dist, dist, bearing };
-}
-
-/**
- * Camera pose for the live user fix in the destination frame.
- * `headingDeg` is degrees clockwise from north (null = no compass yet).
- * Returns { x, y, z, yawRad, destBearingRad } — yaw rotates the default
- * −Z view to heading. destBearingRad is the GPS-derived bearing from the
- * user to the destination, used as the north-anchored reference yaw when
- * no compass heading is available yet.
- */
-export function cameraPoseForUser(user, dest, headingDeg) {
-    const { dist, bearing } = bearingAndDistance(user.latitude, user.longitude, dest.latitude, dest.longitude);
-    // User sits opposite the user→dest bearing, at the same distance.
-    const back = ((bearing + 180) * Math.PI) / 180;
-    // GPS-derived reference yaw: face the destination using its known
-    // coordinates + 0° north as the world reference axis. This is the
-    // dual anchor — destination position AND north — so the destination
-    // is always straight ahead on open, independent of the compass.
-    const destBearingRad = -(bearing * Math.PI) / 180;
-
-    return {
-        x: Math.sin(back) * dist,
-        y: 0,
-        z: -Math.cos(back) * dist,
-        yawRad: (headingDeg === null || headingDeg === undefined) ? destBearingRad : (-headingDeg * Math.PI) / 180,
-        destBearingRad,
-        dist,
-    };
-}
-
-export async function supportsImmersiveAR() {
-    if (!navigator.xr) return false;
-    try {
-        return await navigator.xr.isSessionSupported('immersive-ar');
-    } catch {
-        return false;
-    }
-}
-
 // YOU header builder (shared by both AR views): coords, accuracy, nearest
 // network node, live camera yaw/pitch. Returns '' with no fix. Callers
 // write it through only when changed, so updates are instant yet cheap.
@@ -251,10 +196,9 @@ export function buildYouText(user, nodes, motion) {
 }
 
 // ── Shared AR route styling ──────────────────────────────────────────
-// Matches the 2D admin map: route nodes grey, destinations green. Waypoint
-// spheres are NEVER blue — blue dot means "you are here".
+// Matches the 2D admin map: route nodes grey. Waypoint spheres are NEVER blue:
+// a blue dot means "you are here".
 export const ROUTE_COLOR = 0x95a5a6;
-export const DEST_COLOR = 0x22c55e;
 export const MAX_ROUTE_SPHERES = 10;
 
 export const SPHERE_SIZE_REF_DIST = 12;
@@ -266,48 +210,6 @@ export const SPHERE_SIZE_MAX = 1.5;
 export function responsiveScale(distM) {
     if (!Number.isFinite(distM)) return 1;
     return Math.min(SPHERE_SIZE_MAX, Math.max(SPHERE_SIZE_MIN, distM / SPHERE_SIZE_REF_DIST));
-}
-
-// ── Outlined sphere helper ────────────────────────────────────────────
-// Returns a THREE.Group that acts as a drop-in for a single Mesh: it has
-// .position, .scale, .visible, and .traverse(). Two child meshes:
-//   • inner  – the coloured fill
-//   • outer  – a slightly larger BackSide sphere that peeks out at edges
-//             to create a visible outline / border ring.
-// outlineScale: how much larger the outline sphere is (1.2 = 20 %).
-export function createOutlinedSphere(
-    innerRadius, innerColor, outlineColor,
-    segments = 16, outlineScale = 1.25, outlineOpacity = 0.95,
-) {
-    const group = new THREE.Group();
-    const outlineRadius = innerRadius * outlineScale;
-
-    // Shared geometries — both spheres same segment count, reuse across pool
-    // via InstancedMesh (callers that use the pool never call this directly).
-    const innerMat = new THREE.MeshBasicMaterial({
-        color: innerColor,
-        transparent: true,
-        opacity: 0.92,
-    });
-    const inner = new THREE.Mesh(
-        new THREE.SphereGeometry(innerRadius, segments, segments),
-        innerMat,
-    );
-    group.add(inner);
-
-    const outerMat = new THREE.MeshBasicMaterial({
-        color: outlineColor,
-        side: THREE.BackSide,
-        transparent: true,
-        opacity: outlineOpacity,
-    });
-    const outer = new THREE.Mesh(
-        new THREE.SphereGeometry(outlineRadius, segments, segments),
-        outerMat,
-    );
-    group.add(outer);
-
-    return group;
 }
 
 // ── Sphere pool (individual meshes, shared geometry + material) ───────
@@ -513,150 +415,4 @@ export function createLabelSprite(text, bg = 'rgba(214,27,27,0.92)') {
     sprite.renderOrder = 999;
 
     return sprite;
-}
-
-// ── Destination card sprite (3D, camera-facing) ──────────────────────
-// Card-style floating label: green avatar circle + name + distance.
-// Returns { sprite, update(name, distM, scaleFactor) }.
-// Call update() every frame — it handles both canvas redraw (when text
-// changes) AND sprite scaling (every frame) so callers never touch scale.
-export function createDestCardSprite(initialName = 'Destination', initialDist = NaN) {
-    let lastText = '';
-    let baseAspectW = 1; // canvas aspect ratio (width / height)
-    let baseAspectH = 1;
-    const canvas = document.createElement('canvas');
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-    const sprite = new THREE.Sprite(mat);
-    sprite.renderOrder = 999;
-
-    const CARD_BG = 'rgba(0,0,0,0.72)';
-    const AVATAR_BG = '#15803d';
-    const NAME_COLOR = '#fff';
-    const DIST_COLOR = '#aaa';
-
-    function redraw(name, distM) {
-        // 1 decimal for <100 m so the card feels alive as you walk.
-        const distTxt = Number.isFinite(distM)
-            ? (distM < 1000 ? `${distM.toFixed(1)} m` : `${(distM / 1000).toFixed(1)} km`)
-            : '';
-        const txt = `${name}|${distTxt}`;
-        if (txt === lastText) return false; // no change
-        lastText = txt;
-
-        const s = 2; // hidpi
-        // Measure text widths.
-        const nameFont = `600 ${24}px -apple-system, 'Segoe UI', sans-serif`;
-        const distFont = `500 ${17}px -apple-system, 'Segoe UI', sans-serif`;
-        const probe = document.createElement('canvas').getContext('2d');
-        probe.font = nameFont;
-        const nameW = probe.measureText(name).width;
-        probe.font = distFont;
-        const distW = distTxt ? probe.measureText(distTxt).width : 0;
-        const textW = Math.max(nameW, distW, 180); // minimum text width
-
-        const avatarR = 20;
-        const cardPadX = 22;
-        const cardPadY = 14;
-        const gap = 14; // avatar → text
-        const cardInnerW = avatarR * 2 + gap + textW;
-        const cardH = avatarR * 2 + cardPadY * 2;
-        const cardW = cardInnerW + cardPadX * 2;
-
-        canvas.width = cardW * s;
-        canvas.height = cardH * s;
-        canvas.style.width = `${cardW}px`;
-        canvas.style.height = `${cardH}px`;
-        const ctx = canvas.getContext('2d');
-        ctx.scale(s, s);
-
-        // Card background (rounded rect).
-        const cr = 14;
-        ctx.fillStyle = CARD_BG;
-        ctx.beginPath();
-        ctx.moveTo(cr, 0);
-        ctx.lineTo(cardW - cr, 0);
-        ctx.arcTo(cardW, 0, cardW, cr, cr);
-        ctx.lineTo(cardW, cardH - cr);
-        ctx.arcTo(cardW, cardH, cardW - cr, cardH, cr);
-        ctx.lineTo(cr, cardH);
-        ctx.arcTo(0, cardH, 0, cardH - cr, cr);
-        ctx.lineTo(0, cr);
-        ctx.arcTo(0, 0, cr, 0, cr);
-        ctx.closePath();
-        ctx.fill();
-
-        // Green avatar circle.
-        const cx = cardPadX + avatarR;
-        const cy = cardH / 2;
-        ctx.fillStyle = AVATAR_BG;
-        ctx.beginPath();
-        ctx.arc(cx, cy, avatarR, 0, Math.PI * 2);
-        ctx.fill();
-        // A drawn map pin inside the circle (not an emoji: those differ per phone and font).
-        const pinR = avatarR * 0.36;
-        const headY = cy - pinR * 0.45;
-        const tipY = headY + pinR * 2.3;
-        const spread = Math.acos(pinR / (tipY - headY)); // tangent points of the sides
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(cx, headY, pinR, Math.PI / 2 + spread, Math.PI / 2 - spread);
-        ctx.lineTo(cx, tipY);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = AVATAR_BG;
-        ctx.beginPath();
-        ctx.arc(cx, headY, pinR * 0.42, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Name text.
-        const textX = cardPadX + avatarR * 2 + gap;
-        ctx.font = nameFont;
-        ctx.fillStyle = NAME_COLOR;
-        ctx.textBaseline = 'top';
-        ctx.fillText(name, textX, cardPadY + 2);
-
-        // Distance text.
-        if (distTxt) {
-            ctx.font = distFont;
-            ctx.fillStyle = DIST_COLOR;
-            ctx.fillText(distTxt, textX, cardPadY + 28);
-        }
-
-        tex.needsUpdate = true;
-        // Store base dimensions so update() can scale from these every frame.
-        baseAspectW = cardW;
-        baseAspectH = cardH;
-        return true;
-    }
-
-    redraw(initialName, initialDist);
-
-    // Card-specific floor: compact when close, but scales up dynamically
-    // with distance so text is always readable (≥ ~30 px on a phone screen).
-    const CARD_SCALE_MIN = 0.65;  // floor – compact at close range
-
-    return {
-        sprite,
-        /** Call every frame. Handles canvas redraw + sprite scale in one shot.
-         *  scaleFactor comes from responsiveScale(dist) — the distance-based
-         *  multiplier.  A dynamic minimum ensures the card is always ≥ ~30 px
-         *  on a 1080p phone screen at any distance. */
-        update(name, distM, scaleFactor = 1) {
-            redraw(name, distM);
-            // ~30 px on 1080p with 60° FOV: minWorldH ≈ distM × 0.032
-            const dynamicMin = Math.max(CARD_SCALE_MIN, distM * 0.032);
-            const s = Math.max(scaleFactor || 1, dynamicMin);
-            sprite.scale.set(
-                (baseAspectW / baseAspectH) * s,
-                s,
-                1,
-            );
-        },
-        dispose() {
-            if (tex) tex.dispose();
-            mat.dispose();
-        },
-    };
 }

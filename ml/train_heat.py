@@ -28,6 +28,17 @@ from ERA5 inputs instead looks better on ERA5 inputs but the forecast runs about
 the default model trains on ~2.8 years; ERA5 (2016-) is still used for labels
 and the diurnal baseline.
 
+Airport inputs (Nov 2026): the airport's own heat index from its newest report at or before t
+(obs_heat_index) and how far the forecast is off from it right now (obs_minus_forecast). They are
+kept only if the model with them has a lower validation MAE at every horizon; the model without
+them is exported next to it ("fallback"), and the app scores that one when no airport report is
+recent enough. --no-airport-inputs trains without them (comparison).
+
+Hot-hour chance (Nov 2026): a ridge regression pulls rare 40 C+ hours toward the usual, so each
+horizon also gets a logistic regression for "heat index at or above HEAT_MODE_C" on the same
+inputs, with an alert threshold chosen on validation (best F1). It is a WARNING only: paths still
+close on the heat index itself (src/weatherCost.js heatModeActive).
+
 The model is one ridge regression per horizon (coefficients in heat_model.json,
 scored in plain PHP by app/Services/HeatModel.php). It is only "recommended"
 if, at EVERY horizon, its test MAE with FORECAST inputs (what the app really
@@ -35,6 +46,7 @@ receives) beats every deployable baseline:
   persistence        heat index now (from the forecast inputs)
   diurnal average    mean heat index for that month and target hour in the training years
   forecast HI        heat index from Open-Meteo's own forecast temperature/humidity at the target hour
+  airport now        (with airport inputs) the airport heat index now + the typical change to the target hour
 Otherwise the app should keep the simple forecast-HI fallback.
 """
 from __future__ import annotations
@@ -46,17 +58,19 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.preprocessing import StandardScaler
 
 from common import REPORTS, TZ
 from common import METAR_CSV
 from heat_common import (CATEGORIES, CATEGORY_KEYS, ERA5_CSV, FORECAST_CSV, GRID_FIXTURE, HEAT_MODE_C, HEAT_MODEL_JSON,
-                         HEAT_PARITY_JSON, HEAT_VARS, airport_heat_index, airport_hourly, build_heat_features, category,
-                         heat_index_c, heat_index_series, read_hourly, target)
+                         HEAT_PARITY_JSON, HEAT_VARS, OBS_FEATURES, OBS_MAX_AGE_MIN, add_airport_features, airport_heat_index,
+                         airport_hourly, airport_reports, build_heat_features, category, heat_index_c, heat_index_series,
+                         read_hourly, target)
 
 HORIZONS = [1, 2, 3]
 ALPHAS = [0.01, 0.1, 1.0, 10.0, 100.0]
+HOT_CS = [0.01, 0.1, 1.0]
 METRICS_JSON = REPORTS / "heat_metrics.json"
 DANGER = {"danger", "extreme_danger"}
 
@@ -93,6 +107,68 @@ def scores(y: np.ndarray, p: np.ndarray) -> dict:
     }
 
 
+def fit_ridge(df: pd.DataFrame, cols: list[str], val_start, test_start) -> dict:
+    """Ridge strength chosen on validation, then refit on train + validation. The test rows stay untouched."""
+    idx = df.index
+    tr, va = df[idx < val_start], df[(idx >= val_start) & (idx < test_start)]
+    if min(len(tr), len(va)) < 2000:
+        sys.exit(f"Too few rows (train {len(tr)}, val {len(va)}). Download more history.")
+    scaler = StandardScaler().fit(tr[cols].to_numpy())
+    best = None
+    for alpha in ALPHAS:
+        m = Ridge(alpha=alpha).fit(scaler.transform(tr[cols].to_numpy()), tr["y"])
+        mae = float(np.abs(m.predict(scaler.transform(va[cols].to_numpy())) - va["y"]).mean())
+        if best is None or mae < best[0]:
+            best = (mae, alpha)
+    val_mae, alpha = best
+    trva = pd.concat([tr, va])
+    scaler = StandardScaler().fit(trva[cols].to_numpy())
+    ridge = Ridge(alpha=alpha).fit(scaler.transform(trva[cols].to_numpy()), trva["y"])
+    return {"alpha": alpha, "val_mae": val_mae, "scaler": scaler, "ridge": ridge, "tr": tr, "va": va, "trva": trva}
+
+
+def fit_hot(fit: dict, cols: list[str]) -> dict | None:
+    """Logistic chance of heat index >= HEAT_MODE_C on the ridge's rows: C by validation log loss, alert
+    threshold by best F1 on validation, then refit on train + validation with the ridge's scaler."""
+    tr, va = fit["tr"], fit["va"]
+    scaler = StandardScaler().fit(tr[cols].to_numpy())
+    ytr, yva = (tr["y"] >= HEAT_MODE_C).to_numpy(), (va["y"] >= HEAT_MODE_C).to_numpy()
+    if ytr.sum() < 20 or yva.sum() < 10:
+        return None
+    best = None
+    for c in HOT_CS:
+        m = LogisticRegression(C=c, max_iter=5000).fit(scaler.transform(tr[cols].to_numpy()), ytr)
+        p = np.clip(m.predict_proba(scaler.transform(va[cols].to_numpy()))[:, 1], 1e-6, 1 - 1e-6)
+        loss = float(-np.mean(yva * np.log(p) + (~yva) * np.log(1 - p)))
+        if best is None or loss < best[0]:
+            best = (loss, c, p)
+    _, c, p = best
+
+    def f1(th: float) -> float:
+        warned = p >= th
+        tp, fn, fp = (warned & yva).sum(), (~warned & yva).sum(), (warned & ~yva).sum()
+        return 2 * tp / max(1, 2 * tp + fn + fp)
+
+    threshold = float(max(np.round(np.arange(0.05, 0.9, 0.01), 2), key=f1))
+    trva = fit["trva"]
+    m = LogisticRegression(C=c, max_iter=5000).fit(fit["scaler"].transform(trva[cols].to_numpy()),
+                                                   (trva["y"] >= HEAT_MODE_C).to_numpy())
+    return {"C": c, "threshold": threshold, "model": m}
+
+
+def hot_scores(y: np.ndarray, p: np.ndarray, threshold: float) -> dict:
+    """How the hot-hour chance did: hot hours warned, other hours warned, Brier against the base rate."""
+    hot, warned = y >= HEAT_MODE_C, p >= threshold
+    return {"hot_hours": int(hot.sum()), "warned_hot": int((warned & hot).sum()), "warned_not_hot": int((warned & ~hot).sum()),
+            "other_hours": int((~hot).sum()), "brier": round(float(((p - hot) ** 2).mean()), 5),
+            "brier_base_rate": round(float(((hot.mean() - hot) ** 2).mean()), 5)}
+
+
+def ridge_block(fit: dict) -> dict:
+    return {"alpha": fit["alpha"], "mean": fit["scaler"].mean_.tolist(), "scale": fit["scaler"].scale_.tolist(),
+            "coef": fit["ridge"].coef_.tolist(), "intercept": float(fit["ridge"].intercept_)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--train-on", choices=["era5", "forecast"], default="forecast",
@@ -101,6 +177,7 @@ def main() -> None:
                     help="the truth: the airport thermometer (default) or ERA5 reanalysis (the old truth, comparison only)")
     ap.add_argument("--test-months", type=int, default=12)
     ap.add_argument("--val-months", type=int, default=12)
+    ap.add_argument("--no-airport-inputs", action="store_true", help="train without the airport inputs (comparison)")
     a = ap.parse_args()
 
     # The labels must be the numbers the app's live record compares with (Metar::heatIndex in PHP).
@@ -121,52 +198,66 @@ def main() -> None:
 
     f_era5 = build_heat_features(era5)
     f_fc = build_heat_features(fc) if fc is not None else None
-    cols = list(f_era5.columns)
+    base_cols = list(f_era5.columns)
+    reports = airport_reports() if METAR_CSV.exists() and not a.no_airport_inputs else None
+    if reports is not None:
+        f_era5 = add_airport_features(f_era5, reports)
+        f_fc = add_airport_features(f_fc, reports) if f_fc is not None else None
+    obs_cols = base_cols + OBS_FEATURES if reports is not None else base_cols
 
     # ----- chronological split on the truth's calendar
     last = truth.dropna().index.max()
     test_start = (last - pd.DateOffset(months=a.test_months)).floor("D") + pd.Timedelta(days=1)
     val_start = test_start - pd.DateOffset(months=a.val_months)
     print(f"train-on: {a.train_on}   labels: {'airport thermometer (RPMZ)' if a.labels == 'airport' else 'ERA5 reanalysis'}"
-          f"\nfeatures ({len(cols)}): {cols}")
+          f"\nfeatures ({len(obs_cols)}): {obs_cols}")
     print(f"split: train < {val_start:%Y-%m-%d} <= val < {test_start:%Y-%m-%d} <= test <= {last:%Y-%m-%d}")
 
     src = f_era5 if a.train_on == "era5" else f_fc
     hi_now_fc = f_fc["heat_index"] if f_fc is not None else None
     fc_hi = heat_index_series(fc["temperature_2m"], fc["relative_humidity_2m"]) if fc is not None else None
 
+    # ----- airport inputs: kept only if they lower the validation MAE at every horizon
+    cols = base_cols
+    if obs_cols != base_cols:
+        val = {}
+        for h in HORIZONS:
+            y = truth.shift(-h).rename("y")
+            with_obs = fit_ridge(src[obs_cols].join(y, how="inner").dropna(), obs_cols, val_start, test_start)
+            without = fit_ridge(src[base_cols].join(y, how="inner").dropna(), base_cols, val_start, test_start)
+            val[h] = (with_obs["val_mae"], without["val_mae"])
+        keep = all(w < wo for w, wo in val.values())
+        print("airport inputs, validation MAE with / without: "
+              + ", ".join(f"+{h} h {w:.3f} / {wo:.3f}" for h, (w, wo) in val.items()) + (" -> kept" if keep else " -> dropped"))
+        cols = obs_cols if keep else base_cols
+    uses_obs = cols != base_cols
+
     model = {"version": 1, "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
              "target": "NWS heat index (deg C) at t + hours_ahead, labels from "
                        + ("the RPMZ airport temperature/dew point" if a.labels == "airport" else "ERA5 temperature/humidity"),
              "labels": a.labels, "train_on": a.train_on, "features": cols, "horizons": HORIZONS, "per_horizon": {},
+             "airport_inputs": {"features": OBS_FEATURES, "max_age_minutes": OBS_MAX_AGE_MIN} if uses_obs else None,
+             "hot_limit_c": HEAT_MODE_C,
              "categories": [{"min_c": lo, "key": k, "label": lab} for lo, k, lab in CATEGORIES],
              "attribution": "Weather data by Open-Meteo.com; ERA5: Copernicus Climate Change Service"}
     report: dict = {"train_on": a.train_on, "labels": a.labels, "split": {}, "horizons": {}}
     split_rows = {}
     verdict_ok = True
+    fallback = {"features": base_cols, "per_horizon": {}} if uses_obs else None
 
     for h in HORIZONS:
         y = truth.shift(-h).rename("y")
-        df = src.join(y, how="inner").dropna()
-        idx = df.index
-        tr, va = df[idx < val_start], df[(idx >= val_start) & (idx < test_start)]
-        if min(len(tr), len(va)) < 2000:
-            sys.exit(f"Too few rows for +{h} h (train {len(tr)}, val {len(va)}). Download more history.")
-        scaler = StandardScaler().fit(tr[cols].to_numpy())
-        best = None
-        for alpha in ALPHAS:
-            m = Ridge(alpha=alpha).fit(scaler.transform(tr[cols].to_numpy()), tr["y"])
-            mae = float(np.abs(m.predict(scaler.transform(va[cols].to_numpy())) - va["y"]).mean())
-            if best is None or mae < best[0]:
-                best = (mae, alpha, m)
-        val_mae, alpha, ridge = best
-        # Refit on train + validation with the chosen strength (the test set stays untouched).
-        trva = pd.concat([tr, va])
-        scaler = StandardScaler().fit(trva[cols].to_numpy())
-        ridge = Ridge(alpha=alpha).fit(scaler.transform(trva[cols].to_numpy()), trva["y"])
+        fit = fit_ridge(src[cols].join(y, how="inner").dropna(), cols, val_start, test_start)
+        val_mae, alpha, scaler, ridge, tr, va, trva = (fit[k] for k in ("val_mae", "alpha", "scaler", "ridge", "tr", "va", "trva"))
+        hot = fit_hot(fit, cols)
+        hot_test = None
+        if uses_obs:
+            # The model the app scores when no airport report is recent enough.
+            fallback["per_horizon"][str(h)] = ridge_block(
+                fit_ridge(src[base_cols].join(y, how="inner").dropna(), base_cols, val_start, test_start))
 
         # ----- TEST (scored once)
-        te_era5 = f_era5.join(y, how="inner").dropna()
+        te_era5 = f_era5[cols].join(y, how="inner").dropna()
         te_era5 = te_era5[te_era5.index >= test_start]
         pred = lambda X: ridge.predict(scaler.transform(X))  # noqa: E731
         res = {"model (ERA5 inputs)": scores(te_era5["y"].to_numpy(), pred(te_era5[cols].to_numpy())),
@@ -176,7 +267,7 @@ def main() -> None:
         res["diurnal average"] = scores(te_era5["y"].to_numpy(), diurnal)
         deploy_key = "model (ERA5 inputs)"
         if f_fc is not None:
-            te_fc = f_fc[f_fc.index >= test_start].join(y, how="inner").dropna()
+            te_fc = f_fc.loc[f_fc.index >= test_start, cols].join(y, how="inner").dropna()
             res["model (forecast inputs = deployed)"] = scores(te_fc["y"].to_numpy(), pred(te_fc[cols].to_numpy()))
             res["persistence (forecast now)"] = scores(te_fc["y"].to_numpy(), hi_now_fc.reindex(te_fc.index).to_numpy())
             fh = fc_hi.shift(-h).reindex(te_fc.index).to_numpy()
@@ -185,16 +276,32 @@ def main() -> None:
             res["diurnal average"] = scores(te_fc["y"].to_numpy(), diurnal_fc)
             deploy_key = "model (forecast inputs = deployed)"
             baselines = ["persistence (forecast now)", "diurnal average", "forecast HI at target hour"]
+            if uses_obs:
+                # Airport now + the typical change from this hour to the target hour (train + validation years).
+                chg = (trva["y"] - trva["obs_heat_index"]).groupby([trva.index.month, trva.index.hour]).mean()
+                adj = np.array([chg.get((t.month, t.hour), 0.0) for t in te_fc.index])
+                res["airport now + typical change"] = scores(te_fc["y"].to_numpy(), te_fc["obs_heat_index"].to_numpy() + adj)
+                baselines.append("airport now + typical change")
+                fbh = fallback["per_horizon"][str(h)]
+                te_fb = f_fc.loc[f_fc.index >= test_start, base_cols].join(y, how="inner").dropna()
+                zf = (te_fb[base_cols].to_numpy() - np.array(fbh["mean"])) / np.array(fbh["scale"])
+                res["fallback model (no airport report)"] = scores(te_fb["y"].to_numpy(), zf @ np.array(fbh["coef"]) + fbh["intercept"])
+            if hot is not None:
+                p_hot = hot["model"].predict_proba(scaler.transform(te_fc[cols].to_numpy()))[:, 1]
+                hot_test = hot_scores(te_fc["y"].to_numpy(), p_hot, hot["threshold"])
         else:
             baselines = ["persistence (ERA5 now)", "diurnal average"]
         beat = all(res[deploy_key]["mae"] < res[b]["mae"] for b in baselines)
         verdict_ok = verdict_ok and beat
         report["horizons"][str(h)] = {"alpha": alpha, "val_mae": round(val_mae, 3), "deployed_key": deploy_key,
-                                      "beats_baselines": beat, "results": res}
-        model["per_horizon"][str(h)] = {"alpha": alpha, "mean": scaler.mean_.tolist(), "scale": scaler.scale_.tolist(),
-                                        "coef": ridge.coef_.tolist(), "intercept": float(ridge.intercept_),
-                                        "test_mae_deployed": res[deploy_key]["mae"],
-                                        "baseline_mae": {b: res[b]["mae"] for b in baselines}}
+                                      "beats_baselines": beat, "results": res, "hot": hot_test}
+        model["per_horizon"][str(h)] = ridge_block(fit) | {
+            "test_mae_deployed": res[deploy_key]["mae"], "baseline_mae": {b: res[b]["mae"] for b in baselines}}
+        if hot is not None:
+            # Same inputs and scaler as the ridge above: chance = sigmoid(coef . z + intercept).
+            model["per_horizon"][str(h)]["hot"] = {"C": hot["C"], "coef": hot["model"].coef_[0].tolist(),
+                                                   "intercept": float(hot["model"].intercept_[0]),
+                                                   "threshold": hot["threshold"], "test": hot_test}
         split_rows = {"train": [f"{tr.index.min():%Y-%m-%d}", f"{tr.index.max():%Y-%m-%d}", len(tr)],
                       "val": [f"{va.index.min():%Y-%m-%d}", f"{va.index.max():%Y-%m-%d}", len(va)],
                       "test": [f"{te_era5.index.min():%Y-%m-%d}", f"{te_era5.index.max():%Y-%m-%d}", len(te_era5)]}
@@ -205,9 +312,15 @@ def main() -> None:
               f"({res[deploy_key].get('heat_mode_hours', 0)} hours at or above {HEAT_MODE_C:.0f} C, "
               f"{res[deploy_key].get('danger_or_above_cases', 0)} in Danger or above):\n{table.to_string()}")
         print("  ->", "beats every deployable baseline" if beat else "does NOT beat every deployable baseline")
+        if hot_test:
+            print(f"  {HEAT_MODE_C:.0f} C+ chance (alert at {hot['threshold']:.2f}): warned {hot_test['warned_hot']} of "
+                  f"{hot_test['hot_hours']} hot hours and {hot_test['warned_not_hot']} of {hot_test['other_hours']} other hours; "
+                  f"Brier {hot_test['brier']} vs {hot_test['brier_base_rate']} for the base rate")
 
     report["split"] = split_rows
     model["periods"] = split_rows
+    if fallback is not None:
+        model["fallback"] = fallback
     model["recommended"] = bool(verdict_ok)
     report["recommended"] = bool(verdict_ok)
     print("\nVERDICT:", "model beats every deployable baseline at every horizon -> recommended" if verdict_ok
@@ -218,23 +331,45 @@ def main() -> None:
     HEAT_MODEL_JSON.write_text(json.dumps(model, indent=2))
     print(f"\nwrote {HEAT_MODEL_JSON}\nwrote {METRICS_JSON}")
 
-    # ----- parity cases: raw hourly window -> features and predictions (PHP must match)
-    cases = []
+    # ----- parity cases: raw hourly window (+ airport reports) -> features and predictions (PHP must match)
+    met = None
+    if uses_obs:
+        met = pd.read_csv(METAR_CSV, dtype=str)
+        met["t"] = pd.to_datetime(met["valid"], utc=True).dt.tz_convert(TZ).dt.tz_localize(None).dt.floor("min")
     te = f_fc if f_fc is not None else f_era5
-    te = te[te.index >= test_start].dropna()
+    te = te[te.index >= test_start].dropna(subset=cols)
     raw = fc if f_fc is not None else era5
-    for ts in te.index[:: max(1, len(te) // 6)][:6]:
+
+    def predict(block: dict, x: np.ndarray) -> tuple[float, np.ndarray]:
+        z = (x - np.array(block["mean"])) / np.where(np.array(block["scale"]) == 0, 1.0, np.array(block["scale"]))
+        return float(np.dot(z, block["coef"]) + block["intercept"]), z
+
+    picks = list(te.index[:: max(1, len(te) // 6)][:6])
+    cases = []
+    for i, ts in enumerate(picks + ([picks[0]] if uses_obs else [])):
+        no_reports = uses_obs and i == len(picks)   # the extra case: no airport report -> the fallback model
         w = raw.loc[ts - pd.Timedelta(hours=3): ts]
         hourly = {"time": [t.strftime("%Y-%m-%dT%H:%M") for t in w.index]} | {
             v: [None if pd.isna(x) else float(x) for x in w[v]] for v in HEAT_VARS}
-        x = te.loc[[ts], cols].to_numpy()
-        preds = {}
+        case = {"now": ts.strftime("%Y-%m-%dT%H:%M"), "hourly": hourly}
+        use_cols, blocks = (base_cols, fallback["per_horizon"]) if no_reports else (cols, model["per_horizon"])
+        if uses_obs:
+            # Reports up to 50 minutes after the hour too: the model must ignore those (training cannot see them).
+            near = met[(met["t"] >= ts - pd.Timedelta(hours=3)) & (met["t"] <= ts + pd.Timedelta(minutes=50))]
+            case["airport_reports"] = [] if no_reports else [
+                {"time": t.strftime("%Y-%m-%dT%H:%M"), "raw": r} for t, r in zip(near["t"], near["metar"])]
+            case["expects_fallback"] = no_reports
+        x = te.loc[ts, use_cols].to_numpy(dtype=float)
+        preds, chances = {}, {}
         for h in HORIZONS:
-            ph = model["per_horizon"][str(h)]
-            z = (x[0] - np.array(ph["mean"])) / np.where(np.array(ph["scale"]) == 0, 1.0, np.array(ph["scale"]))
-            preds[str(h)] = float(np.dot(z, ph["coef"]) + ph["intercept"])
-        cases.append({"now": ts.strftime("%Y-%m-%dT%H:%M"), "hourly": hourly,
-                      "expected_features": {c: float(te.loc[ts, c]) for c in cols}, "expected_heat_index": preds})
+            value, z = predict(blocks[str(h)], x)
+            preds[str(h)] = value
+            hb = blocks[str(h)].get("hot")
+            if hb is not None:
+                chances[str(h)] = float(1.0 / (1.0 + np.exp(-(np.dot(z, hb["coef"]) + hb["intercept"]))))
+        case |= {"expected_features": {c: float(te.loc[ts, c]) for c in use_cols}, "expected_heat_index": preds,
+                 "expected_hot_chance": chances}
+        cases.append(case)
     HEAT_PARITY_JSON.write_text(json.dumps({"timezone": TZ, "cases": cases}, indent=1))
     print(f"wrote {HEAT_PARITY_JSON} ({len(cases)} cases for the PHP parity test)")
 

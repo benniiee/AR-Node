@@ -14,7 +14,6 @@
  *   /<TILE_FILE>.pmtiles         whole file saved at install (src/campusMap.js picks it); offline, the map's
  *                                byte-range requests are answered from it
  *   /storage/data/*.json         network first (the app also keeps its own copy)
- *   Leaflet's CSS and icons      saved at install (unpkg.com)
  *   /api/*                       never cached: sign-in and live data stay live
  */
 const VERSION = '__ARNODE_VERSION__';
@@ -25,20 +24,12 @@ const RUNTIME_CACHE = 'arnode-runtime';
 const APP_URL = '/map';
 // The campus base map archive (TILE_FILE in src/campusMap.js), filled in by the build.
 const TILES_URL = '__ARNODE_TILES__';
-const LEAFLET = 'https://unpkg.com/leaflet@1.9.4/dist';
 
 // Same-origin files the app needs besides the built code.
 const SHELL_EXTRAS = [
     APP_URL, '/map-manifest.json', '/favicon.ico',
     '/pwa/icon-192.png', '/pwa/icon-512.png',
     '/pwa/favicon-16x16.png', '/pwa/favicon-32x32.png', '/pwa/apple-touch-icon.png',
-];
-// Third-party files: saved when reachable, but a failure must not block the install.
-const OPTIONAL = [
-    `${LEAFLET}/leaflet.css`,
-    `${LEAFLET}/images/marker-icon.png`,
-    `${LEAFLET}/images/marker-icon-2x.png`,
-    `${LEAFLET}/images/marker-shadow.png`,
 ];
 
 // ngrok's free plan shows a "You are about to visit" page to browsers; this header skips it,
@@ -57,10 +48,10 @@ self.addEventListener('install', (event) => {
             await cache.put(url, res);
         }));
         // Best effort: a missing base map file must not stop the rest of the app working offline.
-        await Promise.allSettled([TILES_URL, ...OPTIONAL].map(async (url) => {
-            const res = await fetch(url.startsWith('/') ? sameOriginRequest(url) : new Request(url, { mode: 'cors' }));
-            if (res.ok) await cache.put(url, res);
-        }));
+        try {
+            const res = await fetch(sameOriginRequest(TILES_URL));
+            if (res.ok) await cache.put(TILES_URL, res);
+        } catch { /* offline map tiles stay unavailable until the next install attempt */ }
         await self.skipWaiting();
     })());
 });
@@ -95,11 +86,6 @@ self.addEventListener('fetch', (event) => {
         if (url.pathname.startsWith('/storage/data/')) {
             event.respondWith(networkFirst(req, null, RUNTIME_CACHE));
         }
-        return;
-    }
-
-    if (url.origin === 'https://unpkg.com') {
-        event.respondWith(cacheFirst(req));
     }
 });
 

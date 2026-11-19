@@ -1,0 +1,53 @@
+all of the above + satellite + cloud phase: covers 91% of the labelled satellite steps (98% needed): skipped. Let download_satellite.py --cloud finish, then train again.
+Satellite: 119,947 scans -> inputs for 70,867 of 169,344 steps (2024-01-01 to 2026-10-30). Every variant is fitted on the steps that HAVE satellite inputs, so the comparison stays fair.
+
+label: metar:RPMZ (nearest report to t+20 min, +-15 min)
+train 2024-04-25 -> 2026-02-20  rows=22,266  rain=0.094  months=23
+val   2026-02-20 -> 2026-06-26  rows=4,771  rain=0.034  months=5
+      WARNING: val covers < 12 months, so it misses part of the wet/dry cycle.
+test  2026-06-26 -> 2026-10-30  rows=4,772  rain=0.051  months=5
+      WARNING: test covers < 12 months, so it misses part of the wet/dry cycle.
+
+variants (validation Brier, lower is better):
+  forecast only                                 features=24  C=0.01   val Brier=0.03134
+  forecast + airport report                     features=33  C=0.01   val Brier=0.02676
+  forecast + several models                     features=28  C=0.01   val Brier=0.03087
+  forecast + airport report + several models    features=37  C=0.01   val Brier=0.02642
+  all of the above + satellite                  features=51  C=0.1    val Brier=0.02369
+exported: all of the above + satellite (satellite improves validation Brier by 10.34%)
+features (51): ['precip_0', 'precip_1', 'precip_2', 'precip_sum_1h', 'precip_sum_3h', 'rain_code_now', 'temp', 'temp_change_1h', 'humidity', 'dewpoint_depression', 'wind_speed', 'wind_gust', 'wind_dir_sin', 'wind_dir_cos', 'cape', 'pressure', 'pressure_change_3h', 'cloud_cover', 'precip_prob_next_hour', 'fcst_precip_next_hour', 'hour_sin', 'hour_cos', 'doy_sin', 'doy_cos', 'obs_rain', 'obs_rain_fresh', 'obs_rain_2h', 'obs_thunder', 'obs_vicinity', 'obs_convective_cloud', 'obs_lightning', 'obs_recent_rain', 'obs_age_min', 'mm_wet_share', 'mm_precip_mean', 'mm_cloud_mean', 'mm_thunder_share', 'sat_bt_campus', 'sat_bt_min_10km', 'sat_bt_min_30km', 'sat_cold_10km', 'sat_cold_30km', 'sat_cooling_20min', 'sat_upwind_cold', 'sat_cooling_10min', 'sat_min_cooling_10min', 'sat_sustained_cooling', 'sat_wv_campus', 'sat_wv_minus_ir_campus', 'sat_wv_minus_ir_10km', 'sat_wv_min_30km']
+model type: validation Brier logistic 0.02369, trees 0.02266 (depth/rate/rounds (3, 0.05, 200)) -> trees, not calibrated (it did not help on validation)
+alert threshold: 0.13 (best F2 score on the validation period)
+
+TEST period results (alert threshold 0.13; start_recall = share of the 133 rain starts caught):
+                                                          n  rain_rate    brier  roc_auc  precision  recall  start_recall  false_alarm_ratio  false_positive_rate
+exported model                                       4772.0     0.0505  0.03660   0.9130     0.2575  0.6805        0.4511             0.7425               0.1044
+logistic regression (uncalibrated)                   4772.0     0.0505  0.03638   0.9201     0.2655  0.6929        0.4662             0.7345               0.1020
+gradient boosting (uncalibrated)                     4772.0     0.0505  0.03660   0.9130     0.2575  0.6805        0.4511             0.7425               0.1044
+variant: forecast only                               4772.0     0.0505  0.04465   0.8500     0.2093  0.5768        0.4737             0.7907               0.1159
+variant: forecast + airport report                   4772.0     0.0505  0.03690   0.8946     0.3002  0.6390        0.3459             0.6998               0.0792
+variant: forecast + several models                   4772.0     0.0505  0.04390   0.8611     0.2345  0.6266        0.5263             0.7655               0.1088
+variant: forecast + airport report + several models  4772.0     0.0505  0.03661   0.8984     0.3014  0.6390        0.3459             0.6986               0.0788
+climatology (month x hour)                           4772.0     0.0505  0.05447   0.5088     0.0495  0.3237        0.2932             0.9505               0.3304
+persistence (rain in last 15 min)                    4772.0     0.0505  0.19971   0.7338     0.1544  0.6598        0.5489             0.8456               0.1922
+persistence (latest airport report)                  4772.0     0.0505  0.05889   0.7077     0.4219  0.4481        0.0000             0.5781               0.0327
+raw Open-Meteo probability                           4772.0     0.0505  0.26271   0.8641     0.0775  0.9751        0.9549             0.9225               0.6173
+
+calibration of the exported model (trees, test):
+      bin    n  mean_pred  observed
+0.00-0.05 3562     0.0102    0.0065
+0.05-0.10  415     0.0713    0.0964
+0.10-0.20  350     0.1382    0.0886
+0.20-0.30  153     0.2448    0.1111
+0.30-0.40   79     0.3403    0.2152
+0.40-0.50   42     0.4523    0.4524
+0.50-0.60   46     0.5556    0.4783
+0.60-0.80  110     0.6887    0.5636
+0.80-1.00   15     0.8296    0.6667
+
+VERDICT: model beats every baseline on Brier -> recommended
+fallback model type: validation Brier logistic 0.02642, trees 0.02693 (depth/rate/rounds (3, 0.05, 200)) -> logistic, not calibrated (it did not help on validation)
+fallback without satellite: forecast + airport report + several models (alert 0.17)
+
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\model.json
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\model_parity.json (10 cases for the PHP parity test)

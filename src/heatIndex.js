@@ -71,7 +71,7 @@ export function campusHourLabel(iso) {
  * Heat summary for the weather chip, or null when the state has no heat index.
  *
  * @returns {{ now: number, key: string, label: string|null, warning: boolean,
- *            short: string, outlook: string|null, peak: object|null }}
+ *            short: string, outlook: string|null, peak: object|null, hotRisk: string|null }}
  */
 export function heatSummary(weather) {
     const now = Number(weather?.heat_index_c);
@@ -99,5 +99,11 @@ export function heatSummary(weather) {
         }
     }
 
-    return { now, key, label, warning: isHeatWarning(key), short, outlook, peak };
+    // The heat model's hot-hour chance (hot_alert) can flag an hour its own estimate keeps under the limit:
+    // a warning only, paths still close on the heat index (weatherCost.js heatModeActive).
+    const limit = Number(weather.heat_mode_c) || 40;
+    const flagged = items.find((i) => i.hot_alert === true && Number(i.heat_index_c) <= limit && campusHourLabel(i.at));
+    const hotRisk = flagged ? `could reach ${Math.round(limit)}°C by ${campusHourLabel(flagged.at)}` : null;
+
+    return { now, key, label, warning: isHeatWarning(key) || Boolean(hotRisk), short, outlook, peak, hotRisk };
 }

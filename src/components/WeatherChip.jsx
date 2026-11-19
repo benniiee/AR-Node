@@ -88,7 +88,7 @@ export default function WeatherChip({ weather, inline = false, shadeActive = fal
     const hourWarn = hourLine !== null && hourChance >= Number(weather.rain_hour_alert ?? 101);
 
     const heat = heatSummary(weather);
-    const heatParts = [heat?.short, heat?.outlook, uvLine].filter(Boolean);
+    const heatParts = [heat?.short, heat?.outlook, heat?.hotRisk, uvLine].filter(Boolean);
     const heatLine = heatParts.length ? heatParts.join(' · ') : null;
     const heatWarn = Boolean(heat?.warning) || (uvShown && uv >= 6);
 

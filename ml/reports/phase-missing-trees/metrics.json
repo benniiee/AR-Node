@@ -1,0 +1,301 @@
+{
+  "label": "metar:RPMZ (nearest report to t+20 min, +-15 min)",
+  "alert_threshold": 0.13,
+  "alert_rule": "best F2 score on the validation period",
+  "variant": "phase",
+  "variants": [
+    {
+      "variant": "forecast",
+      "name": "forecast only",
+      "features": 24,
+      "C": 0.01,
+      "val_brier": 0.03134,
+      "test_brier": 0.04465,
+      "test_auc": 0.85,
+      "test_start_recall": 0.4737,
+      "exported": false
+    },
+    {
+      "variant": "airport",
+      "name": "forecast + airport report",
+      "features": 33,
+      "C": 0.01,
+      "val_brier": 0.02676,
+      "test_brier": 0.0369,
+      "test_auc": 0.8946,
+      "test_start_recall": 0.3459,
+      "exported": false
+    },
+    {
+      "variant": "multimodel",
+      "name": "forecast + several models",
+      "features": 28,
+      "C": 0.01,
+      "val_brier": 0.03087,
+      "test_brier": 0.0439,
+      "test_auc": 0.8611,
+      "test_start_recall": 0.5263,
+      "exported": false
+    },
+    {
+      "variant": "both",
+      "name": "forecast + airport report + several models",
+      "features": 37,
+      "C": 0.01,
+      "val_brier": 0.02642,
+      "test_brier": 0.03661,
+      "test_auc": 0.8984,
+      "test_start_recall": 0.3459,
+      "exported": false
+    },
+    {
+      "variant": "satellite",
+      "name": "all of the above + satellite",
+      "features": 51,
+      "C": 0.1,
+      "val_brier": 0.02369,
+      "test_brier": 0.03638,
+      "test_auc": 0.9201,
+      "test_start_recall": 0.4662,
+      "exported": false
+    },
+    {
+      "variant": "phase",
+      "name": "all of the above + satellite + cloud phase",
+      "features": 56,
+      "C": 0.1,
+      "val_brier": 0.02331,
+      "test_brier": 0.03609,
+      "test_auc": 0.92,
+      "test_start_recall": 0.5188,
+      "exported": true
+    }
+  ],
+  "results": {
+    "exported model": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03647,
+      "log_loss": 0.13067,
+      "roc_auc": 0.9133,
+      "precision": 0.2637,
+      "recall": 0.6971,
+      "false_alarm_ratio": 0.7363,
+      "false_positive_rate": 0.1035,
+      "start_recall": 0.4737,
+      "starts": 133
+    },
+    "logistic regression (uncalibrated)": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03609,
+      "log_loss": 0.12845,
+      "roc_auc": 0.92,
+      "precision": 0.271,
+      "recall": 0.722,
+      "false_alarm_ratio": 0.729,
+      "false_positive_rate": 0.1033,
+      "start_recall": 0.5188,
+      "starts": 133
+    },
+    "gradient boosting (uncalibrated)": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03647,
+      "log_loss": 0.13067,
+      "roc_auc": 0.9133,
+      "precision": 0.2637,
+      "recall": 0.6971,
+      "false_alarm_ratio": 0.7363,
+      "false_positive_rate": 0.1035,
+      "start_recall": 0.4737,
+      "starts": 133
+    },
+    "variant: forecast only": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.04465,
+      "log_loss": 0.16241,
+      "roc_auc": 0.85,
+      "precision": 0.2093,
+      "recall": 0.5768,
+      "false_alarm_ratio": 0.7907,
+      "false_positive_rate": 0.1159,
+      "start_recall": 0.4737,
+      "starts": 133
+    },
+    "variant: forecast + airport report": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.0369,
+      "log_loss": 0.13758,
+      "roc_auc": 0.8946,
+      "precision": 0.3002,
+      "recall": 0.639,
+      "false_alarm_ratio": 0.6998,
+      "false_positive_rate": 0.0792,
+      "start_recall": 0.3459,
+      "starts": 133
+    },
+    "variant: forecast + several models": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.0439,
+      "log_loss": 0.15822,
+      "roc_auc": 0.8611,
+      "precision": 0.2345,
+      "recall": 0.6266,
+      "false_alarm_ratio": 0.7655,
+      "false_positive_rate": 0.1088,
+      "start_recall": 0.5263,
+      "starts": 133
+    },
+    "variant: forecast + airport report + several models": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03661,
+      "log_loss": 0.13544,
+      "roc_auc": 0.8984,
+      "precision": 0.3014,
+      "recall": 0.639,
+      "false_alarm_ratio": 0.6986,
+      "false_positive_rate": 0.0788,
+      "start_recall": 0.3459,
+      "starts": 133
+    },
+    "variant: all of the above + satellite": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03638,
+      "log_loss": 0.12874,
+      "roc_auc": 0.9201,
+      "precision": 0.2655,
+      "recall": 0.6929,
+      "false_alarm_ratio": 0.7345,
+      "false_positive_rate": 0.102,
+      "start_recall": 0.4662,
+      "starts": 133
+    },
+    "climatology (month x hour)": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.05447,
+      "log_loss": 0.23141,
+      "roc_auc": 0.5088,
+      "precision": 0.0495,
+      "recall": 0.3237,
+      "false_alarm_ratio": 0.9505,
+      "false_positive_rate": 0.3304,
+      "start_recall": 0.2932,
+      "starts": 133
+    },
+    "persistence (rain in last 15 min)": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.19971,
+      "log_loss": 2.75905,
+      "roc_auc": 0.7338,
+      "precision": 0.1544,
+      "recall": 0.6598,
+      "false_alarm_ratio": 0.8456,
+      "false_positive_rate": 0.1922,
+      "start_recall": 0.5489,
+      "starts": 133
+    },
+    "persistence (latest airport report)": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.05889,
+      "log_loss": 0.81353,
+      "roc_auc": 0.7077,
+      "precision": 0.4219,
+      "recall": 0.4481,
+      "false_alarm_ratio": 0.5781,
+      "false_positive_rate": 0.0327,
+      "start_recall": 0.0,
+      "starts": 133
+    },
+    "raw Open-Meteo probability": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.26271,
+      "log_loss": 1.43088,
+      "roc_auc": 0.8641,
+      "precision": 0.0775,
+      "recall": 0.9751,
+      "false_alarm_ratio": 0.9225,
+      "false_positive_rate": 0.6173,
+      "start_recall": 0.9549,
+      "starts": 133
+    },
+    "compare: before-cloud-phase/model.json": {
+      "n": 4772,
+      "rain_rate": 0.0505,
+      "brier": 0.03538,
+      "log_loss": 0.12731,
+      "roc_auc": 0.9201,
+      "precision": 0.2742,
+      "recall": 0.6929,
+      "false_alarm_ratio": 0.7258,
+      "false_positive_rate": 0.0976,
+      "start_recall": 0.4662,
+      "starts": 133
+    }
+  },
+  "calibration": [
+    {
+      "bin": "0.00-0.05",
+      "n": 3554,
+      "mean_pred": 0.0101,
+      "observed": 0.007
+    },
+    {
+      "bin": "0.05-0.10",
+      "n": 435,
+      "mean_pred": 0.0723,
+      "observed": 0.0851
+    },
+    {
+      "bin": "0.10-0.20",
+      "n": 343,
+      "mean_pred": 0.1395,
+      "observed": 0.0933
+    },
+    {
+      "bin": "0.20-0.30",
+      "n": 142,
+      "mean_pred": 0.2444,
+      "observed": 0.1056
+    },
+    {
+      "bin": "0.30-0.40",
+      "n": 83,
+      "mean_pred": 0.3417,
+      "observed": 0.2169
+    },
+    {
+      "bin": "0.40-0.50",
+      "n": 47,
+      "mean_pred": 0.4469,
+      "observed": 0.4255
+    },
+    {
+      "bin": "0.50-0.60",
+      "n": 48,
+      "mean_pred": 0.561,
+      "observed": 0.4583
+    },
+    {
+      "bin": "0.60-0.80",
+      "n": 105,
+      "mean_pred": 0.6854,
+      "observed": 0.6
+    },
+    {
+      "bin": "0.80-1.00",
+      "n": 15,
+      "mean_pred": 0.8383,
+      "observed": 0.6
+    }
+  ]
+}

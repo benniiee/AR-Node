@@ -115,6 +115,18 @@ export default defineConfig(({ mode, command }) => {
                 // /iphone-check: the install check form for iPhone users (plain page, no React).
                 check: 'iphone-check.html',
             },
+            output: {
+                // Libraries change far less often than the app's own code. In files of their own,
+                // an app update leaves them saved on the phone: only the changed app code is downloaded
+                // again. three stays apart because only the 3D and AR views (loaded on demand) use it.
+                manualChunks(id) {
+                    if (!id.includes('node_modules')) return undefined;
+                    if (/[\\/]node_modules[\\/]three[\\/]/.test(id)) return 'three';
+                    if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react';
+                    if (/[\\/]node_modules[\\/]qrcode-generator[\\/]/.test(id)) return undefined; // the QR sheet loads it on demand
+                    return 'maps'; // Leaflet, Protomaps and what they need
+                },
+            },
         },
     },
     server: {

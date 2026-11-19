@@ -3,11 +3,7 @@ import { C, TYPE, PANEL_RADIUS, TAP, PILL, ELEVATION } from '../uiTokens';
 import { floorAria, floorTag } from '../floors';
 import { planStairs, normalizeFlights } from '../stairGeometry';
 import StairModal from './StairModal';
-
-// three.js loads only when "Stairs in 3D" is opened (see MobileNav for the offline note).
-const StairPreview3D = React.lazy(() => import('./StairPreview3D').then((m) => ({
-    default: (props) => <><style>{m.STAIR_PREVIEW_CSS}</style><m.default {...props} /></>,
-})));
+import { StairPreview3D } from './Lazy3D'; // three.js loads only when "Stairs in 3D" is opened
 
 /** Route tools on the map, bottom centre, in the same floating panel as the
  *  Map / Satellite control. With a staircase ahead (`stair`, one entry of
@@ -56,7 +52,6 @@ export default function StairHint({ stair = null, onGoToFloor, onRouteIn3D, onCa
                     closeLabel="Close the stairs view"
                     footer={<button type="button" className="ui-btn ui-btn-primary" onClick={() => setOpen(false)}>Done</button>}
                 >
-                    <React.Suspense fallback={<div role="status" style={{ height: 'min(60vh, 520px)', display: 'grid', placeItems: 'center', color: C.muted }}>Loading the stairs...</div>}>
                     <StairPreview3D
                         plan={plan}
                         direction={stair.direction}
@@ -67,7 +62,6 @@ export default function StairHint({ stair = null, onGoToFloor, onRouteIn3D, onCa
                         upperLabel={floorAria(Math.max(stair.from_floor, stair.to_floor))}
                         ariaLabel={`3D view of the stairs ${stair.direction}. ${stair.instruction || ''}`}
                     />
-                    </React.Suspense>
                 </StairModal>
             )}
         </section>

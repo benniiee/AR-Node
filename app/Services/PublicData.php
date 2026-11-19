@@ -44,7 +44,7 @@ class PublicData
         try {
             $folder = $dir ?? self::directory();
 
-            if (! is_dir($folder) && ! @mkdir($folder, 0775, true) && ! is_dir($folder)) {
+            if (! is_dir($folder) && ! self::makeFolder($folder)) {
                 return false;
             }
 
@@ -98,5 +98,20 @@ class PublicData
         }
 
         return function_exists('config') && config('weather.publish_snapshots', true) === false;
+    }
+
+    /**
+     * Creates the folder; false when it cannot (the caller reports that). The failure warning is
+     * swallowed here rather than with @, which an outer error handler (Laravel's) may still report.
+     */
+    private static function makeFolder(string $folder): bool
+    {
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            return mkdir($folder, 0775, true) || is_dir($folder);
+        } finally {
+            restore_error_handler();
+        }
     }
 }

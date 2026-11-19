@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { C, RADIUS } from '../uiTokens';
-import StairPreview3D, { STAIR_PREVIEW_CSS } from './StairPreview3D';
+import { StairPreview3D } from './Lazy3D';
 import {
     STAIR_SHAPES, STAIR_MAX_FLIGHTS, STAIR_LANDING_MIN, STAIR_LANDING_MAX, STAIR_LANDING_DEFAULT,
     planStairs, fitYaw, shapeIdOf, flightsForShape, normalizeFlights, normalizeBearing, clampLanding,
@@ -330,7 +330,6 @@ export function StairShapeEditor({ value, rise = 3, topOffset = null, direction 
 }
 
 export const STAIR_EDITOR_CSS = `
-    ${STAIR_PREVIEW_CSS}
     .se { display: flex; flex-direction: column; gap: 12px; }
     .se-controls { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
     .se-wide { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; align-items: start; }

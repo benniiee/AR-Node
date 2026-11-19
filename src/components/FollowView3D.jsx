@@ -27,6 +27,8 @@ const PITCH = 0.5; // ~29 degrees down: low behind you, the figure in clear view
 const LOOK_AHEAD = 7; // metres ahead of you the view centres on
 const WALK_SPEED = 1.4; // m/s of a normal walk: full stride at this speed
 const STRIDE = 1.5; // metres per full step cycle (two steps)
+/** Shadows are drawn within this many metres of you. */
+const SHADOW_REACH_M = 70;
 const SNAP_BACK_MS = 5000; // a manual turn swings back behind you after this
 const TEST_WALK_MS = 1.6; // test walk: walking pace at full joystick (m/s)
 const TEST_RUN_FACTOR = 2.5; // Shift on a keyboard
@@ -44,7 +46,7 @@ const shortestTurn = (from, to) => {
 };
 
 export default function FollowView3D({
-    route, buildings, links, pathways, getPose, routeKey, floor = 0,
+    route, buildings, links, pathways, bridges = [], nodes = [], getPose, routeKey, floor = 0,
     testWalk = false, onTestMove = null, joyBottom = 120,
 }) {
     const hostRef = useRef(null);
@@ -66,20 +68,30 @@ export default function FollowView3D({
         }
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.setClearColor(0x14151a, 1);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;';
         host.appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
         // Distance haze, so the far campus fades instead of ending at an edge.
         scene.fog = new THREE.Fog(0x14151a, 90, 320);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-        const sun = new THREE.DirectionalLight(0xffffff, 0.9);
-        sun.position.set(-20, 40, 25);
-        scene.add(sun);
+        // Soft light from the sky, a darker bounce from the ground, and one sun that casts shadows:
+        // walls facing away from it go darker, so buildings read as solid shapes, not flat grey.
+        scene.add(new THREE.HemisphereLight(0xdfe7ff, 0x2a2b31, 1.1));
+        const sun = new THREE.DirectionalLight(0xfff4e0, 1.7);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(1024, 1024);
+        // The shadow box follows you (see the frame loop): sharp nearby, none wasted on the far campus.
+        Object.assign(sun.shadow.camera, { left: -SHADOW_REACH_M, right: SHADOW_REACH_M, top: SHADOW_REACH_M, bottom: -SHADOW_REACH_M, near: 1, far: 260 });
+        sun.shadow.bias = -0.0004;
+        sun.shadow.normalBias = 0.06;
+        scene.add(sun, sun.target);
         const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
         const world = new THREE.Group();
         scene.add(world);
         const me = person(new THREE.Vector3(), new THREE.Vector3(0, 0, -1));
+        me.traverse((o) => { if (o.isMesh && o.material.isMeshStandardMaterial) o.castShadow = true; });
         scene.add(me);
         // The live piece of route from you to the next stop (same white ribbon
         // with a dark edge as the rest), re-aimed every frame as you walk.
@@ -253,6 +265,8 @@ export default function FollowView3D({
             }
             if (s.pos) {
                 s.me.position.copy(s.pos);
+                sun.position.set(s.pos.x - 45, 90, s.pos.z + 55);
+                sun.target.position.copy(s.pos);
                 s.me.rotation.y = s.yaw + Math.PI;
                 // Walk animation: legs and arms swing in turn, the body bobs, all
                 // scaled by speed (standing still eases back to rest; GPS jitter
@@ -358,7 +372,13 @@ export default function FollowView3D({
         if (!s) return;
         disposeTree(s.world);
         s.world.clear();
-        const built = buildScene(s.world, { route, buildings, links, pathways, follow: true });
+        const built = buildScene(s.world, { route, buildings, links, pathways, bridges, nodes, follow: true });
+        // Solid things cast and catch shadows; the ground and see-through walls only catch them.
+        s.world.traverse((o) => {
+            if (!o.isMesh || !o.material.isMeshStandardMaterial) return;
+            o.receiveShadow = true;
+            o.castShadow = !o.material.transparent && o.geometry.type !== 'CircleGeometry';
+        });
         s.xz = built.xz || null;
         s.toLatLng = built.toLatLng || null;
         s.routePts = built.routePts || [];
@@ -372,7 +392,7 @@ export default function FollowView3D({
             s.pos = null;
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [routeKey, buildings]);
+    }, [routeKey, buildings, bridges]);
 
     // Test walk joystick (touch and mouse): push the knob the way to walk.
     const joyRef = useRef(null);

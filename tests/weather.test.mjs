@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { edgeRainFactor, nodeRainStatus, isRoutable, rainMultiplierOf, NODE_STATUS, NO_ROUTE_MESSAGE } from '../src/weatherCost.js';
+import { edgeRainFactor, nodeRainStatus, isRoutable, rainMultiplierOf, NODE_STATUS, noRouteMessage } from '../src/weatherCost.js';
 import { computeRoute } from '../src/pathfinding.js';
 
 // Weather-aware routing rules (spec A5, Node half). pathfinding.js imports
@@ -67,7 +67,7 @@ await t('rainMultiplierOf: reads the server penalty, degrades to 1', () => {
 // ── computeRoute red-exclusion (the user's added requirement) ───────────
 // A tiny campus: user and an exposed shortcut (outside) vs a sheltered
 // interior corridor (inside). While it is raining the outside path closes,
-// so a destination that ONLY sits on it must return NO_ROUTE_MESSAGE.
+// so a destination that ONLY sits on it must return noRouteMessage({ rain: true }).
 const DRY_NODES = [
   { id: 1, name: 'User start', type: 'route', latitude: 6.9100, longitude: 122.0700, elevation: 0, floor_level: 0, path_type: 'outside' },
   { id: 2, name: 'Outside corridor', type: 'route', latitude: 6.9100, longitude: 122.0703, elevation: 0, floor_level: 0, path_type: 'outside' },
@@ -86,10 +86,10 @@ await t('computeRoute: dry weather routes normally through exposed paths', () =>
   assert.equal(r.success, true, r.message);
   assert.ok(r.path.length > 1);
 });
-await t('computeRoute: rain closes an exposed-only destination (NO_ROUTE_MESSAGE)', () => {
+await t('computeRoute: rain closes an exposed-only destination (the rain message)', () => {
   const r = computeRoute(DRY_NODES, 3, USER.lat, USER.lng, 0, [], { rainMultiplier: 2, rainNow: true });
   assert.equal(r.success, false);
-  assert.equal(r.message, NO_ROUTE_MESSAGE);
+  assert.equal(r.message, noRouteMessage({ rain: true }));
 });
 await t('computeRoute: rain still routes to a sheltered destination', () => {
   const r = computeRoute(SHELTERED_NODES, 12, USER.lat, USER.lng, 0, [], { rainMultiplier: 2, rainNow: true });

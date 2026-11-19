@@ -31,6 +31,8 @@ METAR_CSV = DATA / "metar.csv"
 MULTIMODEL_CSV = DATA / "openmeteo_multimodel_hourly.csv"
 SAT_CSV = DATA / "satellite_b13.csv"
 SAT_B10_CSV = DATA / "satellite_b10.csv"
+SAT_MOTION_CSV = DATA / "satellite_motion.csv"
+SAT_PHASE_CSV = DATA / "satellite_phase.csv"
 MODEL_JSON = ROOT / "model.json"
 PARITY_JSON = ROOT / "model_parity.json"
 
@@ -263,7 +265,7 @@ def build_multimodel_features(index: pd.DatetimeIndex, mm: pd.DataFrame) -> pd.D
 
 # --------------------------------------------------------- satellite (Himawari bands 13 and 10)
 from satellite import COOLING_MIN as SAT_COOLING_MIN, LAG_MIN as SAT_LAG_MIN, MAX_AGE_MIN as SAT_MAX_AGE_MIN  # noqa: E402
-from satellite import SAT_FEATURES, STAT_KEYS as SAT_STAT_KEYS, features_at  # noqa: E402,F401
+from satellite import MOTION_FEATURES, MOTION_KEYS, SAT_FEATURES, STAT_KEYS as SAT_STAT_KEYS, features_at  # noqa: E402,F401
 
 
 def read_satellite(path: Path = SAT_CSV) -> dict:
@@ -273,20 +275,41 @@ def read_satellite(path: Path = SAT_CSV) -> dict:
     return {r["stamp"]: r for r in df[["stamp", *SAT_STAT_KEYS]].to_dict("records")}
 
 
-def build_sat_features(index: pd.DatetimeIndex, scans: dict, wv: dict, wind_dir: pd.Series) -> pd.DataFrame:
+def read_motion(path: Path = SAT_MOTION_CSV) -> dict:
+    """data/satellite_motion.csv -> {stamp: motion stats, or {} when the earlier scan was missing}."""
+    df = pd.read_csv(path, dtype={"stamp": str, "status": str})
+    df = df[df["status"].notna()].drop_duplicates("stamp", keep="last")
+    return {r["stamp"]: ({k: r[k] for k in MOTION_KEYS} if r["status"] == "ok" else {}) for r in df.to_dict("records")}
+
+
+def read_phase(path: Path = SAT_PHASE_CSV) -> dict:
+    """data/satellite_phase.csv -> {stamp: cloud-phase shares} (scans without a phase file left out)."""
+    from cloud_phase import PHASE_KEYS
+    df = pd.read_csv(path, dtype={"stamp": str, "status": str})
+    df = df[df["status"] == "ok"].drop_duplicates("stamp", keep="last")
+    return {r["stamp"]: {k: r[k] for k in PHASE_KEYS} for r in df.to_dict("records")}
+
+
+def build_sat_features(index: pd.DatetimeIndex, scans: dict, wv: dict, wind_dir: pd.Series,
+                       motion: dict | None = None, phase: dict | None = None) -> pd.DataFrame:
     """Satellite inputs for each 15-minute step t (all NaN where no scan is recent enough).
 
     scans / wv = band-13 / band-10 scans (read_satellite). wind_dir = Open-Meteo 10 m wind direction at t
-    (degrees), for the upwind storm-cloud share.
+    (degrees), for the upwind storm-cloud share. motion (read_motion) adds the cloud-motion inputs, phase
+    (read_phase) the cloud-phase inputs (cloud_phase.features_at; NaN where no phase scan is recent enough).
     Same function the app runs live (satellite.features_at), so no separate parity port.
     """
     wind = wind_dir.reindex(index)
+    from cloud_phase import CLOUD_FEATURES, features_at as phase_at
+    columns = SAT_FEATURES + (MOTION_FEATURES if motion is not None else []) + (CLOUD_FEATURES if phase is not None else [])
     rows = []
     for t in index:
         w = wind.get(t)
-        f = features_at(t.to_pydatetime(), scans, None if pd.isna(w) else float(w), wv)
-        rows.append(f if f is not None else {k: np.nan for k in SAT_FEATURES})
-    return pd.DataFrame(rows, index=index, columns=SAT_FEATURES)
+        f = features_at(t.to_pydatetime(), scans, None if pd.isna(w) else float(w), wv, motion)
+        if f is not None and phase is not None:
+            f |= phase_at(t.to_pydatetime(), phase)
+        rows.append(f if f is not None else {k: np.nan for k in columns})
+    return pd.DataFrame(rows, index=index, columns=columns)
 
 
 # --------------------------------------------------------- the exported rain model, scored in Python

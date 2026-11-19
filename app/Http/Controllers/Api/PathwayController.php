@@ -4,23 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Building;
-use App\Models\Node;
 use App\Models\Pathway;
 use App\Services\GeoPoints;
+use App\Services\RouteNodes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PathwayController extends Controller
 {
-    /**
-     * Route nodes closer than this to an existing ground-floor route node are
-     * not created again, so running the generator twice, or on two pathways
-     * that cross, does not stack duplicate nodes.
-     */
-    private const DUPLICATE_RADIUS_M = 2.0;
-
     /**
      * List the road/walkway network (any logged-in user).
      */
@@ -87,41 +79,14 @@ class PathwayController extends Controller
             'campus' => 'sometimes|in:A,B',
         ]);
 
-        $spacing = (float) ($validated['spacing_m'] ?? 8);
-        $existing = Node::where('type', 'route')
-            ->where('floor_level', 0)
-            ->get(['latitude', 'longitude'])
-            ->map(fn (Node $n) => ['lat' => $n->latitude, 'lng' => $n->longitude])
-            ->all();
-
-        $created = DB::transaction(function () use ($pathway, $spacing, $existing, $validated, $request) {
-            $created = [];
-
-            foreach (GeoPoints::along($pathway->coordinates, $spacing) as $point) {
-                foreach ($existing as $other) {
-                    if (GeoPoints::distance($point, $other) < self::DUPLICATE_RADIUS_M) {
-                        continue 2;
-                    }
-                }
-
-                $node = new Node([
-                    'type' => 'route',
-                    'latitude' => $point['lat'],
-                    'longitude' => $point['lng'],
-                    'elevation' => 0,
-                    'floor_level' => 0,
-                    'path_type' => $pathway->nodePathType(),
-                    'campus' => $validated['campus'] ?? 'A',
-                ]);
-                $node->created_by = $request->user()->id;
-                $node->save();
-
-                $existing[] = $point;
-                $created[] = $node;
-            }
-
-            return $created;
-        });
+        $created = RouteNodes::layAlong(
+            $pathway->coordinates,
+            (float) ($validated['spacing_m'] ?? 8),
+            0,
+            $pathway->nodePathType(),
+            $validated['campus'] ?? 'A',
+            $request->user()->id,
+        );
 
         return response()->json([
             'created' => count($created),

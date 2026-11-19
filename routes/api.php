@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BorderController;
+use App\Http\Controllers\Api\BridgeController;
 use App\Http\Controllers\Api\BuildingController;
 use App\Http\Controllers\Api\CampusAreaController;
 use App\Http\Controllers\Api\DepartmentController;
@@ -61,6 +62,9 @@ Route::middleware(['auth:sanctum', EnsureStaff::class])->group(function () {
     // Campus areas (Campus A, Campus B, ...): staff read, admins edit (enforced in the controller).
     Route::apiResource('campus-areas', CampusAreaController::class);
     Route::post('/pathways/{pathway}/route-nodes', [PathwayController::class, 'generateRouteNodes']);
+    // Bridges and other connectors: staff read, admins edit (enforced in the controller).
+    Route::apiResource('bridges', BridgeController::class);
+    Route::post('/bridges/{bridge}/route-nodes', [BridgeController::class, 'generateRouteNodes']);
 
     Route::get('/node-links', [NodeLinkController::class, 'index']);
     Route::post('/node-links', [NodeLinkController::class, 'store']);

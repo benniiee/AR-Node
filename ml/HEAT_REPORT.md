@@ -3,6 +3,41 @@
 What the app shows: the heat index now ("Feels like 38°C, Extreme caution"), plus a
 1 to 3 hour outlook ("41°C expected at 2 pm"). This report covers the outlook model.
 
+## Update, 18 November 2026: the airport's latest reading as an input, and a 40 °C warning
+
+**Airport inputs.** The model of Nov 14 was scored against the airport but only read forecast
+numbers. It now also reads `obs_heat_index` (the airport's heat index from its newest report at or
+before the current hour, at most 90 minutes old) and `obs_minus_forecast` (that minus the forecast
+heat index now, i.e. how far off the forecast is right now). `train_heat.py` keeps them only if the
+validation MAE is lower at every horizon (it was: 1.49 / 1.60 / 1.73 °C against 1.69 / 1.77 / 1.81 °C),
+and exports the model without them as `fallback`, which the app scores when no airport report is
+recent enough. A trend input (the airport's change over the last hour) was tried and added nothing.
+
+Same test year, the same hours for every row (those with an airport report in the 90 minutes before):
+
+| Method | +1 h | +2 h | +3 h |
+|---|---|---|---|
+| **Model with airport inputs (shipped)** | **1.27** | **1.48** | **1.60** |
+| Airport heat index now + the typical change to that hour (new baseline) | 1.31 | 1.56 | 1.67 |
+| Model of Nov 14 (forecast inputs only) | 1.52 | 1.58 | 1.62 |
+| Typical for month and hour | 1.78 | 1.76 | 1.73 |
+| Forecast heat index at the target hour | 2.28 | 2.24 | 2.23 |
+
+The gain is mostly in the first hour: the measured value says where today really is, and the
+forecast's own trend matters more further ahead. 40 °C+ hours reached by the +1 h estimate: 18 of
+110 (Nov 14 model: 8).
+
+**Hot-hour chance.** Each horizon also has a logistic regression for "heat index at or above 40 °C"
+on the same inputs and scaling (`per_horizon[h].hot` in `heat_model.json`; C by validation log loss,
+alert threshold by best F1 on validation). Test year: warned before 58 of 110 hot hours at +1 h
+(201 false alerts in 6,075 other hours), 74 at +2 h (336 false), 54 at +3 h (172 false); Brier
+0.0146 against 0.0175 for always saying the base rate. The app shows it as a warning ("could reach
+40°C by 2 pm") and never closes paths on it.
+
+**"Now" from the airport.** The app's heat index now (and temperature, humidity) comes from the
+airport's latest report when it is less than 75 minutes old (`WeatherService::withAirportHeat`),
+which also decides heat mode, closing the 1.4 °C gap described below.
+
 ## Update, November 2026: the truth is now the airport thermometer
 
 Sections 1 to 6 below describe the first version (Nov 7), which learned from **ERA5** as the

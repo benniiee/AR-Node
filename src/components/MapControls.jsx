@@ -5,7 +5,7 @@ import { stairLength } from '../pathfinding';
 import { toLocalMeters } from '../geo';
 import { floorOf, floorAria, floorTag } from '../floors';
 import { buildingFloors, floorCountLabel } from '../campusGeometry';
-import { stairRise, normalizeFlights, meanAngle, flightsForShape, planStairs, shapeLabel, STAIR_LANDING_DEFAULT } from '../stairGeometry';
+import { stairRise, normalizeFlights, meanAngle, flightsForShape, planStairs, shapeLabel, fitAngle, fitYaw, STAIR_LANDING_DEFAULT } from '../stairGeometry';
 import { StairShapeEditor, STAIR_EDITOR_CSS, compassWord } from './StairEditor';
 import StairModal from './StairModal';
 
@@ -645,6 +645,12 @@ function StairLinkCard({ link, node, other, label, onUpdate, onRemove }) {
         const flights = draft.flights.map((f) => ({ ...f, angle_deg: deg }));
         change({ angle_deg: deg, flights }, { final: true });
     };
+    // The slope that reaches the other node, and the direction that aims the stairs at it.
+    const fitToNodes = (deg) => {
+        const flights = draft.flights.map((f) => ({ ...f, angle_deg: deg }));
+        const yaw = fitYaw({ rise, topOffset, flights, angleDeg: deg, landingM: draft.landing_m });
+        change({ angle_deg: deg, flights, ...(yaw === null ? {} : { yaw_deg: yaw }) }, { final: true });
+    };
 
     return (
         <li className="stair-link">
@@ -694,7 +700,17 @@ function StairLinkCard({ link, node, other, label, onUpdate, onRemove }) {
                             }) : null}
                             onCommit={setSlope}
                         />
-                        <p className="ui-hint" style={{ margin: 0 }}>Changes are saved as you make them.</p>
+                        {topOffset && (() => {
+                            const fitted = fitAngle({ rise, topOffset, flights: draft.flights, landingM: draft.landing_m });
+                            if (fitted === null) return null;
+                            const off = Math.abs(fitted - meanAngle(draft.flights)) >= 0.5;
+                            return (
+                                <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={() => fitToNodes(fitted)} disabled={!off}>
+                                    {off ? `Fit slope to the two nodes (${fitted.toFixed(1)}\u00b0)` : 'The stairs end on the other node'}
+                                </button>
+                            );
+                        })()}
+                        <p className="ui-hint" style={{ margin: 0 }}>Changes are saved as you make them. Leave the direction on auto so the stairs aim at the other node.</p>
                     </StairShapeEditor>
                 </StairModal>
             )}
@@ -754,14 +770,24 @@ export function StairLinks({ node, nodes, links, floorLabel, onPick, onUpdate, o
  *  direction and slope are set here; Connect saves the link.
  *  `onSave(draft)` receives { angle_deg, yaw_deg, flights, landing_m }. */
 export function NewStairModal({ from, to, label, onBack, onSave }) {
-    const [draft, setDraft] = useState(NEW_STAIR);
-    const [saving, setSaving] = useState(false);
     const [bottom, top] = floorOf(from) > floorOf(to) ? [to, from] : [from, to];
     const rise = stairRise(bottom, top);
     const topOffset = (([e, n]) => ({ e, n }))(toLocalMeters(top.latitude, top.longitude, bottom.latitude, bottom.longitude));
+    // The slope that makes this shape end exactly on the other node (unchanged when they are stacked).
+    const fitTo = (d) => {
+        const deg = fitAngle({ rise, topOffset, flights: d.flights, landingM: d.landing_m });
+        return deg === null ? d : { ...d, angle_deg: deg, flights: d.flights.map((f) => ({ ...f, angle_deg: deg })) };
+    };
+    // On by default: the stairs join the two nodes the admin tapped. Setting the slope by hand turns it off.
+    const [fit, setFit] = useState(true);
+    const [draft, setDraft] = useState(() => fitTo(NEW_STAIR()));
+    const [saving, setSaving] = useState(false);
     const direction = floorOf(to) > floorOf(from) ? 'up' : 'down';
-    const changeDraft = (patch) => setDraft((d) => ({ ...d, ...patch }));
-    const setSlope = (deg) => changeDraft({ angle_deg: deg, flights: draft.flights.map((f) => ({ ...f, angle_deg: deg })) });
+    const changeDraft = (patch) => setDraft((d) => (fit ? fitTo({ ...d, ...patch }) : { ...d, ...patch }));
+    const setSlope = (deg) => {
+        setFit(false);
+        setDraft((d) => ({ ...d, angle_deg: deg, flights: d.flights.map((f) => ({ ...f, angle_deg: deg })) }));
+    };
     const save = async () => {
         setSaving(true);
         try { await onSave(draft); } finally { setSaving(false); }
@@ -791,6 +817,13 @@ export function NewStairModal({ from, to, label, onBack, onSave }) {
                     })}
                     onChange={setSlope}
                 />
+                <label className="mt-check" style={{ alignItems: 'flex-start' }}>
+                    <input
+                        type="checkbox" checked={fit}
+                        onChange={(e) => { setFit(e.target.checked); if (e.target.checked) setDraft((d) => fitTo(d)); }}
+                    />
+                    <span>Fit the slope so the stairs end on the other node</span>
+                </label>
             </StairShapeEditor>
         </StairModal>
     );

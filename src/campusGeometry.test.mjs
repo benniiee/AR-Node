@@ -74,3 +74,15 @@ test('interiorPoint stays inside an L-shaped building whose centre is in the not
     const sq = [{ lat: 6.913, lng: 122.061 }, { lat: 6.913, lng: 122.0612 }, { lat: 6.9132, lng: 122.0612 }, { lat: 6.9132, lng: 122.061 }];
     assert.deepEqual(interiorPoint(sq), polygonCentroid(sq));
 });
+
+test('bridge deck height: measured, else deck floor x 3.2 m; level labels', async () => {
+    const { bridgeDeckHeightM, deckLevelLabel, bridgeKindLabel } = await import('./campusGeometry.js');
+    assert.equal(bridgeDeckHeightM({ deck_floor: 1, deck_height_m: 5.5 }), 5.5);
+    assert.equal(bridgeDeckHeightM({ deck_floor: 2, deck_height_m: null }), 6.4);
+    assert.equal(bridgeDeckHeightM({ deck_floor: 0 }), 0);
+    assert.equal(bridgeDeckHeightM(null), 0);
+    assert.equal(deckLevelLabel(0), 'At ground level');
+    assert.equal(deckLevelLabel(1), '1 floor up');
+    assert.equal(deckLevelLabel(2), '2 floors up');
+    assert.equal(bridgeKindLabel('bridge'), 'Footbridge');
+});

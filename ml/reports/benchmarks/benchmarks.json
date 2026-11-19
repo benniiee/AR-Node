@@ -1,56 +1,67 @@
 {
-  "rain": [
-    {
-      "method": "Open-Meteo's own rain chance",
-      "brier": 0.2401,
-      "auc": 0.852,
-      "starts": 0,
-      "dry_warned": 0.0
-    },
-    {
-      "method": "Original model (Nov 7)",
-      "brier": 0.0298,
-      "auc": 0.89,
-      "starts": 15,
-      "dry_warned": 0.05
-    },
-    {
-      "method": "First satellite model (Nov 13)",
-      "brier": 0.0296,
-      "auc": 0.914,
-      "starts": 19,
-      "dry_warned": 0.05
-    },
-    {
-      "method": "Current model (Nov 14)",
-      "brier": 0.0293,
-      "auc": 0.923,
-      "starts": 26,
-      "dry_warned": 0.05
-    }
-  ],
-  "rain_steps": 3550,
-  "rain_starts": 82,
-  "heat_mae": {
-    "Current model (airport-trained)": [
-      1.498,
-      1.598,
-      1.637
-    ],
-    "Typical for month and hour": [
-      1.735,
-      1.735,
-      1.735
-    ],
-    "Open-Meteo forecast": [
-      2.192,
-      2.192,
-      2.192
-    ],
-    "Previous model (ERA5-trained)": [
-      3.437,
-      3.482,
-      3.509
-    ]
+ "rain": [
+  {
+   "method": "Open-Meteo's own rain chance",
+   "starts": 0,
+   "dry_warned": 0.0,
+   "auc": 0.852,
+   "brier": 0.2401
+  },
+  {
+   "method": "Original model (Nov 7)",
+   "starts": 15,
+   "dry_warned": 0.0498,
+   "auc": 0.89,
+   "brier": 0.0298
+  },
+  {
+   "method": "First satellite model (Nov 13)",
+   "starts": 19,
+   "dry_warned": 0.0498,
+   "auc": 0.914,
+   "brier": 0.0296
+  },
+  {
+   "method": "+ water vapour (Nov 14)",
+   "starts": 26,
+   "dry_warned": 0.0498,
+   "auc": 0.923,
+   "brier": 0.0293
+  },
+  {
+   "method": "+ cloud phase (Nov 19, current)",
+   "starts": 28,
+   "dry_warned": 0.0498,
+   "auc": 0.922,
+   "brier": 0.0288
   }
+ ],
+ "rain_steps": 3550,
+ "rain_starts": 82,
+ "rain_period": [
+  "2026-07-29",
+  "2026-10-30"
+ ],
+ "heat_mae": {
+  "First model (Nov 7, ERA5-trained)": [
+   3.44,
+   3.48,
+   3.51
+  ],
+  "Nov 14 model (airport thermometer)": [
+   1.52,
+   1.58,
+   1.62
+  ],
+  "Nov 18 model (+ airport heat index, current)": [
+   1.27,
+   1.48,
+   1.6
+  ],
+  "Open-Meteo forecast": [
+   2.28,
+   2.24,
+   2.23
+  ]
+ }
 }

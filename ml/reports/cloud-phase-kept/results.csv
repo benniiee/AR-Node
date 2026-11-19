@@ -1,0 +1,14 @@
+,n,rain_rate,brier,roc_auc,precision,recall,start_recall,false_alarm_ratio,false_positive_rate
+exported model,4769.0,0.0505,0.03618,0.9143,0.268,0.6805,0.4436,0.732,0.0989
+logistic regression (uncalibrated),4769.0,0.0505,0.03611,0.9199,0.2834,0.7137,0.5038,0.7166,0.0961
+gradient boosting (uncalibrated),4769.0,0.0505,0.03618,0.9143,0.268,0.6805,0.4436,0.732,0.0989
+variant: forecast only,4769.0,0.0505,0.04468,0.8501,0.2166,0.5643,0.4662,0.7834,0.1087
+variant: forecast + airport report,4769.0,0.0505,0.03694,0.8944,0.3099,0.6224,0.3158,0.6901,0.0738
+variant: forecast + several models,4769.0,0.0505,0.04393,0.8611,0.2404,0.5975,0.5038,0.7596,0.1005
+variant: forecast + airport report + several models,4769.0,0.0505,0.03663,0.8984,0.3149,0.639,0.3459,0.6851,0.074
+variant: all of the above + satellite,4769.0,0.0505,0.03644,0.92,0.2764,0.6846,0.4511,0.7236,0.0954
+climatology (month x hour),4769.0,0.0505,0.0545,0.5089,0.0488,0.2905,0.2481,0.9512,0.3012
+persistence (rain in last 15 min),4769.0,0.0505,0.19983,0.7337,0.1544,0.6598,0.5489,0.8456,0.1924
+persistence (latest airport report),4769.0,0.0505,0.05892,0.7077,0.4219,0.4481,0.0,0.5781,0.0327
+raw Open-Meteo probability,4769.0,0.0505,0.26283,0.864,0.078,0.9751,0.9549,0.922,0.6131
+compare: before-cloud-phase/model.json,4769.0,0.0505,0.0354,0.92,0.2742,0.6929,0.4662,0.7258,0.0976

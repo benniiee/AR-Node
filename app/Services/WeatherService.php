@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\RainReport;
+use App\Models\WeatherEnsemble;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
@@ -156,6 +157,92 @@ class WeatherService
         } catch (Throwable $exception) {
             Log::warning('Weather history was not recorded.', ['error' => $exception->getMessage()]);
         }
+
+        $this->recordEnsemble();
+    }
+
+    /**
+     * Save a summary of the ensemble forecasts (config weather.ensemble_models) for campus. Recorded
+     * only, not used by the rain model yet: the Ensemble API keeps ~3 days of the past, so this table is
+     * the only training history there will be. Never throws.
+     */
+    private function recordEnsemble(): void
+    {
+        if (! config('weather.record_ensemble', true)) {
+            return;
+        }
+
+        try {
+            $response = $this->providerGet((string) config('weather.ensemble_url'), [
+                'latitude' => (float) config('weather.latitude'),
+                'longitude' => (float) config('weather.longitude'),
+                'hourly' => 'precipitation',
+                'models' => (string) config('weather.ensemble_models'),
+                'forecast_hours' => 3,
+                'timezone' => 'Asia/Manila',
+            ]);
+            $models = $response->failed() ? null : self::ensembleSummary($response->json() ?? []);
+            if ($models === null) {
+                Log::warning('Ensemble forecast unavailable; not recorded.', ['status' => $response->status()]);
+
+                return;
+            }
+            WeatherEnsemble::create(['fetched_at' => now(), 'models' => $models]);
+        } catch (Throwable $exception) {
+            Log::warning('Ensemble forecast was not recorded.', ['error' => $exception->getMessage()]);
+        }
+    }
+
+    /**
+     * Per model and hour: the share of members with at least 0.1 mm ("wet") and at least 1 mm ("heavy"),
+     * and the members' mean and largest amount. Members are the hourly "precipitation_memberNN_<model>"
+     * series plus the control run "precipitation_<model>"; an hour with no member values is skipped.
+     * Null when the payload holds no members at all. Pure, so it is unit-testable.
+     *
+     * @param  array<string, mixed>  $payload  decoded Ensemble API response (hourly=precipitation)
+     * @return array<string, array{members: int, hours: list<array{at: string, wet_share: float, heavy_share: float, mean_mm: float, max_mm: float}>}>|null
+     */
+    public static function ensembleSummary(array $payload): ?array
+    {
+        $hourly = is_array($payload['hourly'] ?? null) ? $payload['hourly'] : [];
+        $times = is_array($hourly['time'] ?? null) ? $hourly['time'] : [];
+        $series = [];
+        foreach ($hourly as $key => $values) {
+            if (is_array($values) && preg_match('/^precipitation_member\d+_(.+)$/', (string) $key, $m)) {
+                $series[$m[1]][] = $values;
+            }
+        }
+        // The control run, only for a model that has members (so "precipitation_probability" is never one).
+        foreach (array_keys($series) as $model) {
+            if (is_array($hourly['precipitation_'.$model] ?? null)) {
+                $series[$model][] = $hourly['precipitation_'.$model];
+            }
+        }
+
+        $out = [];
+        foreach ($series as $model => $members) {
+            $hours = [];
+            foreach ($times as $i => $time) {
+                $values = array_values(array_filter(array_map(fn (array $member) => $member[$i] ?? null, $members), 'is_numeric'));
+                if ($values === []) {
+                    continue;
+                }
+                $count = count($values);
+                $hours[] = [
+                    'at' => (string) $time,
+                    'wet_share' => round(count(array_filter($values, fn ($v): bool => $v >= 0.1)) / $count, 3),
+                    'heavy_share' => round(count(array_filter($values, fn ($v): bool => $v >= 1.0)) / $count, 3),
+                    'mean_mm' => round(array_sum($values) / $count, 2),
+                    'max_mm' => round((float) max($values), 2),
+                ];
+            }
+            if ($hours !== []) {
+                // Keys as in the response without the "_ensemble"/"_eps" suffix (gfs025 answers as "ncep_gefs025").
+                $out[preg_replace('/_(ensemble|eps)$/', '', $model)] = ['members' => count($members), 'hours' => $hours];
+            }
+        }
+
+        return $out === [] ? null : $out;
     }
 
     /**
@@ -177,6 +264,7 @@ class WeatherService
         // Fetched once per refresh: the history outcomes reuse them.
         $this->history['metars'] = $reports;
 
+        $state = $this->withAirportHeat($state, $reports);
         $verdict = self::airportRainingNow($reports, now(), (int) config('weather.airport_fresh_minutes', 75));
         if ($verdict === null) {
             return $state + ['raining_now_source' => 'forecast'];
@@ -193,6 +281,35 @@ class WeatherService
         $state['rain_multiplier'] = $state['rain_mode'] ? (float) config('weather.rain_penalty') : 1.0;
 
         return $state;
+    }
+
+    /**
+     * Temperature, humidity and heat index NOW from the airport's latest report when it is fresh
+     * (weather.airport_fresh_minutes), instead of the forecast's "current" values: on the heat test
+     * year the forecast's heat index ran about 1.4 C cooler than the airport thermometer (ml/HEAT_REPORT.md).
+     * Heat mode then follows the measured value (withHeatMode). Without a fresh report nothing changes.
+     *
+     * @param  array<string, mixed>  $state
+     * @param  list<array{time: string, raw: string}>  $reports
+     * @return array<string, mixed>
+     */
+    private function withAirportHeat(array $state, array $reports): array
+    {
+        $raw = collect($reports)->sortBy('time')->last()['raw'] ?? null;
+        $fresh = self::airportRainingNow($reports, now(), (int) config('weather.airport_fresh_minutes', 75)) !== null;
+        $pair = Metar::temperatureDewPoint($raw);
+        $heatIndex = Metar::heatIndex($raw);
+        if (! $fresh || $pair === null || $heatIndex === null) {
+            return $state + ['heat_now_source' => 'forecast'];
+        }
+
+        return array_merge($state, [
+            'temperature_c' => $pair[0],
+            'humidity' => (int) round((float) Metar::relativeHumidity($raw)),
+            'heat_index_c' => $heatIndex,
+            'heat_category' => HeatIndex::category($heatIndex, $this->heatThresholds()),
+            'heat_now_source' => 'airport',
+        ]);
     }
 
     /**
@@ -348,7 +465,9 @@ class WeatherService
         }
 
         $payload = $response->json() ?? [];
-        $satellite = $needs('needsSatellite') ? $this->fetchSatellite($model->satelliteArguments($payload)) : null;
+        $satellite = $needs('needsSatellite')
+            ? $this->fetchSatellite($model->satelliteArguments($payload) + ['motion' => $needs('needsCloudMotion'), 'cloud' => $needs('needsCloudPhase')])
+            : null;
         [$p, $scored] = $this->scoreModel($model, $payload, $multiModel, $metars, $satellite);
         if ($scored !== $model) {
             $this->history['alert_threshold'] = $scored->alertThreshold();
@@ -400,7 +519,8 @@ class WeatherService
      * Satellite inputs for the rain model from `python ml/satellite.py now` (the same code that
      * built them for training), or null when Python, the download or the scan is not available.
      *
-     * @param  array{at: string, wind_dir: float|null}  $arguments
+     * @param  array{at: string, wind_dir: float|null, motion?: bool, cloud?: bool}  $arguments  motion / cloud = also the
+     *                                                                                           cloud-motion / cloud-phase inputs
      * @return array<string, float>|null
      */
     private function fetchSatellite(array $arguments): ?array
@@ -412,6 +532,12 @@ class WeatherService
         $command = [(string) config('weather.python', 'python'), 'satellite.py', 'now', '--at', $arguments['at']];
         if ($arguments['wind_dir'] !== null) {
             $command = [...$command, '--wind-dir', (string) $arguments['wind_dir']];
+        }
+        if ($arguments['motion'] ?? false) {
+            $command[] = '--motion';
+        }
+        if ($arguments['cloud'] ?? false) {
+            $command[] = '--cloud';
         }
 
         try {
@@ -600,7 +726,8 @@ class WeatherService
                 (float) config('weather.latitude'),
                 (float) config('weather.longitude'),
             ));
-            $outlook = $response->failed() ? $fallback : $model->forecast($response->json() ?? [], null, $thresholds);
+            // The airport reports applyAirportReport() downloaded: the model reads the latest heat index from them.
+            $outlook = $response->failed() ? $fallback : $model->forecast($response->json() ?? [], null, $thresholds, $this->history['metars'] ?? []);
         } catch (Throwable $exception) {
             Log::warning('Heat model request failed; using the forecast heat index.', ['error' => $exception->getMessage()]);
             $outlook = $fallback;

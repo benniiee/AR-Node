@@ -2,8 +2,8 @@
 //
 // Ported from the original 3D design reference and re-coloured to this app's
 // black/white/green palette: a glowing translucent tube along the path, arrowhead
-// chevrons that march toward the destination, a floating destination pin with
-// a ground ripple, a pulsing "you are here" halo, and spatial dust.
+// chevrons that march toward the destination, and a floating destination pin
+// with a ground ripple.
 //
 // These are world-scale meshes that give the path a 3D presence; the flat
 // screen-space markers in `routeArrows.js` handle the readable-at-any-distance
@@ -29,8 +29,6 @@ export const HOLO = {
     ice: 0xffffff,
     /** Problem signal ONLY (a stop dropped from the route). Never navigation. */
     alert: 0xff2338,
-    /** Spatial dust */
-    dust: 0xd1fae5,
     /** Scene fog colour */
     fog: 0x0b0b0f,
 };
@@ -588,171 +586,6 @@ export function createDestinationPin({
         dispose() {
             group.parent?.remove(group);
             for (const d of disposables) d.dispose();
-        },
-    };
-}
-
-/**
- * Pulsing halo drawn on the ground at the route head — the reference's user
- * ring, minus the arrow puck (the camera *is* the user in AR, so an arrow at
- * your own feet would only ever be seen when you look down).
- */
-export function createPulseRing({
-    color = HOLO.glow,
-    inner = 0.75,
-    outer = 0.95,
-} = {}) {
-    const group = new THREE.Group();
-    group.visible = false;
-
-    const geo = new THREE.RingGeometry(inner, outer, 40);
-    geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false,
-    });
-    const ring = new THREE.Mesh(geo, mat);
-    ring.renderOrder = -3;
-    group.add(ring);
-
-    return {
-        group,
-        /** @param {number} x @param {number} z ground position of the head */
-        place(x, y, z) {
-            group.position.set(x, y, z);
-            group.visible = true;
-        },
-        hide() { group.visible = false; },
-        tick(time) {
-            if (!group.visible) return;
-            // Same sonar ripple as the destination ring: tight and bright at
-            // the feet, blooming outward with an ease-out cubic while fading.
-            const k = (time * 0.9) % 1;
-            const e = 1 - Math.pow(1 - k, 3);
-            ring.scale.setScalar(0.3 + e * 1.6);
-            mat.opacity = 0.8 * (1 - k);
-        },
-        dispose() {
-            group.parent?.remove(group);
-            geo.dispose();
-            mat.dispose();
-        },
-    };
-}
-
-/**
- * One-shot pop bubbles for Dijkstra re-anchors: when a stop joins or leaves
- * the live route, ARView fires a bubble at its marker — a sphere that bursts
- * outward with an ease-out quad while fading to nothing (~0.6 s), then parks
- * invisible until recycled. Fixed pool, no per-frame allocation.
- */
-export const HOLO_BUBBLE_COUNT = 10;
-export const HOLO_BUBBLE_DURATION = 0.6;
-
-export function createBubblePool({
-    count = HOLO_BUBBLE_COUNT,
-    duration = HOLO_BUBBLE_DURATION,
-    baseRadius = 0.5,
-} = {}) {
-    const group = new THREE.Group();
-    const geo = new THREE.SphereGeometry(baseRadius, 14, 12);
-    const bubbles = [];
-    for (let i = 0; i < count; i += 1) {
-        const mat = new THREE.MeshBasicMaterial({
-            color: HOLO.ice, transparent: true, opacity: 0, depthWrite: false,
-        });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.visible = false;
-        mesh.renderOrder = -2;
-        mesh.frustumCulled = false;
-        group.add(mesh);
-        bubbles.push({ mesh, mat, age: duration, maxScale: 2.8 });
-    }
-    let cursor = 0;
-
-    return {
-        group,
-        /**
-         * Fire one bubble. Steals the oldest slot when the pool is busy, so
-         * a mass re-route degrades to fewer pops, never to new allocation.
-         */
-        pop(x, y, z, { color = HOLO.ice, maxScale = 2.8 } = {}) {
-            const b = bubbles[cursor];
-            cursor = (cursor + 1) % bubbles.length;
-            b.mesh.position.set(x, y, z);
-            b.mat.color.setHex(color);
-            b.age = 0;
-            b.maxScale = maxScale;
-            b.mesh.visible = true;
-        },
-        /** Advance every in-flight pop. Call once per rendered frame. */
-        tick(time, dt) {
-            const step = Number.isFinite(dt) && dt > 0 ? dt : 0;
-            if (step <= 0) return;
-            for (const b of bubbles) {
-                if (b.age >= duration) continue;
-                b.age = Math.min(duration, b.age + step);
-                const k = b.age / duration;
-                const e = 1 - Math.pow(1 - k, 2);
-                b.mesh.scale.setScalar(0.4 + e * b.maxScale);
-                b.mat.opacity = 0.75 * (1 - k);
-                if (k >= 1) b.mesh.visible = false;
-            }
-        },
-        dispose() {
-            group.parent?.remove(group);
-            geo.dispose();
-            for (const b of bubbles) {
-                group.remove(b.mesh);
-                b.mat.dispose();
-            }
-            bubbles.length = 0;
-        },
-    };
-}
-
-/**
- * Ambient spatial dust. Follows the camera on X/Z and drifts slowly so it
- * reads as depth rather than dirt on the lens; `sizeAttenuation: false` keeps
- * every mote at a constant few pixels so one drifting near the camera can
- * never bloom into a blob over the video.
- */
-export function createSpatialDust({
-    count = 70,
-    color = HOLO.dust,
-    spreadXZ = 46,
-    height = 12,
-} = {}) {
-    const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count; i += 1) {
-        pos[i * 3] = (Math.random() - 0.5) * spreadXZ;
-        pos[i * 3 + 1] = -1 + Math.random() * height;
-        pos[i * 3 + 2] = (Math.random() - 0.5) * spreadXZ;
-    }
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({
-        color,
-        size: 3,
-        sizeAttenuation: false,
-        transparent: true,
-        opacity: 0.4,
-        depthWrite: false,
-    });
-    const points = new THREE.Points(geo, mat);
-    points.renderOrder = -5;
-    points.frustumCulled = false;
-
-    return {
-        group: points,
-        /** @param {number} time @param {number} camX @param {number} camZ */
-        tick(time, camX, camZ) {
-            points.position.set(camX, 0, camZ);
-            points.rotation.y = time * 0.035;
-        },
-        dispose() {
-            points.parent?.remove(points);
-            geo.dispose();
-            mat.dispose();
         },
     };
 }

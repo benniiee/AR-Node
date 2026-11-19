@@ -236,6 +236,30 @@ export function fitYaw({ rise, topOffset, flights, angleDeg, landingM }) {
     return Math.round(normalizeBearing(yaw) * 10) / 10;
 }
 
+/**
+ * The slope (degrees) that makes stairs of this shape reach the top node: their end lies as far
+ * from the bottom as the top node does. A gentler slope runs further, so the answer is found by
+ * halving the range. Clamped to STAIR_ANGLE_MIN..MAX (the top too far = the gentlest stairs, too
+ * close = the steepest); null when the nodes are stacked (nothing to fit). Use with fitYaw().
+ */
+export function fitAngle({ rise, topOffset, flights, landingM }) {
+    const reach = Math.hypot(topOffset?.e || 0, topOffset?.n || 0);
+    if (reach < 0.3) return null;
+    const span = (deg) => {
+        const end = planStairs({ rise, yawDeg: 0, flights: normalizeFlights(flights, deg).map((f) => ({ ...f, angle_deg: deg })), angleDeg: deg, landingM }).end;
+        return Math.hypot(end.e, end.n);
+    };
+    let lo = STAIR_ANGLE_MIN;
+    let hi = STAIR_ANGLE_MAX;
+    if (span(lo) <= reach) return lo;
+    if (span(hi) >= reach) return hi;
+    for (let i = 0; i < 40; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (span(mid) > reach) lo = mid; else hi = mid;
+    }
+    return Math.round(((lo + hi) / 2) * 10) / 10;
+}
+
 // ── Shapes ────────────────────────────────────────────────────────────
 
 export const STAIR_SHAPES = [

@@ -37,7 +37,7 @@ import { toLocalMeters } from './geo.js';
 import { edgeRainFactor, isRoutable, noRouteMessage } from './weatherCost.js';
 import { edgeShadeFactor } from './shadeRouting.js';
 import { floorOf, floorAria } from './floors.js';
-import { doorGapWalls, doorWaypoints, placedDoors } from './doors.js';
+import { doorGapWalls, doorWaypoints, placedDoors, snapToOutline, DOOR_WIDTH_M, MAX_DOORS } from './doors.js';
 import {
     DEFAULT_STAIR_ANGLE, STAIR_ANGLE_MIN, STAIR_ANGLE_MAX, clampStairAngle,
     stairRise, stairWalkLength, describeStair,
@@ -151,10 +151,17 @@ export function segmentCrossesBorder(a, b, borders) {
 
     const segA = { lat: a.latitude, lng: a.longitude };
     const segB = { lat: b.latitude, lng: b.longitude };
+    // The step's floor: a's, or b's when a is a point without one (the user's GPS fix).
+    const stepFloor = a?.floor_level !== undefined && a?.floor_level !== null ? floorOf(a) : floorOf(b);
 
     for (const border of borders) {
         const wall = border.coordinates;
         if (!wall || wall.length < 2) continue;
+        // A wall of one floor only (a bridge deck's outline): other floors pass under or over it.
+        if (border.floor !== undefined && border.floor !== null && border.floor !== stepFloor) continue;
+        // A drawn wall (fence, road edge) under a raised bridge deck: a step along the deck passes over it.
+        if (border.overDecks && border.overDecks.some((d) => d.floor === stepFloor
+            && insidePolygon(segA, d.polygon) && insidePolygon(segB, d.polygon))) continue;
         // Building outline (see buildingBarriers): blocks walking ACROSS the
         // building, never going in or out of it. A step that starts or ends
         // inside it is an entrance / exit (doors are not mapped).
@@ -200,6 +207,84 @@ export function buildingBarriers(buildings) {
         out.push({ coordinates: [...b.polygon, b.polygon[0]], polygon: b.polygon });
     }
     return out;
+}
+
+/**
+ * Bridges with doors as routing obstacles: on the deck's floor the outline is a wall with a gap
+ * at each door, so routes get on and off the deck only through its doors (a door waypoint in each
+ * gap, bridgeDoorWaypoints). The ground under a raised deck stays open. A bridge without doors
+ * blocks nothing, as before. Planned bridges are not built yet.
+ */
+export function bridgeBarriers(bridges) {
+    const out = [];
+    for (const br of bridges || []) {
+        if (!br || br.status === 'planned' || !Array.isArray(br.polygon) || br.polygon.length < 3) continue;
+        if (placedDoors(br.polygon, br.doors).length === 0) continue;
+        const floor = Math.trunc(Number(br.deck_floor) || 0);
+        for (const wall of doorGapWalls(br.polygon, br.doors)) out.push({ coordinates: wall, floor });
+    }
+    return out;
+}
+
+/** A virtual route node in each bridge door's gap, on the deck's floor (like doorWaypoints for buildings). */
+export function bridgeDoorWaypoints(bridges) {
+    const out = [];
+    for (const br of bridges || []) {
+        if (!br || br.status === 'planned') continue;
+        placedDoors(br.polygon, br.doors).forEach((d, i) => {
+            out.push({
+                id: -(1000000 + Number(br.id) * 100 + i + 1),
+                type: 'route', is_door: true,
+                name: `${br.short_name || br.name || 'Bridge'} entrance`,
+                latitude: d.lat, longitude: d.lng, elevation: 0,
+                floor_level: Math.trunc(Number(br.deck_floor) || 0),
+                path_type: br.roofed ? 'inside' : 'outside', building_id: null,
+            });
+        });
+    }
+    return out;
+}
+
+/** A path's outside end within this distance of the outline counts as entering there. */
+const ENTRANCE_REACH_M = 10;
+
+/**
+ * Where existing walking paths (and staircases) on one floor cross an outline: the spots a building
+ * or a bridge deck is really entered, as points on the outline ({ lat, lng }), for "Find entrances".
+ * walls: the drawn walls (not this outline). onlyInto: node ids; when given, only paths that lead
+ * into one of them count (a raised bridge's staircase feet: the road under the deck is no entrance).
+ */
+export function suggestEntrances(polygon, nodes, { floor = 0, links = [], walls = [], onlyInto = null } = {}) {
+    if (!Array.isArray(polygon) || polygon.length < 3) return [];
+    const at = (n) => ({ lat: Number(n.latitude ?? n.lat), lng: Number(n.longitude ?? n.lng) });
+    const inside = (n) => insidePolygon(at(n), polygon);
+    const all = nodes || [];
+    const byId = Object.fromEntries(all.map((n) => [String(n.id), n]));
+    const pairs = buildWalkEdges(all.filter((n) => floorOf(n) === floor), walls).map((e) => [e.a, e.b]);
+    // A staircase is entered where its plan line crosses the outline (its end on this floor inside, the other out).
+    for (const l of links || []) {
+        const a = byId[String(l.node_a_id)];
+        const b = byId[String(l.node_b_id)];
+        if (a && b && floorOf(a) !== floorOf(b) && (floorOf(a) === floor || floorOf(b) === floor)) pairs.push(floorOf(a) === floor ? [a, b] : [b, a]);
+    }
+    const out = [];
+    for (const [a, b] of pairs) {
+        if (inside(a) === inside(b)) continue;
+        const [inner, outer] = inside(a) ? [a, b] : [b, a];
+        if (onlyInto && !onlyInto.has(String(inner.id))) continue;
+        // Only nearby steps: the graph also joins same-floor nodes of far structures through the air.
+        if ((snapToOutline(polygon, at(outer).lat, at(outer).lng)?.distM ?? Infinity) > ENTRANCE_REACH_M) continue;
+        // Bisect the step for where it crosses the outline.
+        let lo = at(inner);
+        let hi = at(outer);
+        for (let i = 0; i < 30; i += 1) {
+            const mid = { lat: (lo.lat + hi.lat) / 2, lng: (lo.lng + hi.lng) / 2 };
+            if (insidePolygon(mid, polygon)) lo = mid; else hi = mid;
+        }
+        const s = snapToOutline(polygon, hi.lat, hi.lng);
+        if (s && !out.some((d) => Math.hypot(...toLocalMeters(d.lat, d.lng, s.lat, s.lng)) < DOOR_WIDTH_M)) out.push({ lat: s.lat, lng: s.lng });
+    }
+    return out.slice(0, MAX_DOORS);
 }
 
 // ── Build graph: Gabriel graph over all nodes ─────────────────────────
@@ -461,8 +546,13 @@ function snapPathToRoad(path, nodes, userLat, userLng, userElevation, borders, u
 export function computeRoute(nodes, destinationId, userLat, userLng, userElevation = 0, wallBorders = [], options = {}) {
     // options.buildings: labelled buildings, walked around (not through),
     // entered through their doors (virtual route nodes in each door gap).
-    const borders = [...(wallBorders || []), ...buildingBarriers(options.buildings)];
-    const doorNodes = doorWaypoints(options.buildings);
+    // options.bridges: bridges with doors are entered only through them, on the deck's floor.
+    const overDecks = (options.bridges || [])
+        .filter((br) => br && br.status !== 'planned' && Number(br.deck_floor) > 0 && Array.isArray(br.polygon) && br.polygon.length >= 3)
+        .map((br) => ({ floor: Math.trunc(Number(br.deck_floor)), polygon: br.polygon }));
+    const walls = overDecks.length ? (wallBorders || []).map((w) => ({ ...w, overDecks })) : (wallBorders || []);
+    const borders = [...walls, ...buildingBarriers(options.buildings), ...bridgeBarriers(options.bridges)];
+    const doorNodes = [...doorWaypoints(options.buildings), ...bridgeDoorWaypoints(options.bridges)];
     if (doorNodes.length && nodes && nodes.length) nodes = [...nodes, ...doorNodes];
     if (!nodes || nodes.length === 0) {
         return { success: false, message: 'No nodes on the map yet.' };

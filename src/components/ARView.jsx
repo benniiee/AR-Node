@@ -351,6 +351,8 @@ export default function ARView({
     // Labelled buildings + pathways for the mini-map, and "CCS · Floor 2 of 4"
     // for the destination (both from /map; optional so older callers work).
     buildings = [], pathways = [], destPlace = '',
+    // Bridge decks for the 3D follow view (from /map).
+    bridges = [],
     // Staircase links, for the steps in the 3D follow view.
     links = [],
     // Satellite settings owned by /map (same device setting); null = no control.
@@ -991,7 +993,9 @@ export default function ARView({
     // Camera | Map: the two full-screen modes of the 3D view (the old docked mini-map strip
     // made both too small on phones). Map keeps the camera as a corner preview to tap back.
     // 3D: the game-style follow view (FollowView3D), between the camera and the flat map.
-    const [followMain, setFollowMain] = useState(false);
+    const [followMain, setFollowMain] = useState(
+        () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches,
+    );
     // Read by the render loop: while the 3D follow view covers the screen the AR
     // scene still updates (guidance, distances) but is not drawn, so the phone
     // renders one 3D scene per frame, not two.
@@ -3496,7 +3500,10 @@ export default function ARView({
         }
     };
 
+    // Leaving: the view is still mounted while the exit overlay fades in, and must not fall back to its start card.
+    const [exiting, setExiting] = useState(false);
     const stopAll = () => {
+        setExiting(true);
         // Release the mouse before unmounting, or the next screen inherits a
         // locked pointer with nothing left to unlock it.
         if (document.pointerLockElement) document.exitPointerLock();
@@ -4340,7 +4347,7 @@ export default function ARView({
             {followMain && started && (
                 <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
                     <FollowView3D
-                        route={route} buildings={buildings} links={links} pathways={pathways}
+                        route={route} buildings={buildings} links={links} pathways={pathways} bridges={bridges} nodes={nodes}
                         getPose={getFollowPose}
                         floor={floor}
                         testWalk={testWalkOn}
@@ -4407,7 +4414,7 @@ export default function ARView({
                 </div>
             )}
 
-            {!started && (
+            {!started && !exiting && (
                 <div ref={camOverlayRef} className="ar-start">
                     <div className="ar-panel ar-start-card" role="dialog" aria-labelledby="ar-start-title">
                         <h2 className="ar-start-title" id="ar-start-title">{route ? `To ${destLabel}` : '3D view'}</h2>

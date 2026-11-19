@@ -3,16 +3,22 @@ import L from 'leaflet';
 import { api } from '../api';
 import { ActionBar, Sheet } from './MapControls';
 import { loadOsmFeatures } from '../osmFeatures';
-import { PATHWAY_KINDS, buildingFloors, polygonCentroid } from '../campusGeometry';
-import { pathwayStyle, buildingStyle, esc } from '../campusLayers';
+import { PATHWAY_KINDS, BRIDGE_KINDS, MAX_DECK_FLOOR, buildingFloors, polygonCentroid, deckLevelLabel } from '../campusGeometry';
+import { pathwayStyle, buildingStyle, bridgeStyle, esc } from '../campusLayers';
 import { toLocalMeters, fromLocalMeters } from '../geo';
 import { snapToOutline, placedDoors, doorFrames, doorWidth, DOOR_SNAP_M, DOOR_WIDTH_M, MIN_DOOR_WIDTH_M, MAX_DOOR_WIDTH_M, MAX_DOORS } from '../doors';
-import BuildingPreview3D, { BUILDING_PREVIEW_CSS } from './BuildingPreview3D';
+import { lazyPreview } from './Lazy3D';
 import { addJoined, canExtendFrom } from '../shapeDraft';
 import StairModal from './StairModal';
+import { suggestEntrances } from '../pathfinding';
 
-// ── Campus editor: buildings and pathways ───────────────────────────
-// One tool for both, because both are "a shape on the map plus a label":
+// The door editor's 3D view (admin only): three.js loads when the editor opens.
+const BuildingPreview3D = lazyPreview(() => import('./BuildingPreview3D'), 'BUILDING_PREVIEW_CSS', 'Loading the 3D preview...');
+
+// ── Campus editor: buildings, bridges and pathways ──────────────────
+// One tool for all three, because each is "a shape on the map plus a label".
+// A bridge (or other connector, campusGeometry BRIDGE_KINDS) is drawn exactly
+// like a building outline; its details are the deck instead of floors/doors:
 //
 //   1. shape    adopt a shape from the OpenStreetMap base map (its outlines
 //               are drawn dashed: tap one), or tap the map to draw corners /
@@ -101,7 +107,9 @@ const clampInt = (v, lo, hi, fallback) => {
 
 export default function CampusEditor({
     map, mode, record, buildings, pathways, departments, onSaved, onClose, onError,
-    onManageNodes = null, theme = 'light', nodes = [], startStep = null,
+    onManageNodes = null, onConnectBridge = null, theme = 'light', nodes = [], startStep = null,
+    // Drawn walls and staircases, for "Find entrances".
+    borders = [], links = [],
     // Department staff edit their own department's buildings but cannot
     // file a building under another department (the server enforces it too).
     canChangeDepartment = true,
@@ -109,10 +117,13 @@ export default function CampusEditor({
     const THEME = theme;
     const candidateColor = CANDIDATE[theme] || CANDIDATE.light;
     const isBuilding = mode === 'building';
-    const minPoints = isBuilding ? 3 : 2;
-    const noun = isBuilding ? 'building' : 'pathway';
+    const isBridge = mode === 'bridge';
+    // Buildings and bridges are closed outlines; pathways are open lines.
+    const isOutline = isBuilding || isBridge;
+    const minPoints = isOutline ? 3 : 2;
+    const noun = isBuilding ? 'building' : isBridge ? 'bridge' : 'pathway';
 
-    const initialPoints = () => (record ? (isBuilding ? record.polygon : record.coordinates) || [] : []);
+    const initialPoints = () => (record ? (isOutline ? record.polygon : record.coordinates) || [] : []);
     const [step, setStep] = useState(startStep || (record ? 'details' : 'shape'));
     // Total shift applied with the centre handle, so the rooms filed in a moved
     // building can follow it. Corner drags are reshaping and do not count.
@@ -163,17 +174,32 @@ export default function CampusEditor({
     const currentOwners = [...new Set(nodesToHandOver.map((n) => departmentName(n.department_id)))];
     const staffOwners = currentOwners.filter(Boolean);
     const joinNames = (names) => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
-    const [kind, setKind] = useState(record?.kind || 'walkway');
+    const [kind, setKind] = useState(record?.kind || (isBridge ? 'bridge' : 'walkway'));
+    // Bridge deck: the floor its route nodes are on (0 = at ground level), its
+    // optional measured height (blank = deck floor x 3.2 m) and whether it has a roof.
+    const [deckFloor, setDeckFloor] = useState(String(record?.deck_floor ?? 1));
+    const [deckHeight, setDeckHeight] = useState(record?.deck_height_m ? String(record.deck_height_m) : '');
+    const [roofed, setRoofed] = useState(record ? Boolean(record.roofed) : true);
+    // A raised deck is reached by stairs: build one down to the ground at each end.
+    const [endStairs, setEndStairs] = useState(false);
+    const raisedDeck = isBridge && clampInt(deckFloor, 0, MAX_DECK_FLOOR, 1) > 0;
+    const stairsNote = (res) => (raisedDeck && endStairs
+        ? (res.stairs_created ? ` and ${res.stairs_created} ${res.stairs_created === 1 ? 'staircase' : 'staircases'} down to the ground` : ' (both ends already have stairs)')
+        : '');
     // Doors: points on the outline; routes go in and out only through them.
     const [doors, setDoors] = useState(() => (Array.isArray(record?.doors) ? record.doors : []));
     const [doorsOpen, setDoorsOpen] = useState(false);
+    // A bridge's openings are entrances, a building's doors (the same data).
+    const doorWord = isBridge ? 'entrance' : 'door';
+    const DoorWord = isBridge ? 'Entrance' : 'Door';
+    const aDoor = isBridge ? 'an entrance' : 'a door';
     const [placingDoor, setPlacingDoor] = useState(false);
     const [doorNote, setDoorNote] = useState(null);
     const [litDoor, setLitDoor] = useState(null);
     // Width given to the next door added (each door can be changed after).
     const [newDoorWidth, setNewDoorWidth] = useState(DOOR_WIDTH_M);
     const [layNodes, setLayNodes] = useState(false);
-    const [spacing, setSpacing] = useState('8');
+    const [spacing, setSpacing] = useState(isBridge ? '6' : '8');
 
     const [osm, setOsm] = useState(null);
     const [osmError, setOsmError] = useState(null);
@@ -200,10 +226,10 @@ export default function CampusEditor({
 
     // Shapes already labelled are not offered again.
     const candidates = useMemo(() => {
-        if (!osm) return [];
+        if (!osm || isBridge) return [];
         const taken = new Set((isBuilding ? buildings : pathways).map((x) => x.osm_ref).filter(Boolean));
         return (isBuilding ? osm.buildings : osm.roads).filter((c) => !taken.has(c.ref));
-    }, [osm, isBuilding, buildings, pathways]);
+    }, [osm, isBuilding, isBridge, buildings, pathways]);
 
     const adopt = (c) => {
         if (isBuilding) {
@@ -253,15 +279,16 @@ export default function CampusEditor({
         const setShape = (lls) => {
             for (const d of drawn) d.set(lls);
         };
-        if (isBuilding && points.length >= 3 && step === 'shape') {
-            const draft = buildingStyle(status, THEME);
+        const outlineStyle = isBridge ? bridgeStyle(status, THEME) : buildingStyle(status, THEME);
+        if (isOutline && points.length >= 3 && step === 'shape') {
+            const draft = outlineStyle;
             const fill = L.polygon(latlngs, { ...draft, stroke: false, fillOpacity: draft.fillOpacity + 0.08, interactive: false }).addTo(layer);
             const chain = L.polyline(latlngs, { color: draft.color, weight: 2.5, opacity: 1, lineJoin: 'round', interactive: false }).addTo(layer);
             const close = L.polyline([latlngs[latlngs.length - 1], latlngs[0]], { color: draft.color, weight: 2, opacity: 0.55, dashArray: '4, 7', interactive: false }).addTo(layer);
             drawn.push({ set: (l) => fill.setLatLngs(l) }, { set: (l) => chain.setLatLngs(l) }, { set: (l) => close.setLatLngs([l[l.length - 1], l[0]]) });
             outline = fill;
-        } else if (isBuilding && points.length >= 3) {
-            const draft = buildingStyle(status, THEME);
+        } else if (isOutline && points.length >= 3) {
+            const draft = outlineStyle;
             outline = L.polygon(latlngs, { ...draft, weight: 2.5, dashArray: '8, 6', fillOpacity: draft.fillOpacity + 0.08, interactive: false }).addTo(layer);
             drawn.push({ set: (l) => outline.setLatLngs(l) });
         } else if (points.length >= 2) {
@@ -270,8 +297,8 @@ export default function CampusEditor({
         }
 
         // Doors on the draft: a light gap in the outline and a numbered
-        // handle that slides along the wall (re-snapped on drop).
-        if (isBuilding && points.length >= 3) {
+        // handle that slides along the wall (re-snapped on drop). Buildings and bridges.
+        if (isOutline && points.length >= 3) {
             doorFrames(points, doors).forEach((d, k) => {
                 const line = [[d.a.lat, d.a.lng], [d.b.lat, d.b.lng]];
                 L.polyline(line, { color: '#16161b', weight: 9, opacity: 0.9, lineCap: 'butt', interactive: false }).addTo(layer);
@@ -302,7 +329,7 @@ export default function CampusEditor({
 
         // Move handle (shapes that are complete enough to have a middle).
         if (outline && points.length >= minPoints) {
-            const start = shapeCentre(points, isBuilding);
+            const start = shapeCentre(points, isOutline);
             const handle = L.marker([start.lat, start.lng], {
                 icon: MOVE_ICON, draggable: true, bubblingMouseEvents: false, zIndexOffset: 1200,
                 keyboard: true, title: 'Drag to move the whole shape',
@@ -336,7 +363,7 @@ export default function CampusEditor({
             // Tap (not drag): select this corner; tap it again to let go.
             vm.on('click', () => {
                 stamp();
-                if (!canExtendFrom(points, k, { closed: isBuilding })) {
+                if (!canExtendFrom(points, k, { closed: isOutline })) {
                     setDrawNote('A path grows from its ends: tap its first or last point to continue it.');
                     return;
                 }
@@ -350,17 +377,17 @@ export default function CampusEditor({
             });
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, step, candidates, isBuilding, record, kind, status, theme, doors, litDoor, anchor, manageDoors]);
+    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors]);
 
     // Put a door where the outline was tapped (map or 3D view).
     const addDoorAt = (lat, lng) => {
         const s = snapToOutline(points, lat, lng);
-        if (!s || s.distM > DOOR_SNAP_M) { setDoorNote('Tap on or right next to the building outline.'); return; }
+        if (!s || s.distM > DOOR_SNAP_M) { setDoorNote(`Tap on or right next to the ${isBridge ? 'deck' : 'building'} outline.`); return; }
         const placed = placedDoors(points, doors);
         if (placed.length >= MAX_DOORS) { setDoorNote(`A building can have up to ${MAX_DOORS} doors.`); return; }
         // Two doors may not overlap: their centres at least half of each width apart.
         const crowded = placed.some((d) => Math.hypot(...toLocalMeters(d.lat, d.lng, s.lat, s.lng)) < (d.width + newDoorWidth) / 2);
-        if (crowded) { setDoorNote('There is a door there already.'); return; }
+        if (crowded) { setDoorNote(`There is ${aDoor} there already.`); return; }
         setDoorNote(null);
         setDoors((prev) => [...prev, { lat: s.lat, lng: s.lng, width_m: newDoorWidth }]);
     };
@@ -371,8 +398,8 @@ export default function CampusEditor({
         && Math.hypot(...toLocalMeters(d.lat, d.lng, s.lat, s.lng)) < (d.width + width) / 2);
     const moveDoorTo = (k, lat, lng) => {
         const s = snapToOutline(points, lat, lng);
-        if (!s || s.distM > DOOR_SNAP_M) { setDoorNote('Tap on or right next to the building outline.'); return false; }
-        if (!fits(k, s, doorWidth(doors[k]))) { setDoorNote('That spot overlaps another door.'); return false; }
+        if (!s || s.distM > DOOR_SNAP_M) { setDoorNote(`Tap on or right next to the ${isBridge ? 'deck' : 'building'} outline.`); return false; }
+        if (!fits(k, s, doorWidth(doors[k]))) { setDoorNote(`That spot overlaps another ${doorWord}.`); return false; }
         setDoorNote(null);
         setDoors((prev) => prev.map((p, i) => (i === k ? { ...p, lat: s.lat, lng: s.lng } : p)));
         return true;
@@ -388,6 +415,35 @@ export default function CampusEditor({
         moveDoorTo(k, p.latitude, p.longitude);
     };
     const toggleMove = (k) => { setPlacingDoor(false); setDoorNote(null); setMovingDoor((m) => (m === k ? null : k)); setLitDoor(k); };
+    /**
+     * An entrance wherever an existing walking path (or staircase) crosses the outline: a building's
+     * ground floor, a bridge's deck floor, and for a raised deck the ground paths into its staircases.
+     */
+    const findEntrances = () => {
+        const deck = isBridge ? clampInt(deckFloor, 0, MAX_DECK_FLOOR, 1) : 0;
+        const found = suggestEntrances(points, nodes, { floor: deck, links, walls: borders });
+        if (deck > 0) {
+            const feet = new Set(links.flatMap((l) => [String(l.node_a_id), String(l.node_b_id)]));
+            found.push(...suggestEntrances(points, nodes, { floor: 0, links, walls: borders, onlyInto: feet }));
+        }
+        const placed = placedDoors(points, doors);
+        const add = [];
+        for (const s of found) {
+            const taken = [...placed, ...add.map((a) => ({ ...a, width: newDoorWidth }))]
+                .some((d) => Math.hypot(...toLocalMeters(d.lat, d.lng, s.lat, s.lng)) < (d.width + newDoorWidth) / 2);
+            if (!taken && placed.length + add.length < MAX_DOORS) add.push(s);
+        }
+        setPlacingDoor(false);
+        setMovingDoor(null);
+        if (add.length) {
+            setDoors((prev) => [...prev, ...add.map((s) => ({ lat: s.lat, lng: s.lng, width_m: newDoorWidth }))]);
+            setDoorNote(`Added ${add.length} ${add.length === 1 ? doorWord : `${doorWord}s`} where paths come in. Check them, then Save.`);
+        } else {
+            setDoorNote(found.length ? `Every path that comes in already has ${aDoor}.`
+                : isBridge ? 'No path or staircase comes in across the outline. Connect the deck to the ground first.'
+                    : 'No path crosses the outline yet. Lay route nodes up to the building first, or add doors by hand.');
+        }
+    };
     const removeDoor = (k) => { setDoors((prev) => prev.filter((_, i) => i !== k)); setLitDoor(null); setDoorNote(null); setMovingDoor(null); };
 
 
@@ -398,7 +454,7 @@ export default function CampusEditor({
             if (Date.now() - vertexPressAt.current < 350) return;
             const at = { lat: e.latlng.lat, lng: e.latlng.lng };
             // The new point joins ONLY the selected one (see shapeDraft.js).
-            const next = addJoined(points, anchor, at, { closed: isBuilding });
+            const next = addJoined(points, anchor, at, { closed: isOutline });
             if (!next) { setDrawNote('A path grows from its ends: tap its first or last point to continue it.'); return; }
             historyRef.current.push({ points, anchor });
             setDrawNote(null);
@@ -408,7 +464,7 @@ export default function CampusEditor({
         };
         map.on('click', onClick);
         return () => map.off('click', onClick);
-    }, [map, step, ref, points, anchor, isBuilding]);
+    }, [map, step, ref, points, anchor, isOutline]);
 
     // Undo: back one addition (corner + which one was selected).
     const undo = () => {
@@ -419,11 +475,32 @@ export default function CampusEditor({
     };
 
     const save = async () => {
-        if (isBuilding && !name.trim()) { onError('A building needs a name'); return; }
+        if (isOutline && !name.trim()) { onError(`A ${noun} needs a name`); return; }
         if (points.length < minPoints) { onError(`A ${noun} needs at least ${minPoints} points`); return; }
         setSaving(true);
         try {
-            if (isBuilding) {
+            if (isBridge) {
+                const data = {
+                    name: name.trim(),
+                    short_name: shortName.trim() || null,
+                    kind,
+                    polygon: points,
+                    deck_floor: clampInt(deckFloor, 0, MAX_DECK_FLOOR, 1),
+                    deck_height_m: deckHeight.trim() === '' ? null : Math.min(30, Math.max(0, Number(deckHeight) || 0)) || null,
+                    roofed,
+                    // Re-snapped onto the (possibly reshaped) outline, like a building's.
+                    doors: placedDoors(points, doors).map((d) => ({ lat: d.lat, lng: d.lng, width_m: d.width })),
+                    status,
+                    source,
+                };
+                const saved = record ? await api.updateBridge(record.id, data) : await api.createBridge(data);
+                let message = record ? (moved ? 'Bridge moved' : 'Bridge updated') : `${data.name} added`;
+                if (!record && layNodes) {
+                    const res = await api.generateBridgeNodes(saved.id, { spacing_m: clampInt(spacing, 3, 50, 6), stairs: raisedDeck && endStairs });
+                    message += ` with ${res.created} route nodes on the deck${stairsNote(res)}`;
+                }
+                onSaved(message);
+            } else if (isBuilding) {
                 const data = {
                     name: name.trim(),
                     short_name: shortName.trim() || null,
@@ -475,8 +552,11 @@ export default function CampusEditor({
         if (!record) return;
         setSaving(true);
         try {
-            const res = await api.generatePathwayNodes(record.id, { spacing_m: clampInt(spacing, 3, 50, 8) });
-            onSaved(res.created > 0 ? `${res.created} route nodes laid along the pathway` : 'Every spot along this pathway already has a route node');
+            const res = isBridge
+                ? await api.generateBridgeNodes(record.id, { spacing_m: clampInt(spacing, 3, 50, 6), stairs: raisedDeck && endStairs })
+                : await api.generatePathwayNodes(record.id, { spacing_m: clampInt(spacing, 3, 50, 8) });
+            const laid = res.created > 0 ? `${res.created} route nodes laid along the ${noun}` : `Every spot along this ${noun} already has a route node`;
+            onSaved(`${laid}${stairsNote(res)}`);
         } catch (err) {
             onError(err.message);
         } finally {
@@ -488,16 +568,18 @@ export default function CampusEditor({
         const ready = points.length >= minPoints;
         let hint;
         if (points.length > 0) {
-            const part = isBuilding ? 'corner' : 'point';
+            const part = isOutline ? 'corner' : 'point';
             hint = drawNote || (anchor !== null
                 ? `The green ${part} is selected: tap the map to add a ${part} joined only to it, and keep tapping to carry on from there. Tap it again to let go.`
                 : ready
                 ? `Tap a ${part} to add new ones after it, drag one to reshape, or drag the centre handle to move the whole ${noun}. Then press Next.`
-                : `Tap to add the next ${isBuilding ? 'corner' : 'point'} (${points.length} of at least ${minPoints}).`);
+                : `Tap to add the next ${isOutline ? 'corner' : 'point'} (${points.length} of at least ${minPoints}).`);
         } else if (record) {
-            hint = `Tap the map to draw the new ${isBuilding ? 'outline' : 'line'}.`;
+            hint = `Tap the map to draw the new ${isOutline ? 'outline' : 'line'}.`;
+        } else if (isBridge) {
+            hint = 'Tap the map at each corner of the deck (4 corners for a straight bridge). Its walking line runs along the long side.';
         } else if (osmError) {
-            hint = `Base map shapes unavailable (${osmError}). Tap the map to draw the ${isBuilding ? 'corners' : 'points'}.`;
+            hint = `Base map shapes unavailable (${osmError}). Tap the map to draw the ${isOutline ? 'corners' : 'points'}.`;
         } else if (!osm) {
             hint = 'Reading the base map shapes… You can already tap the map to draw.';
         } else {
@@ -506,7 +588,7 @@ export default function CampusEditor({
                 : `Tap a dashed road or path to add it (${candidates.length} not added yet), or tap the map to draw a new walkway.`;
         }
         return (
-            <ActionBar title={record ? `Reshape ${noun}` : (isBuilding ? 'Label a building' : 'Add a pathway')} hint={hint}>
+            <ActionBar title={record ? `Reshape ${noun}` : (isBuilding ? 'Label a building' : isBridge ? 'Add a bridge' : 'Add a pathway')} hint={hint}>
                 <button className="ui-btn ui-btn-secondary" onClick={undo} disabled={points.length === 0}>Undo</button>
                 <button className="ui-btn ui-btn-primary" onClick={() => setStep('details')} disabled={!ready}>Next</button>
                 <button className="ui-btn ui-btn-danger" onClick={record ? () => { setPoints(initialPoints()); setShift({ lat: 0, lng: 0 }); setAnchor(null); historyRef.current = []; setStep('details'); } : onClose}>
@@ -519,20 +601,20 @@ export default function CampusEditor({
     const floorList = buildingFloors({ floors: clampInt(floors, 1, 50, 1) });
 
     const closeDoors = () => { setDoorsOpen(false); setPlacingDoor(false); setMovingDoor(null); setDoorNote(null); setLitDoor(null); };
-    const frames = isBuilding && points.length >= 3 ? doorFrames(points, doors) : [];
+    const frames = isOutline && points.length >= 3 ? doorFrames(points, doors) : [];
     const doorDialog = doorsOpen && (
         <StairModal
-            title="Manage doors"
-            subtitle={name.trim() || shortName.trim() || 'Building'}
+            title={isBridge ? 'Manage entrances' : 'Manage doors'}
+            subtitle={name.trim() || shortName.trim() || (isBridge ? 'Bridge' : 'Building')}
             onClose={closeDoors}
-            closeLabel="Close door editor"
+            closeLabel={`Close ${doorWord} editor`}
             footer={<button type="button" className="ui-btn ui-btn-primary" onClick={closeDoors}>Done</button>}
         >
             <div className="cf-doors-modal">
                 <BuildingPreview3D
                     polygon={points} doors={doors}
-                    floors={clampInt(floors, 1, 50, 1)}
-                    heightM={heightM.trim() === '' ? null : Number(heightM) || null}
+                    floors={isBridge ? 1 : clampInt(floors, 1, 50, 1)}
+                    heightM={isBridge ? 2.6 : (heightM.trim() === '' ? null : Number(heightM) || null)}
                     placing={placingDoor || movingDoor !== null} highlight={movingDoor ?? litDoor}
                     onWallPick={(p) => {
                         if (movingDoor !== null) { if (moveDoorTo(movingDoor, p.lat, p.lng)) setMovingDoor(null); return; }
@@ -545,19 +627,23 @@ export default function CampusEditor({
                 />
                 <div className="cf-doors-side">
                     <div className="cf-width-row">
-                        <span className="ui-label" style={{ margin: 0 }}>New door width</span>
-                        <WidthStepper value={newDoorWidth} onChange={setNewDoorWidth} label="New door width" />
+                        <span className="ui-label" style={{ margin: 0 }}>New {doorWord} width</span>
+                        <WidthStepper value={newDoorWidth} onChange={setNewDoorWidth} label={`New ${doorWord} width`} />
                     </div>
                     <button
                         type="button" className={`ui-btn ui-btn-block ${placingDoor ? 'ui-btn-primary' : 'ui-btn-secondary'}`}
                         aria-pressed={placingDoor} onClick={() => { setMovingDoor(null); setPlacingDoor((v) => !v); setDoorNote(null); }}
                     >
-                        {placingDoor ? 'Done adding doors' : 'Add door'}
+                        {placingDoor ? `Done adding ${doorWord}s` : `Add ${doorWord}`}
+                    </button>
+                    <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={findEntrances}>
+                        Find entrances
                     </button>
                     <p className="ui-hint" style={{ margin: 0 }} role="status">
                         {doorNote || (movingDoor !== null
-                            ? `Moving door ${movingDoor + 1}: tap a wall in the 3D view, or slide it with the arrows.`
-                            : placingDoor ? 'Tap a wall in the 3D view to put a door there.' : 'Tap a door, or press Move, to change where it is.')}
+                            ? `Moving ${doorWord} ${movingDoor + 1}: tap a wall in the 3D view, or slide it with the arrows.`
+                            : placingDoor ? `Tap a wall in the 3D view to put ${aDoor} there.`
+                                : `Tap ${aDoor}, or press Move, to change where it is. Find entrances adds one wherever a path comes in.`)}
                     </p>
                     {frames.length > 0 ? (
                         <ul className="cf-doors">
@@ -568,20 +654,20 @@ export default function CampusEditor({
                                 >
                                     <div className="cf-door-top">
                                         <span className="cf-door-num" aria-hidden="true">{k + 1}</span>
-                                        <span className="cf-door-name">Door {k + 1}<span>Faces {facingWords(d.normalDeg)}</span></span>
+                                        <span className="cf-door-name">{DoorWord} {k + 1}<span>Faces {facingWords(d.normalDeg)}</span></span>
                                         <div className="cf-door-actions">
                                             <button
                                                 type="button" className={`cf-door-btn${movingDoor === k ? ' is-on' : ''}`}
-                                                aria-pressed={movingDoor === k} onClick={() => toggleMove(k)} aria-label={`Move door ${k + 1}`}
+                                                aria-pressed={movingDoor === k} onClick={() => toggleMove(k)} aria-label={`Move ${doorWord} ${k + 1}`}
                                             >
                                                 {movingDoor === k ? 'Done' : 'Move'}
                                             </button>
-                                            <button type="button" className="cf-door-btn is-danger" onClick={() => removeDoor(k)} aria-label={`Remove door ${k + 1}`}>Remove</button>
+                                            <button type="button" className="cf-door-btn is-danger" onClick={() => removeDoor(k)} aria-label={`Remove ${doorWord} ${k + 1}`}>Remove</button>
                                         </div>
                                     </div>
                                     <div className="cf-door-row">
                                         <span className="cf-door-row-label">Width</span>
-                                        <WidthStepper value={doorWidth(doors[k])} onChange={(w) => setDoorWidthAt(k, w)} label={`Door ${k + 1} width`} />
+                                        <WidthStepper value={doorWidth(doors[k])} onChange={(w) => setDoorWidthAt(k, w)} label={`${DoorWord} ${k + 1} width`} />
                                     </div>
                                     {movingDoor === k && (
                                         <div className="cf-door-slide" role="group" aria-label={`Slide door ${k + 1} along its wall`}>
@@ -594,7 +680,11 @@ export default function CampusEditor({
                             ))}
                         </ul>
                     ) : (
-                        <p className="cf-doors-empty">No doors yet. Routes can enter this building from any side until you add one.</p>
+                        <p className="cf-doors-empty">
+                            {isBridge
+                                ? 'No entrances yet. Routes can get on this deck from any side until you add one. Find entrances puts one where each path comes in to a staircase or the deck.'
+                                : 'No doors yet. Routes can enter this building from any side until you add one.'}
+                        </p>
                     )}
                 </div>
             </div>
@@ -605,7 +695,7 @@ export default function CampusEditor({
         <>
         {doorDialog}
         <Sheet
-            title={record ? `Edit ${noun}` : (isBuilding ? 'New building' : 'New pathway')}
+            title={record ? `Edit ${noun}` : (isBuilding ? 'New building' : isBridge ? 'New bridge' : 'New pathway')}
             subtitle={`${source === 'osm' ? 'From base map' : 'Drawn'} · ${points.length} points`}
             onClose={onClose}
             footer={(
@@ -621,12 +711,54 @@ export default function CampusEditor({
         >
             <div className="mt-form">
                 <div className="ui-field">
-                    <label className="ui-label" htmlFor="cf-name">Name {isBuilding && <span className="ui-req">*</span>}</label>
+                    <label className="ui-label" htmlFor="cf-name">Name {isOutline && <span className="ui-req">*</span>}</label>
                     <input
                         id="cf-name" className="ui-input" value={name} onChange={(e) => setName(e.target.value)}
-                        placeholder={isBuilding ? 'e.g. College of Computing Studies' : 'e.g. Main covered walk'}
+                        placeholder={isBuilding ? 'e.g. College of Computing Studies' : isBridge ? 'e.g. Campus A to B Footbridge' : 'e.g. Main covered walk'}
                     />
                 </div>
+
+                {isBridge && (
+                    <>
+                        <div className="mt-grid3">
+                            <div className="ui-field">
+                                <label className="ui-label" htmlFor="cf-short">Map label</label>
+                                <input id="cf-short" className="ui-input" value={shortName} maxLength={32} onChange={(e) => setShortName(e.target.value)} placeholder="Footbridge" />
+                            </div>
+                            <div className="ui-field">
+                                <label className="ui-label" htmlFor="cf-deck">Deck</label>
+                                <select id="cf-deck" className="ui-select" value={deckFloor} onChange={(e) => setDeckFloor(e.target.value)} aria-describedby="cf-deck-hint">
+                                    {Array.from({ length: MAX_DECK_FLOOR + 1 }, (_, f) => <option key={f} value={String(f)}>{deckLevelLabel(f)}</option>)}
+                                </select>
+                            </div>
+                            <div className="ui-field">
+                                <label className="ui-label" htmlFor="cf-deck-h">Height (m)</label>
+                                <input
+                                    id="cf-deck-h" className="ui-input ui-num" type="number" inputMode="decimal" min="0" max="30" step="0.5"
+                                    value={deckHeight} onChange={(e) => setDeckHeight(e.target.value)}
+                                    placeholder={(clampInt(deckFloor, 0, MAX_DECK_FLOOR, 1) * 3.2).toFixed(1)}
+                                />
+                            </div>
+                        </div>
+                        <span className="ui-hint" id="cf-deck-hint">
+                            {raisedDeck
+                                ? 'Raised: its route nodes are on that floor, so routes reach the deck only by a staircase. After laying them, use "Connect to ground" to join each end to the ground routes.'
+                                : 'At ground level: its route nodes join the paths around it directly.'}
+                        </span>
+                        {BRIDGE_KINDS.length > 1 && (
+                            <div className="ui-field">
+                                <label className="ui-label" htmlFor="cf-bkind">Type</label>
+                                <select id="cf-bkind" className="ui-select" value={kind} onChange={(e) => setKind(e.target.value)}>
+                                    {BRIDGE_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                                </select>
+                            </div>
+                        )}
+                        <label className="mt-check">
+                            <input type="checkbox" checked={roofed} onChange={(e) => setRoofed(e.target.checked)} />
+                            <span>It has a roof (its route nodes count as sheltered when it rains)</span>
+                        </label>
+                    </>
+                )}
 
                 {isBuilding ? (
                     <>
@@ -717,7 +849,7 @@ export default function CampusEditor({
                             </section>
                         )}
                     </>
-                ) : (
+                ) : !isBridge && (
                     <div className="ui-field">
                         <label className="ui-label" htmlFor="cf-kind">Type</label>
                         <select id="cf-kind" className="ui-select" value={kind} onChange={(e) => setKind(e.target.value)} aria-describedby="cf-kind-hint">
@@ -727,14 +859,67 @@ export default function CampusEditor({
                     </div>
                 )}
 
+                {isBridge && points.length >= 3 && (
+                    <section className="mt-pathnodes" aria-labelledby="cf-bdoors-title">
+                        <span className="ui-label" id="cf-bdoors-title">Entrances</span>
+                        <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={() => setDoorsOpen(true)} disabled={saving}>
+                            Manage entrances
+                        </button>
+                        <p className="ui-hint" style={{ margin: 0 }}>
+                            {doors.length
+                                ? `${doors.length} ${doors.length === 1 ? 'entrance' : 'entrances'}: routes get on and off the deck only through them${raisedDeck ? ' or its staircases (the ground under it stays open)' : ''}.`
+                                : 'No entrances yet, so routes can get on the deck from any side, even sideways into a building next to it. In Manage entrances, Find entrances puts one where each path comes in.'}
+                        </p>
+                    </section>
+                )}
+
+                {isBridge && record && onManageNodes && (
+                    <section className="mt-pathnodes" aria-labelledby="cf-bnodes-title">
+                        <span className="ui-label" id="cf-bnodes-title">Nodes</span>
+                        <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={() => onManageNodes(record)} disabled={saving}>
+                            Manage nodes
+                        </button>
+                        <p className="ui-hint" style={{ margin: 0 }}>Add, edit and remove the route nodes on the deck. Save bridge changes first: this closes the editor.</p>
+                    </section>
+                )}
+
+                {isBridge && record && raisedDeck && onConnectBridge && (
+                    <section className="mt-pathnodes" aria-labelledby="cf-connect-title">
+                        <span className="ui-label" id="cf-connect-title">Connect to ground routes</span>
+                        <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={() => onConnectBridge(record)} disabled={saving}>
+                            Connect to ground
+                        </button>
+                        <p className="ui-hint" style={{ margin: 0 }}>
+                            Join a deck node to an existing ground route node with a staircase, like a building's stairs. Do it once for each end.
+                            Save bridge changes first: this closes the editor.
+                        </p>
+                    </section>
+                )}
+
                 {!isBuilding && (
                     <div className="mt-pathnodes">
                         {record ? (
-                            <p className="ui-hint" style={{ margin: 0 }}>Routing uses route nodes. Lay them along this pathway in one step (spots that already have one are skipped).</p>
+                            <p className="ui-hint" style={{ margin: 0 }}>
+                                {isBridge
+                                    ? 'Routing uses route nodes. Lay them along the deck, on its floor, in one step (spots that already have one are skipped).'
+                                    : 'Routing uses route nodes. Lay them along this pathway in one step (spots that already have one are skipped).'}
+                            </p>
                         ) : (
                             <label className="mt-check">
                                 <input type="checkbox" checked={layNodes} onChange={(e) => setLayNodes(e.target.checked)} />
-                                <span>Also lay route nodes along it so routes can use it</span>
+                                <span>{isBridge ? 'Also lay route nodes along the deck so routes can cross it' : 'Also lay route nodes along it so routes can use it'}</span>
+                            </label>
+                        )}
+                        {raisedDeck && (record || layNodes) && (
+                            <label className="mt-check" style={{ alignItems: 'flex-start' }}>
+                                <input type="checkbox" checked={endStairs} onChange={(e) => setEndStairs(e.target.checked)} aria-describedby="cf-stairs-hint" />
+                                <span>
+                                    Also build new stairs down to new ground nodes at each end
+                                    <small id="cf-stairs-hint" className="cf-stairs-hint">
+                                        Only when there is no ground route where the stairs come down: each end gets a ground node one stair-length beyond
+                                        the deck (35&deg; stairs). Usually leave this off and use "Connect to ground" to join existing routes.
+                                    </small>
+                                </span>
                             </label>
                         )}
                         <div className="mt-pathnodes-row">
@@ -742,7 +927,9 @@ export default function CampusEditor({
                             <input id="cf-spacing" className="ui-input ui-num" type="number" min="3" max="50" value={spacing} onChange={(e) => setSpacing(e.target.value)} style={{ width: 72 }} />
                             <span className="ui-hint" style={{ margin: 0 }}>m</span>
                             {record && (
-                                <button className="ui-btn ui-btn-secondary ui-btn-sm" onClick={layRouteNodes} disabled={saving}>Lay route nodes</button>
+                                <button className="ui-btn ui-btn-secondary ui-btn-sm" onClick={layRouteNodes} disabled={saving}>
+                                    {raisedDeck && endStairs ? 'Lay route nodes and stairs' : 'Lay route nodes'}
+                                </button>
                             )}
                         </div>
                     </div>
@@ -754,7 +941,6 @@ export default function CampusEditor({
 }
 
 export const CAMPUS_EDITOR_CSS = `
-    ${BUILDING_PREVIEW_CSS}
     .cf-doors-modal { --cf-doors-h: min(62vh, 560px); display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 16px; align-items: start; }
     .cf-doors-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .cf-doors-side .cf-doors { max-height: calc(var(--cf-doors-h) - 110px); overflow-y: auto; overscroll-behavior: contain; }
@@ -820,6 +1006,7 @@ export const CAMPUS_EDITOR_CSS = `
     .cf-handover { align-items: flex-start; padding: 10px 12px; margin-top: 4px; border-radius: 12px;
         border: 1px solid rgba(74, 222, 128, 0.35); background: rgba(74, 222, 128, 0.06); animation: uiFadeUp var(--dur-base, 220ms) var(--ease-out, ease) both; }
     .cf-handover input { flex: none; margin-top: 2px; }
+    .cf-stairs-hint { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.62); line-height: 1.4; }
     .cf-handover small { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.62); line-height: 1.4; }
     .cf-move {
         width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; cursor: move;

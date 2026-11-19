@@ -15,6 +15,11 @@ use Throwable;
  * ml/heat_common.py::build_heat_features() for one hour; ml/heat_model_parity.json and
  * HeatModelParityTest prove the two agree.
  *
+ * Airport inputs: a model trained with them (obs_heat_index, obs_minus_forecast) reads the
+ * airport's newest report at or before the current hour; without one recent enough it scores
+ * the model trained without them (the file's "fallback"). Each horizon may also carry a
+ * "hot" logistic regression: the chance the heat index reaches hot_limit_c (a warning only).
+ *
  * forecast() never throws and never returns nothing usable when the forecast has the
  * numbers: if the model file is missing, not "recommended", or an input is missing, each
  * horizon falls back to the heat index computed from Open-Meteo's own forecast temperature
@@ -70,6 +75,14 @@ class HeatModel
         return $this->model !== null;
     }
 
+    /** The model trained without airport inputs, for when no airport report is recent enough. */
+    public function withoutAirport(): ?self
+    {
+        $fallback = $this->model['fallback'] ?? null;
+
+        return is_array($fallback) && self::isValid($fallback) ? new self($fallback) : null;
+    }
+
     /**
      * Query for a SEPARATE Open-Meteo /v1/forecast request. Not merged into
      * WeatherService::forecastQuery(): past_hours shifts the hourly arrays that the rain
@@ -94,19 +107,26 @@ class HeatModel
      *
      * @param  array<string, mixed>  $payload  decoded /v1/forecast response (queryParams())
      * @param  array<string, float|int>|null  $thresholds  category bounds (config weather.heat_categories)
-     * @return array{source: string|null, items: list<array{hours_ahead: int, at: string, heat_index_c: float, category: string, source: string}>}
+     * @param  list<array{time: string, raw: string}>|null  $airportReports  campus-time reports (Metar::fromAviationWeather())
+     * @return array{source: string|null, items: list<array{hours_ahead: int, at: string, heat_index_c: float, category: string, source: string, hot_chance?: int, hot_alert?: bool}>}
      */
-    public function forecast(array $payload, ?DateTimeImmutable $now = null, ?array $thresholds = null): array
+    public function forecast(array $payload, ?DateTimeImmutable $now = null, ?array $thresholds = null, ?array $airportReports = null): array
     {
         $base = $this->baseHour($now);
         $hourly = $this->indexByTime($payload['hourly'] ?? null) ?? [];
-        $features = $this->model === null ? null : $this->featuresFromPayload($payload, $base);
+        $scorer = $this;
+        $features = $this->model === null ? null : $this->featuresFromPayload($payload, $base, $airportReports);
+        if ($features === null && ($fallback = $this->withoutAirport()) !== null) {
+            $scorer = $fallback;
+            $features = $fallback->featuresFromPayload($payload, $base);
+        }
 
         $items = [];
         $sources = [];
         foreach ([1, 2, 3] as $hoursAhead) {
             $at = $base->modify("+{$hoursAhead} hours");
-            $value = $features === null ? null : $this->score($features, $hoursAhead);
+            $value = $features === null ? null : $scorer->score($features, $hoursAhead);
+            $chance = $value === null ? null : $scorer->hotChance($features, $hoursAhead);
             $source = 'model';
 
             if ($value === null) {
@@ -125,7 +145,10 @@ class HeatModel
                 'heat_index_c' => $rounded,
                 'category' => HeatIndex::category($rounded, $thresholds),
                 'source' => $source,
-            ];
+            ] + ($chance === null ? [] : [
+                'hot_chance' => (int) round($chance * 100),
+                'hot_alert' => $chance >= $scorer->hotThreshold($hoursAhead),
+            ]);
             $sources[$source] = true;
         }
 
@@ -160,12 +183,45 @@ class HeatModel
     }
 
     /**
-     * Mirror of ml/heat_common.py::build_heat_features() for the hour containing $now.
+     * Chance (0-1) that the heat index reaches the model's hot_limit_c at this horizon, or null when
+     * the model has no hot-hour regression there. Same inputs and scaling as score().
+     *
+     * @param  array<string, float>  $features
+     */
+    public function hotChance(array $features, int $hoursAhead): ?float
+    {
+        $horizon = $this->model['per_horizon'][(string) $hoursAhead] ?? null;
+        $hot = is_array($horizon) ? ($horizon['hot'] ?? null) : null;
+        if (! is_array($hot) || ! isset($hot['coef'], $hot['intercept'], $hot['threshold'])) {
+            return null;
+        }
+
+        $logit = (float) $hot['intercept'];
+        foreach ($this->model['features'] as $i => $name) {
+            if (! isset($features[$name]) || ! is_finite($features[$name])) {
+                return null;
+            }
+            $scale = (float) $horizon['scale'][$i];
+            $logit += (float) $hot['coef'][$i] * (($features[$name] - (float) $horizon['mean'][$i]) / ($scale ?: 1.0));
+        }
+
+        return 1.0 / (1.0 + exp(-$logit));
+    }
+
+    /** The chance at or above which hotChance() raises a hot-hour alert (chosen on validation by ml/train_heat.py). */
+    public function hotThreshold(int $hoursAhead): float
+    {
+        return (float) ($this->model['per_horizon'][(string) $hoursAhead]['hot']['threshold'] ?? 1.0);
+    }
+
+    /**
+     * Mirror of ml/heat_common.py::build_heat_features() (+ add_airport_features()) for the hour containing $now.
      *
      * @param  array<string, mixed>  $payload
+     * @param  list<array{time: string, raw: string}>|null  $airportReports  campus-time reports, for a model with airport inputs
      * @return array<string, float>|null null when any feature the model needs is missing
      */
-    public function featuresFromPayload(array $payload, ?DateTimeImmutable $now = null): ?array
+    public function featuresFromPayload(array $payload, ?DateTimeImmutable $now = null, ?array $airportReports = null): ?array
     {
         if ($this->model === null) {
             return null;
@@ -214,6 +270,9 @@ class HeatModel
             'month_sin' => sin(2 * M_PI * ($month - 1) / 12.0),
             'month_cos' => cos(2 * M_PI * ($month - 1) / 12.0),
         ];
+        $observed = $this->airportHeatIndex($airportReports ?? [], $t);
+        $all['obs_heat_index'] = $observed;
+        $all['obs_minus_forecast'] = ($observed !== null && $hi !== null) ? $observed - $hi : null;
 
         $out = [];
         foreach ($this->model['features'] as $name) {
@@ -224,6 +283,37 @@ class HeatModel
         }
 
         return $out;
+    }
+
+    /**
+     * The airport heat index from the newest report at or before $hour and at most
+     * airport_inputs.max_age_minutes older (ml/heat_common.py add_airport_features()), or null.
+     *
+     * @param  list<array{time: string, raw: string}>  $reports
+     */
+    private function airportHeatIndex(array $reports, DateTimeImmutable $hour): ?float
+    {
+        $maxAge = (int) ($this->model['airport_inputs']['max_age_minutes'] ?? 90);
+        $tz = new DateTimeZone(self::TIMEZONE);
+        $best = null;
+        foreach ($reports as $report) {
+            try {
+                $at = new DateTimeImmutable((string) ($report['time'] ?? ''), $tz);
+            } catch (Throwable) {
+                continue;
+            }
+            $ageMinutes = ($hour->getTimestamp() - $at->getTimestamp()) / 60;
+            $value = Metar::heatIndex($report['raw'] ?? null);
+            if ($ageMinutes < 0 || $ageMinutes > $maxAge || $value === null) {
+                continue;
+            }
+            // Equal times: the later entry wins, like the training data's drop_duplicates(keep="last").
+            if ($best === null || $at >= $best[0]) {
+                $best = [$at, $value];
+            }
+        }
+
+        return $best[1] ?? null;
     }
 
     /**

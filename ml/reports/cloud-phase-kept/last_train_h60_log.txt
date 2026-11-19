@@ -1,0 +1,56 @@
+all of the above + satellite + cloud phase: 43,070 scans, 91.4% of the labelled satellite steps.
+Satellite: 119,947 scans -> inputs for 64,301 of 169,344 steps (2024-04-01 to 2026-10-30). Every variant is fitted on the steps that HAVE satellite inputs, so the comparison stays fair.
+
+label: metar:RPMZ (rain in any report within the next 60 min)
+train 2024-04-25 -> 2026-02-21  rows=22,253  rain=0.097  months=23
+val   2026-02-21 -> 2026-06-26  rows=4,768  rain=0.036  months=5
+      WARNING: val covers < 12 months, so it misses part of the wet/dry cycle.
+test  2026-06-26 -> 2026-10-30  rows=4,769  rain=0.055  months=5
+      WARNING: test covers < 12 months, so it misses part of the wet/dry cycle.
+
+variants (validation Brier, lower is better):
+  forecast only                                 features=24  C=0.01   val Brier=0.03331
+  forecast + airport report                     features=33  C=0.01   val Brier=0.02871
+  forecast + several models                     features=28  C=0.01   val Brier=0.03279
+  forecast + airport report + several models    features=37  C=0.01   val Brier=0.02837
+  all of the above + satellite                  features=51  C=0.01   val Brier=0.02582
+  all of the above + satellite + cloud phase    features=55  C=0.1    val Brier=0.02549
+exported: all of the above + satellite + cloud phase (all of the above + satellite + cloud phase improves validation Brier by 1.25% over satellite alone)
+features (55): ['precip_0', 'precip_1', 'precip_2', 'precip_sum_1h', 'precip_sum_3h', 'rain_code_now', 'temp', 'temp_change_1h', 'humidity', 'dewpoint_depression', 'wind_speed', 'wind_gust', 'wind_dir_sin', 'wind_dir_cos', 'cape', 'pressure', 'pressure_change_3h', 'cloud_cover', 'precip_prob_next_hour', 'fcst_precip_next_hour', 'hour_sin', 'hour_cos', 'doy_sin', 'doy_cos', 'obs_rain', 'obs_rain_fresh', 'obs_rain_2h', 'obs_thunder', 'obs_vicinity', 'obs_convective_cloud', 'obs_lightning', 'obs_recent_rain', 'obs_age_min', 'mm_wet_share', 'mm_precip_mean', 'mm_cloud_mean', 'mm_thunder_share', 'sat_bt_campus', 'sat_bt_min_10km', 'sat_bt_min_30km', 'sat_cold_10km', 'sat_cold_30km', 'sat_cooling_20min', 'sat_upwind_cold', 'sat_cooling_10min', 'sat_min_cooling_10min', 'sat_sustained_cooling', 'sat_wv_campus', 'sat_wv_minus_ir_campus', 'sat_wv_minus_ir_10km', 'sat_wv_min_30km', 'sat_phase_water_10km', 'sat_phase_supercooled_10km', 'sat_phase_ice_10km', 'sat_phase_cloudy_30km']
+model type: validation Brier logistic 0.02549, trees 0.02471 (depth/rate/rounds (4, 0.05, 300)) -> trees, not calibrated (it did not help on validation)
+alert threshold: 0.15 (best F2 score on the validation period)
+
+TEST period results (alert threshold 0.15; start_recall = share of the 153 rain starts caught):
+                                                          n  rain_rate    brier  roc_auc  precision  recall  start_recall  false_alarm_ratio  false_positive_rate
+exported model                                       4769.0     0.0551  0.04014   0.9105     0.2796  0.6730        0.4641             0.7204               0.1012
+logistic regression (uncalibrated)                   4769.0     0.0551  0.03893   0.9164     0.2942  0.6768        0.4641             0.7058               0.0948
+gradient boosting (uncalibrated)                     4769.0     0.0551  0.04014   0.9105     0.2796  0.6730        0.4641             0.7204               0.1012
+variant: forecast only                               4769.0     0.0551  0.04711   0.8512     0.2374  0.5551        0.4575             0.7626               0.1041
+variant: forecast + airport report                   4769.0     0.0551  0.03981   0.8903     0.3259  0.6084        0.3268             0.6741               0.0735
+variant: forecast + several models                   4769.0     0.0551  0.04644   0.8627     0.2568  0.5779        0.4902             0.7432               0.0976
+variant: forecast + airport report + several models  4769.0     0.0551  0.03953   0.8952     0.3306  0.6160        0.3399             0.6694               0.0728
+variant: all of the above + satellite                4769.0     0.0551  0.03898   0.9163     0.3014  0.6464        0.4052             0.6986               0.0874
+climatology (month x hour)                           4769.0     0.0551  0.05828   0.5143     0.0583  0.2510        0.2092             0.9417               0.2366
+persistence (rain in last 15 min)                    4769.0     0.0551  0.19732   0.7398     0.1709  0.6692        0.5752             0.8291               0.1895
+persistence (latest airport report)                  4769.0     0.0551  0.06270   0.6929     0.4297  0.4183        0.0000             0.5703               0.0324
+raw Open-Meteo probability                           4769.0     0.0551  0.26012   0.8618     0.0874  0.9772        0.9608             0.9126               0.5957
+compare: before-cloud-phase/model_h60.json           4769.0     0.0551  0.03898   0.9163     0.2753  0.7034        0.4902             0.7247               0.1081
+
+calibration of the exported model (trees, test):
+      bin    n  mean_pred  observed
+0.00-0.05 3573     0.0083    0.0106
+0.05-0.10  386     0.0709    0.0648
+0.10-0.20  315     0.1456    0.1206
+0.20-0.30  163     0.2437    0.1288
+0.30-0.40   92     0.3424    0.1848
+0.40-0.50   53     0.4424    0.3208
+0.50-0.60   48     0.5539    0.5208
+0.60-0.80  111     0.6931    0.5766
+0.80-1.00   28     0.8358    0.6429
+
+VERDICT: model beats every baseline on Brier -> recommended
+fallback model type: validation Brier logistic 0.02837, trees 0.02928 (depth/rate/rounds (3, 0.05, 200)) -> logistic, not calibrated (it did not help on validation)
+fallback without satellite: forecast + airport report + several models (alert 0.18)
+
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\model_h60.json
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\model_h60_parity.json (10 cases for the PHP parity test)

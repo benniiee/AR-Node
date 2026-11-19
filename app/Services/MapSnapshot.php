@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Border;
+use App\Models\Bridge;
 use App\Models\Building;
 use App\Models\CampusArea;
 use App\Models\Node;
@@ -60,8 +61,9 @@ class MapSnapshot
             'borders' => [],
             'buildings' => $full['buildings'],
             'pathways' => [],
-            // Campus outlines and names are public, like the buildings.
+            // Campus outlines and names are public, like the buildings; so are bridges (structures, not rooms).
             'campus_areas' => $full['campus_areas'],
+            'bridges' => $full['bridges'],
             'audience' => 'visitor',
         ];
     }
@@ -77,6 +79,7 @@ class MapSnapshot
         $buildings = Building::with('department:id,name,color')->orderBy('id')->get();
         $pathways = Pathway::orderBy('id')->get();
         $areas = CampusArea::orderBy('name')->get();
+        $bridges = Bridge::orderBy('id')->get();
 
         // A staircase edit changes routing, so it must bump the version too;
         // building labels and pathways change what the map shows.
@@ -86,7 +89,8 @@ class MapSnapshot
             NodeLink::max('updated_at')?->timestamp ?? 0,
             Building::max('updated_at')?->timestamp ?? 0,
             Pathway::max('updated_at')?->timestamp ?? 0,
-            CampusArea::max('updated_at')?->timestamp ?? 0
+            CampusArea::max('updated_at')?->timestamp ?? 0,
+            Bridge::max('updated_at')?->timestamp ?? 0
         );
 
         return self::shape(
@@ -155,6 +159,19 @@ class MapSnapshot
                 'color' => $a->color,
                 'polygon' => $a->polygon,
             ])->all(),
+            $bridges->map(fn (Bridge $b) => [
+                'id' => $b->id,
+                'name' => $b->name,
+                'short_name' => $b->short_name,
+                'kind' => $b->kind,
+                'polygon' => $b->polygon,
+                'centre_line' => $b->centre_line,
+                'doors' => $b->doors ?? [],
+                'deck_floor' => $b->deck_floor,
+                'deck_height_m' => $b->deck_height_m,
+                'roofed' => $b->roofed,
+                'status' => $b->status,
+            ])->all(),
         );
     }
 
@@ -167,9 +184,10 @@ class MapSnapshot
      * @param  list<array<string, mixed>>  $buildings
      * @param  list<array<string, mixed>>  $pathways
      * @param  list<array<string, mixed>>  $campusAreas
+     * @param  list<array<string, mixed>>  $bridges
      * @return array<string, mixed>
      */
-    public static function shape(array $nodes, array $links, array $borderRows, int $version, array $buildings = [], array $pathways = [], array $campusAreas = []): array
+    public static function shape(array $nodes, array $links, array $borderRows, int $version, array $buildings = [], array $pathways = [], array $campusAreas = [], array $bridges = []): array
     {
         $groups = [];
 
@@ -187,6 +205,7 @@ class MapSnapshot
             'buildings' => array_values($buildings),
             'pathways' => array_values($pathways),
             'campus_areas' => array_values($campusAreas),
+            'bridges' => array_values($bridges),
         ];
     }
 
@@ -201,6 +220,8 @@ class MapSnapshot
         $hash = substr(sha1((string) json_encode([
             $payload['nodes'], $payload['links'], $payload['borders'],
             $payload['buildings'] ?? [], $payload['pathways'] ?? [], $payload['campus_areas'] ?? [], $payload['audience'] ?? null,
+            // Only when there are bridges, so an unchanged map keeps its old hash (phones do not re-download it).
+            ...(($payload['bridges'] ?? []) === [] ? [] : [$payload['bridges']]),
         ])), 0, 16);
 
         return [

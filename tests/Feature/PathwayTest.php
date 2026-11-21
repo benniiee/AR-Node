@@ -86,4 +86,18 @@ class PathwayTest extends TestCase
             ->assertJsonPath('pathways.0.kind', 'covered')
             ->assertJsonCount(2, 'pathways.0.coordinates');
     }
+
+    public function test_admins_set_a_pathways_real_width_and_the_map_feed_carries_it(): void
+    {
+        $road = Pathway::factory()->create(['kind' => 'road']);
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        $this->putJson("/api/pathways/{$road->id}", ['width_m' => 6.5])->assertOk()->assertJsonPath('width_m', 6.5);
+        $this->getJson('/api/map-data')->assertJsonPath('pathways.0.width_m', 6.5);
+
+        // 1 to 30 m; blank goes back to the usual width for its kind.
+        $this->putJson("/api/pathways/{$road->id}", ['width_m' => 0])->assertUnprocessable()->assertInvalid(['width_m']);
+        $this->putJson("/api/pathways/{$road->id}", ['width_m' => 50])->assertUnprocessable()->assertInvalid(['width_m']);
+        $this->putJson("/api/pathways/{$road->id}", ['width_m' => null])->assertOk()->assertJsonPath('width_m', null);
+    }
 }

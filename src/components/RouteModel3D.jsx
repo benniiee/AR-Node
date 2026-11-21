@@ -126,7 +126,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         const walkMat = new THREE.MeshStandardMaterial({ color: 0x4a4b52, roughness: 1 });
         for (const pw of pathways || []) {
             const pts = (pw.coordinates || []).map((c) => xz(c.lat, c.lng));
-            const width = pathwayWidthM(pw.kind);
+            const width = pathwayWidthM(pw.kind, pw.width_m);
             for (let i = 1; i < pts.length; i += 1) {
                 const a = pts[i - 1];
                 const b = pts[i];

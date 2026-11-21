@@ -58,3 +58,28 @@ test('a raised deck passes over a ground wall under it (a road edge); the ground
     const ground = computeRoute(nodes, 4, below.latitude, below.longitude, 0, wall, { userFloor: 0, bridges: [{ ...bridge, doors: [] }] });
     assert.equal(ground.success, false);
 });
+
+test('a closed bridge is not crossed: another way if there is one, else a message with the reason', () => {
+    // A road wall north-south at x = 20 that the ground cannot cross; the deck (floor 1) spans it,
+    // with a staircase down at each end. A gap in the wall far to the north is the long way round.
+    const wall = [{ group_id: 1, coordinates: [ll(20, -30), ll(20, 40)] }];
+    const deckNodes = [node(10, 3, 2, 1, { path_type: 'inside' }), node(11, 20, 2, 1, { path_type: 'inside' }), node(12, 37, 2, 1, { path_type: 'inside' })];
+    const feet = [node(20, 3, -6, 0), node(21, 37, -6, 0, { type: 'location', name: 'Campus A office' })];
+    const links = [{ node_a_id: 20, node_b_id: 10 }, { node_a_id: 21, node_b_id: 12 }];
+    const footbridge = { ...bridge, doors: [], name: 'Footbridge' };
+    const start = at(3, -6);
+    const route = (bridges, extra = []) => computeRoute([...deckNodes, ...feet, ...extra], 21, start.latitude, start.longitude, 0, wall, { userFloor: 0, links, bridges });
+
+    assert.equal(route([footbridge]).success, true, 'open: over the bridge');
+    const closed = { ...footbridge, closed: true, closed_reason: 'Campus A event until 5 PM' };
+    const blocked = route([closed]);
+    assert.equal(blocked.success, false);
+    assert.equal(blocked.closed_bridge, true);
+    assert.equal(blocked.message, 'Footbridge is closed: Campus A event until 5 PM.');
+
+    // With a way round the end of the wall, the route takes it and never touches the deck.
+    const round = [node(30, 3, 45, 0), node(31, 20, 45, 0), node(32, 37, 45, 0), node(33, 3, 20, 0), node(34, 37, 20, 0)];
+    const detour = route([closed], round);
+    assert.equal(detour.success, true);
+    assert.ok(!detour.path.some((p) => [10, 11, 12].includes(p.id)), 'not over the closed deck');
+});

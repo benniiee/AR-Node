@@ -739,6 +739,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // building, show that building cut away at the chosen floor.
     const manageBuilding = manageBuildingId != null ? buildings.find((b) => b.id === manageBuildingId) || null : null;
     const manageBridge = manageBridgeId != null ? bridges.find((b) => b.id === manageBridgeId) || null : null;
+    // While Manage nodes is open the label chips would sit on the nodes: hide them (campusLayers CSS).
+    const managingNodes = Boolean(manageBuilding || manageBridge);
+    useEffect(() => {
+        mapInstance.current?.getContainer().classList.toggle('manage-nodes-open', managingNodes);
+    }, [managingNodes]);
     /** A node on bridge br's deck (= Bridge::deckNodes()): inside its outline, in no building, and raised
      *  (any floor above the ground) for a raised deck, on the ground for one at ground level. */
     const onDeckOf = (br) => (n) => Boolean(br) && n.building_id == null
@@ -993,6 +998,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 esc(bridgeKindLabel(br.kind)),
                 `<span class="ui-num">${esc(deckLevelLabel(br.deck_floor))}${br.deck_floor > 0 ? `, deck about ${esc(bridgeDeckHeightM(br).toFixed(1))} m up` : ''}</span>`,
                 `<span class="pp-muted">${br.roofed ? 'Roofed: sheltered when it rains' : 'No roof'}</span>`,
+                ...(br.closed ? [`<strong>Closed</strong>: ${esc(br.closed_reason || 'no reason given')}. Routes do not cross it (Edit to reopen).`] : []),
             ],
             badge: statusBadge(br.status),
             actions: isAdmin ? [

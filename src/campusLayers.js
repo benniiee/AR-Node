@@ -93,6 +93,8 @@ function ensureStyles() {
         .bldg-label.is-crowded, .leaflet-tooltip.campus-area-label.is-crowded { visibility: hidden; }
         /* The floor guide's tag always shows (it is the point of the guide). */
         .campus-labels-off .floor-guide-tag { display: inline-flex; }
+        /* Manage nodes: no name or floor chips over the nodes being placed (AdminMap toggles the class). */
+        .manage-nodes-open .bldg-label, .manage-nodes-open .floor-guide-tag { display: none !important; }
         .floor-guide-tag { border-color: #16a34a; }
         path.floor-guide-plate { animation: floorPlateIn 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
         @keyframes floorPlateIn { from { opacity: 0; } }
@@ -745,7 +747,8 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
         if (b.id === skipId || !Array.isArray(b.polygon) || b.polygon.length < 3) continue;
         const latlngs = b.polygon.map((p) => [p.lat, p.lng]);
         const deck = L.polygon(latlngs, {
-            ...bridgeStyle(b.status, theme), interactive: Boolean(popup), className: popup ? 'campus-hit' : '',
+            // Closed (an event): drawn like a planned structure, grey and dashed.
+            ...bridgeStyle(b.closed ? 'planned' : b.status, theme), interactive: Boolean(popup), className: popup ? 'campus-hit' : '',
         }).addTo(layer);
         if (popup) deck.bindPopup(() => popup(b));
         // Doors: a light gap across the outline, like a building's on the flat map.
@@ -756,7 +759,8 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
         }
         const c = polygonCentroid(b.polygon);
         if (c) {
-            const meta = b.status === 'under_construction' || b.status === 'planned' ? statusLabel(b.status) : deckLevelLabel(b.deck_floor);
+            const meta = b.closed ? `Closed${b.closed_reason ? ` · ${b.closed_reason}` : ''}`
+                : b.status === 'under_construction' || b.status === 'planned' ? statusLabel(b.status) : deckLevelLabel(b.deck_floor);
             const html = `<div class="bldg-label is-bridge" data-rank="1" title="${esc(b.name)} · ${esc(bridgeKindLabel(b.kind))}">`
                 + `<span class="bl-name">${esc(b.short_name || b.name)}</span><span class="bl-meta">${esc(meta)}</span></div>`;
             L.marker([c.lat, c.lng], { icon: L.divIcon({ className: '', html, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layer);
@@ -765,6 +769,12 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
 }
 
 /** Draw every pathway into `layer` (cleared first). Same options as drawBuildings. */
+/** Line weight in pixels that is `widthM` metres wide at the map's zoom, never under `minPx`. */
+export function pathWeightPx(map, widthM, minPx = 0) {
+    const metresPerPx = (40075016.686 * Math.cos((map.getCenter().lat * Math.PI) / 180)) / 2 ** (map.getZoom() + 8);
+    return Math.max(minPx, widthM / metresPerPx);
+}
+
 export function drawPathways(layer, pathways, { popup = null, skipId = null, theme = 'dark' } = {}) {
     ensureStyles();
     layer.clearLayers();
@@ -776,7 +786,7 @@ export function drawPathways(layer, pathways, { popup = null, skipId = null, the
         const pane = layer._map?.getPane('campusGround') ? 'campusGround' : undefined;
         const style = pathwayStyle(p.kind, p.status, theme);
         const line = L.polyline(latlngs, { ...style, pane, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer);
-        lines.push({ line, minPx: style.weight, widthM: pathwayWidthM(p.kind) });
+        lines.push({ line, minPx: style.weight, widthM: pathwayWidthM(p.kind, p.width_m) });
         if (popup) {
             // Fat invisible hit line: a 3 px walkway is untappable on phones.
             L.polyline(latlngs, { weight: 22, opacity: 0, interactive: true, className: 'campus-hit' })
@@ -790,8 +800,7 @@ export function drawPathways(layer, pathways, { popup = null, skipId = null, the
     if (!map) return;
     if (layer._fitPathWidths) map.off('zoomend', layer._fitPathWidths);
     layer._fitPathWidths = () => {
-        const metresPerPx = (40075016.686 * Math.cos((map.getCenter().lat * Math.PI) / 180)) / 2 ** (map.getZoom() + 8);
-        for (const { line, minPx, widthM } of lines) line.setStyle({ weight: Math.max(minPx, widthM / metresPerPx) });
+        for (const { line, minPx, widthM } of lines) line.setStyle({ weight: pathWeightPx(map, widthM, minPx) });
     };
     map.on('zoomend', layer._fitPathWidths);
     layer._fitPathWidths();

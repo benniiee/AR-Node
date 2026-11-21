@@ -192,12 +192,18 @@ class BridgeController extends Controller
             'deck_floor' => 'sometimes|integer|min:0|max:'.Bridge::MAX_DECK_FLOOR,
             'deck_height_m' => 'sometimes|nullable|numeric|min:0|max:'.Bridge::MAX_DECK_HEIGHT_M,
             'roofed' => 'sometimes|boolean',
+            // Closing needs a reason: students see why routes no longer cross.
+            'closed' => 'sometimes|boolean',
+            'closed_reason' => 'required_if:closed,true|nullable|string|max:160',
             'status' => ['sometimes', Rule::in(Building::STATUSES)],
             'source' => ['sometimes', Rule::in(Building::SOURCES)],
         ]);
 
         if (isset($validated['polygon'])) {
             $validated['polygon'] = GeoPoints::normalize($validated['polygon']);
+        }
+        if (array_key_exists('closed', $validated) && ! $validated['closed']) {
+            $validated['closed_reason'] = null; // reopened: the old reason goes too
         }
         if (array_key_exists('doors', $validated)) {
             $validated['doors'] = $validated['doors'] ? BuildingDoors::normalize($validated['doors']) : null;

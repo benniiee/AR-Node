@@ -221,4 +221,34 @@ class BridgeTest extends TestCase
         $this->getJson('/api/map-data')->assertOk()
             ->assertJsonPath('bridges.0.deck_floor', 1)->assertJsonPath('bridges.0.roofed', true);
     }
+
+    public function test_admins_close_a_bridge_with_a_reason_students_see_and_reopen_it(): void
+    {
+        $bridge = Bridge::factory()->create(['polygon' => $this->deck()]);
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        // Closing needs the reason students will see.
+        $this->putJson("/api/bridges/{$bridge->id}", ['closed' => true])->assertUnprocessable()->assertInvalid(['closed_reason']);
+        $this->putJson("/api/bridges/{$bridge->id}", ['closed' => true, 'closed_reason' => 'Campus A event until 5 PM'])
+            ->assertOk()->assertJsonPath('closed', true);
+
+        // Visitors and students get it in the map feed (the app then routes around it).
+        Sanctum::actingAs(User::factory()->student()->create());
+        $this->getJson('/api/map-data')->assertJsonPath('bridges.0.closed', true)
+            ->assertJsonPath('bridges.0.closed_reason', 'Campus A event until 5 PM');
+
+        // Reopening clears the reason.
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->putJson("/api/bridges/{$bridge->id}", ['closed' => false])->assertOk()
+            ->assertJsonPath('closed', false)->assertJsonPath('closed_reason', null);
+    }
+
+    public function test_only_admins_close_a_bridge(): void
+    {
+        $bridge = Bridge::factory()->create();
+        Sanctum::actingAs(User::factory()->create(['role' => 'faculty']));
+
+        $this->putJson("/api/bridges/{$bridge->id}", ['closed' => true, 'closed_reason' => 'x'])->assertForbidden();
+        $this->assertFalse($bridge->fresh()->closed);
+    }
 }

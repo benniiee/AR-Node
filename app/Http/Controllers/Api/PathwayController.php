@@ -105,6 +105,8 @@ class PathwayController extends Controller
             'name' => 'sometimes|nullable|string|max:255',
             'kind' => ['sometimes', Rule::in(Pathway::KINDS)],
             'status' => ['sometimes', Rule::in(Building::STATUSES)],
+            // Real width in metres (null = the usual width for its kind).
+            'width_m' => 'sometimes|nullable|numeric|min:1|max:30',
             'coordinates' => "{$required}|array|min:2|max:1000",
             'coordinates.*.lat' => 'required|numeric|between:-90,90',
             'coordinates.*.lng' => 'required|numeric|between:-180,180',

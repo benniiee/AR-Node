@@ -151,6 +151,7 @@ class MapSnapshot
                 'name' => $p->name,
                 'kind' => $p->kind,
                 'status' => $p->status,
+                'width_m' => $p->width_m,
                 'coordinates' => $p->coordinates,
             ])->all(),
             $areas->map(fn (CampusArea $a) => [
@@ -171,6 +172,8 @@ class MapSnapshot
                 'deck_height_m' => $b->deck_height_m,
                 'roofed' => $b->roofed,
                 'status' => $b->status,
+                'closed' => $b->closed,
+                'closed_reason' => $b->closed_reason,
             ])->all(),
         );
     }

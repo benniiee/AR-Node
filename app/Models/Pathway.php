@@ -21,6 +21,7 @@ class Pathway extends Model
         'name',
         'kind',
         'status',
+        'width_m',
         'coordinates',
         'source',
         'osm_ref',
@@ -42,6 +43,7 @@ class Pathway extends Model
     {
         return [
             'coordinates' => 'array',
+            'width_m' => 'float',
         ];
     }
 

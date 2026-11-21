@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     polygonCentroid, pointInPolygon, buildingAt, buildingFloors, floorCountLabel,
-    nodePlaceLabel, osmRef, distanceToLineM,
+    nodePlaceLabel, osmRef, distanceToLineM, pathwayWidthM,
 } from './campusGeometry.js';
 
 const square = (lat, lng, d) => [
@@ -85,4 +85,12 @@ test('bridge deck height: measured, else deck floor x 3.2 m; level labels', asyn
     assert.equal(deckLevelLabel(1), '1 floor up');
     assert.equal(deckLevelLabel(2), '2 floors up');
     assert.equal(bridgeKindLabel('bridge'), 'Footbridge');
+});
+
+test('a pathway is drawn at its own width, else the usual one for its kind', () => {
+    assert.equal(pathwayWidthM('road'), 5);
+    assert.equal(pathwayWidthM('covered'), 2.4);
+    assert.equal(pathwayWidthM('road', 6.5), 6.5);
+    assert.equal(pathwayWidthM('walkway', null), 2.4);
+    assert.equal(pathwayWidthM('unknown'), 2.4);
 });

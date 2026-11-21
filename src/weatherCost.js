@@ -188,7 +188,8 @@ export function rainMultiplierOf(weather) {
 
 /** Shown when every way to a destination is currently closed by rain or heat, saying which. */
 export function noRouteMessage({ rain = false, heat = false } = {}) {
-    if (rain) return 'No route right now: it is raining, and every way there uses an open-air path. Try again when the rain stops.';
-    if (heat) return 'No route right now: it is dangerously hot, so open-air paths are closed, and every way there uses one. Try again when it cools down.';
-    return 'There are no possible routes to this destination at this time.';
+    // Same pattern as a closed bridge: what is closed, then why.
+    if (rain) return 'Open-air paths are closed: it is raining.';
+    if (heat) return 'Open-air paths are closed: it is too hot right now.';
+    return 'No route there right now.';
 }

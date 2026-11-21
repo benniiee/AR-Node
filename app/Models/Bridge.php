@@ -42,6 +42,9 @@ class Bridge extends Model
         'deck_height_m',
         'roofed',
         'status',
+        // Closed by an admin (an event): routes do not cross it; the reason is shown to students.
+        'closed',
+        'closed_reason',
         'source',
         // created_by is set server-side, like on buildings.
     ];
@@ -69,6 +72,7 @@ class Bridge extends Model
             'deck_floor' => 'integer',
             'deck_height_m' => 'float',
             'roofed' => 'boolean',
+            'closed' => 'boolean',
         ];
     }
 

@@ -227,10 +227,20 @@ export function bridgeBarriers(bridges) {
 }
 
 /** A virtual route node in each bridge door's gap, on the deck's floor (like doorWaypoints for buildings). */
+/**
+ * A node on a closed bridge's deck (an admin closed it, say for an event): on the deck's floor and
+ * inside its outline. Without these nodes the deck and both its staircases are out of routing.
+ */
+function onClosedDeck(node, closedBridges) {
+    if (node?.building_id != null) return false;
+    const p = { lat: Number(node.latitude), lng: Number(node.longitude) };
+    return closedBridges.some((br) => floorOf(node) === Math.trunc(Number(br.deck_floor) || 0) && insidePolygon(p, br.polygon));
+}
+
 export function bridgeDoorWaypoints(bridges) {
     const out = [];
     for (const br of bridges || []) {
-        if (!br || br.status === 'planned') continue;
+        if (!br || br.status === 'planned' || br.closed) continue;
         placedDoors(br.polygon, br.doors).forEach((d, i) => {
             out.push({
                 id: -(1000000 + Number(br.id) * 100 + i + 1),
@@ -553,6 +563,9 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
     const walls = overDecks.length ? (wallBorders || []).map((w) => ({ ...w, overDecks })) : (wallBorders || []);
     const borders = [...walls, ...buildingBarriers(options.buildings), ...bridgeBarriers(options.bridges)];
     const doorNodes = [...doorWaypoints(options.buildings), ...bridgeDoorWaypoints(options.bridges)];
+    const allNodes = nodes;
+    const closedBridges = (options.bridges || []).filter((br) => br?.closed && Array.isArray(br.polygon) && br.polygon.length >= 3);
+    if (closedBridges.length && nodes) nodes = nodes.filter((n) => !onClosedDeck(n, closedBridges));
     if (doorNodes.length && nodes && nodes.length) nodes = [...nodes, ...doorNodes];
     if (!nodes || nodes.length === 0) {
         return { success: false, message: 'No nodes on the map yet.' };
@@ -621,13 +634,25 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
 
     if (path === null) {
         const needsStairs = userFloor !== null && userFloor !== destFloor;
+        // Was a closed bridge the only way? Then say which one and why, not "no walking path".
+        let bridgeMessage = null;
+        if (closedBridges.length) {
+            const open = (options.bridges || []).map((br) => ({ ...br, closed: false }));
+            const through = computeRoute(allNodes, destinationId, userLat, userLng, userElevation, wallBorders, { ...options, bridges: open });
+            const used = through.success ? closedBridges.find((br) => through.path.some((p) => onClosedDeck(p, [br]))) : null;
+            if (used) {
+                const reason = String(used.closed_reason || '').trim();
+                bridgeMessage = `${used.name || 'The bridge'} is closed${reason ? `: ${reason}` : ''}.`;
+            }
+        }
         return {
             success: false,
-            message: rainNow
+            closed_bridge: Boolean(bridgeMessage),
+            message: bridgeMessage || (rainNow
                 ? closedMessage
                 : needsStairs
                     ? `No staircase connects ${floorPhrase(userFloor)} to ${floorPhrase(destFloor)} yet.`
-                    : 'No walking path from where you are to there. Place your pin on a campus path and try again.',
+                    : 'No walking path from where you are to there. Place your pin on a campus path and try again.'),
             needs_stairs: needsStairs,
         };
     }

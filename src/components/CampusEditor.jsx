@@ -3,8 +3,8 @@ import L from 'leaflet';
 import { api } from '../api';
 import { ActionBar, Sheet } from './MapControls';
 import { loadOsmFeatures } from '../osmFeatures';
-import { PATHWAY_KINDS, BRIDGE_KINDS, MAX_DECK_FLOOR, buildingFloors, polygonCentroid, deckLevelLabel } from '../campusGeometry';
-import { pathwayStyle, buildingStyle, bridgeStyle, esc } from '../campusLayers';
+import { PATHWAY_KINDS, PATHWAY_WIDTH_M, pathwayWidthM, BRIDGE_KINDS, MAX_DECK_FLOOR, buildingFloors, polygonCentroid, deckLevelLabel } from '../campusGeometry';
+import { pathwayStyle, pathWeightPx, buildingStyle, bridgeStyle, esc } from '../campusLayers';
 import { toLocalMeters, fromLocalMeters } from '../geo';
 import { snapToOutline, placedDoors, doorFrames, doorWidth, DOOR_SNAP_M, DOOR_WIDTH_M, MIN_DOOR_WIDTH_M, MAX_DOOR_WIDTH_M, MAX_DOORS } from '../doors';
 import { lazyPreview } from './Lazy3D';
@@ -175,11 +175,16 @@ export default function CampusEditor({
     const staffOwners = currentOwners.filter(Boolean);
     const joinNames = (names) => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
     const [kind, setKind] = useState(record?.kind || (isBridge ? 'bridge' : 'walkway'));
+    // A pathway's real width in metres; blank = the usual width for its type.
+    const [widthM, setWidthM] = useState(record?.width_m != null ? String(record.width_m) : '');
     // Bridge deck: the floor its route nodes are on (0 = at ground level), its
     // optional measured height (blank = deck floor x 3.2 m) and whether it has a roof.
     const [deckFloor, setDeckFloor] = useState(String(record?.deck_floor ?? 1));
     const [deckHeight, setDeckHeight] = useState(record?.deck_height_m ? String(record.deck_height_m) : '');
     const [roofed, setRoofed] = useState(record ? Boolean(record.roofed) : true);
+    // Closed by an admin (an event): routes do not cross it; students see the reason.
+    const [closed, setClosed] = useState(Boolean(record?.closed));
+    const [closedReason, setClosedReason] = useState(record?.closed_reason || '');
     // A raised deck is reached by stairs: build one down to the ground at each end.
     const [endStairs, setEndStairs] = useState(false);
     const raisedDeck = isBridge && clampInt(deckFloor, 0, MAX_DECK_FLOOR, 1) > 0;
@@ -249,6 +254,8 @@ export default function CampusEditor({
         const layer = layerRef.current;
         if (!layer) return;
         layer.clearLayers();
+        // The pathway preview's zoom handler (removed when the draft is redrawn).
+        let fitBand = null;
 
         // Candidates only while nothing is drafted yet: once the admin starts
         // drawing corners, the outlines would swallow those taps.
@@ -292,8 +299,26 @@ export default function CampusEditor({
             outline = L.polygon(latlngs, { ...draft, weight: 2.5, dashArray: '8, 6', fillOpacity: draft.fillOpacity + 0.08, interactive: false }).addTo(layer);
             drawn.push({ set: (l) => outline.setLatLngs(l) });
         } else if (points.length >= 2) {
-            outline = L.polyline(latlngs, { ...pathwayStyle(kind, status, THEME), dashArray: step === 'shape' ? null : '8, 6', interactive: false }).addTo(layer);
-            drawn.push({ set: (l) => outline.setLatLngs(l) });
+            // Preview of the real width (the Width field, else the usual one for the type), kept on zoom.
+            const style = pathwayStyle(kind, status, THEME);
+            const metres = pathwayWidthM(kind, widthM.trim() === '' ? null : Number(widthM));
+            // Light and see-through, so it stands apart from the grey centre line and the ground shows through.
+            // The road as saved (its own place, type and width), under the preview, for comparison.
+            const savedStyle = record ? pathwayStyle(record.kind, record.status, THEME) : null;
+            const saved = record?.coordinates?.length >= 2
+                ? L.polyline(record.coordinates.map((p) => [p.lat, p.lng]), { ...savedStyle, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer)
+                : null;
+            const savedMetres = record ? pathwayWidthM(record.kind, record.width_m) : 0;
+            const band = L.polyline(latlngs, { ...style, color: '#e5e7eb', opacity: 0.4, lineCap: 'butt', lineJoin: 'round', interactive: false }).addTo(layer);
+            fitBand = () => {
+                saved?.setStyle({ weight: pathWeightPx(map, savedMetres, savedStyle.weight) });
+                band.setStyle({ weight: pathWeightPx(map, metres, style.weight) });
+            };
+            fitBand();
+            map.on('zoomend', fitBand);
+            // The centre line only while reshaping (the points are dragged along it); otherwise just the band.
+            if (step === 'shape') outline = L.polyline(latlngs, { ...style, interactive: false }).addTo(layer);
+            drawn.push({ set: (l) => { outline?.setLatLngs(l); band.setLatLngs(l); } });
         }
 
         // Doors on the draft: a light gap in the outline and a numbered
@@ -325,7 +350,7 @@ export default function CampusEditor({
             });
         }
 
-        if (step !== 'shape') return;
+        if (step !== 'shape') return fitBand ? () => map.off('zoomend', fitBand) : undefined;
 
         // Move handle (shapes that are complete enough to have a middle).
         if (outline && points.length >= minPoints) {
@@ -376,8 +401,9 @@ export default function CampusEditor({
                 setPoints((prev) => prev.map((q, i) => (i === k ? { lat: ll.lat, lng: ll.lng } : q)));
             });
         });
+        return fitBand ? () => map.off('zoomend', fitBand) : undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors]);
+    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors, widthM]);
 
     // Put a door where the outline was tapped (map or 3D view).
     const addDoorAt = (lat, lng) => {
@@ -477,6 +503,7 @@ export default function CampusEditor({
     const save = async () => {
         if (isOutline && !name.trim()) { onError(`A ${noun} needs a name`); return; }
         if (points.length < minPoints) { onError(`A ${noun} needs at least ${minPoints} points`); return; }
+        if (isBridge && closed && !closedReason.trim()) { onError('Add the reason students will see while the bridge is closed'); return; }
         setSaving(true);
         try {
             if (isBridge) {
@@ -488,6 +515,8 @@ export default function CampusEditor({
                     deck_floor: clampInt(deckFloor, 0, MAX_DECK_FLOOR, 1),
                     deck_height_m: deckHeight.trim() === '' ? null : Math.min(30, Math.max(0, Number(deckHeight) || 0)) || null,
                     roofed,
+                    closed,
+                    closed_reason: closed ? closedReason.trim() : null,
                     // Re-snapped onto the (possibly reshaped) outline, like a building's.
                     doors: placedDoors(points, doors).map((d) => ({ lat: d.lat, lng: d.lng, width_m: d.width })),
                     status,
@@ -532,7 +561,7 @@ export default function CampusEditor({
                             : carried ? `Building moved with ${carried} node(s) inside` : (moved ? 'Building moved' : 'Building updated'))
                     : `${data.name} labelled`);
             } else {
-                const data = { name: name.trim() || null, kind, status, coordinates: points, source, osm_ref: ref };
+                const data = { name: name.trim() || null, kind, status, width_m: widthM.trim() === '' ? null : Number(widthM), coordinates: points, source, osm_ref: ref };
                 const saved = record ? await api.updatePathway(record.id, data) : await api.createPathway(data);
                 let message = record ? 'Pathway updated' : 'Pathway added';
                 if (!record && layNodes) {
@@ -757,6 +786,21 @@ export default function CampusEditor({
                             <input type="checkbox" checked={roofed} onChange={(e) => setRoofed(e.target.checked)} />
                             <span>It has a roof (its route nodes count as sheltered when it rains)</span>
                         </label>
+                        <label className="mt-check">
+                            <input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} />
+                            <span>Closed: routes do not cross it until you reopen it (for an event, repairs)</span>
+                        </label>
+                        {closed && (
+                            <div className="ui-field">
+                                <label className="ui-label" htmlFor="cf-closed-reason">Reason students see <span className="ui-req">*</span></label>
+                                <input
+                                    id="cf-closed-reason" className="ui-input" value={closedReason} maxLength={160}
+                                    onChange={(e) => setClosedReason(e.target.value)} placeholder="e.g. Campus A event until 5 PM"
+                                    aria-invalid={closedReason.trim() === '' ? 'true' : undefined}
+                                />
+                                <span className="ui-hint">Shown on the map and when the bridge was the only way.</span>
+                            </div>
+                        )}
                     </>
                 )}
 
@@ -856,6 +900,17 @@ export default function CampusEditor({
                             {PATHWAY_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
                         </select>
                         <span className="ui-hint" id="cf-kind-hint">Route nodes on a covered walkway count as sheltered when it rains.</span>
+                    </div>
+                )}
+                {!isOutline && (
+                    <div className="ui-field">
+                        <label className="ui-label" htmlFor="cf-width">Width (m)</label>
+                        <input
+                            id="cf-width" className="ui-input" type="number" inputMode="decimal" min="1" max="30" step="0.5"
+                            value={widthM} onChange={(e) => setWidthM(e.target.value)}
+                            placeholder={String(PATHWAY_WIDTH_M[kind] ?? PATHWAY_WIDTH_M.walkway)} aria-describedby="cf-width-hint"
+                        />
+                        <span className="ui-hint" id="cf-width-hint">How wide it really is, so the map and the 3D views match the ground. Blank uses the usual width for its type.</span>
                     </div>
                 )}
 

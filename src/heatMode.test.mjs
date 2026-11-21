@@ -46,7 +46,7 @@ test('an exposed destination has no route in heat mode', () => {
     const r = computeRoute(nodes, 2, start.latitude, start.longitude, 0, [], { heatNow: true });
     assert.equal(r.success, false);
     assert.equal(r.message, noRouteMessage({ heat: true }));
-    assert.match(r.message, /dangerously hot/);
+    assert.match(r.message, /too hot/);
     const wet = computeRoute(nodes, 2, start.latitude, start.longitude, 0, [], { rainNow: true });
     assert.match(wet.message, /raining/);
 });

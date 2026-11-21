@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\Bridge;
 use App\Models\Course;
 use App\Models\Department;
 use App\Models\Node;
@@ -42,6 +43,11 @@ class ActivityLogTest extends TestCase
     {
         $faculty = User::factory()->create(['role' => 'faculty']);
         $node = Node::create(['type' => 'route', 'latitude' => 6.913, 'longitude' => 122.061, 'floor_level' => 0, 'path_type' => 'outside', 'name' => 'Gate 3']);
+        // Admins edit nodes only on bridges.
+        Bridge::factory()->create(['polygon' => [
+            ['lat' => 6.9129, 'lng' => 122.0609], ['lat' => 6.9129, 'lng' => 122.0611],
+            ['lat' => 6.9131, 'lng' => 122.0611], ['lat' => 6.9131, 'lng' => 122.0609],
+        ]]);
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
 
         $this->putJson("/api/nodes/{$node->id}", ['name' => 'Main gate'])->assertOk();

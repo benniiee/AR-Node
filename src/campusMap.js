@@ -18,11 +18,9 @@
 //
 //      Production campus (university.pmtiles):
 //        .\pmtiles.exe extract https://build.protomaps.com/20261108.pmtiles storage/app/university.pmtiles --bbox=122.059264,6.911304,122.064242,6.915020 --maxzoom=15
-//      Test area (debug.pmtiles):
-//        .\pmtiles.exe extract https://build.protomaps.com/20261108.pmtiles storage/app/debug.pmtiles --bbox=122.066903,6.908326,122.075062,6.912240 --maxzoom=15
 //
-//   3. Check it:   .\pmtiles.exe show storage/app/debug.pmtiles      (bounds, center, zooms)
-//                  .\pmtiles.exe verify storage/app/debug.pmtiles
+//   3. Check it:   .\pmtiles.exe show storage/app/university.pmtiles      (bounds, center, zooms)
+//                  .\pmtiles.exe verify storage/app/university.pmtiles
 //
 //   4. A new box or a new file: add/update its entry in ARCHIVES below (same box and
 //      centre as the extract), allow its name in routes/web.php, point TILE_FILE at
@@ -57,11 +55,6 @@ const ARCHIVES = {
     'university.pmtiles': {
         bounds: [[6.911304, 122.059264], [6.915020, 122.064242]],
         center: [6.913164, 122.061753],
-    },
-    // Test area east of campus (bbox 122.066903,6.908326,122.075062,6.912240). OSM 2026-11-08.
-    'debug.pmtiles': {
-        bounds: [[6.908326, 122.066903], [6.912240, 122.075062]],
-        center: [6.910278, 122.070983],
     },
 };
 

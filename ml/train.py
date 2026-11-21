@@ -153,8 +153,9 @@ VARIANT_NAMES = {"forecast": "forecast only", "airport": "forecast + airport rep
                  "multimodel": "forecast + several models", "both": "forecast + airport report + several models",
                  "satellite": "all of the above + satellite",
                  "motion": "all of the above + satellite + cloud motion",
-                 "phase": "all of the above + satellite + cloud phase"}
-SAT_VARIANTS = ("satellite", "motion", "phase")
+                 "phase": "all of the above + satellite + cloud phase",
+                 "phase_motion": "all of the above + satellite + cloud phase + motion"}
+SAT_VARIANTS = ("satellite", "motion", "phase", "phase_motion")
 # Extra satellite products: (variant, the command that fills its history)
 SAT_EXTRAS = (("motion", "download_satellite.py --motion"), ("phase", "download_satellite.py --cloud"))
 
@@ -303,6 +304,9 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, default=20, help="minutes ahead (default 20); other horizons write model_h<N>.json")
     ap.add_argument("--within", action="store_true",
                     help="label = rain in ANY airport report within the next HORIZON minutes (needed for horizons other than 20)")
+    ap.add_argument("--dump-variants", metavar="CSV",
+                    help="write every input set's validation and test chances per step (with the satellite missing flags), "
+                         "to score them on a subset, e.g. only steps that have cloud motion")
     ap.add_argument("--compare", nargs="*", default=[], metavar="MODEL_JSON",
                     help="also score these saved models (e.g. a backup of the live one) on this run's test steps, "
                          "each at its own alert threshold: a like-for-like benchmark")
@@ -439,6 +443,9 @@ def main() -> None:
             for name, (data, extra_cols) in extras.items():
                 if data is not None:
                     variants[name] = variants["satellite"] + [c for c in extra_cols if c not in drop]
+            # Both extras: does cloud motion add anything on top of cloud phase (the live model's inputs)?
+            if "phase" in variants and "motion" in variants:
+                variants["phase_motion"] = variants["phase"] + [c for c in variants["motion"] if c not in variants["phase"]]
         else:
             print("Satellite history has no scans inside the forecast period: skipped.")
     elif not a.no_satellite:
@@ -485,11 +492,26 @@ def main() -> None:
 
     # ----- one logistic regression per input set
     fits = {v: fit_logistic(tr, va, cols) for v, cols in variants.items()}
+    if a.dump_variants:
+        flags = [c for c in ("sat_motion_missing", "sat_phase_missing") if c in va.columns]
+        dump = pd.concat([part[["y", *flags]].assign(split=name, **{v: f["predict"](part) for v, f in fits.items()})
+                          for name, part in (("val", va), ("test", te))])
+        dump.to_csv(a.dump_variants)
+        print(f"wrote {a.dump_variants}: {len(dump):,} steps, input sets {list(fits)}")
     print("\nvariants (validation Brier, lower is better):")
     for v, fit in fits.items():
         print(f"  {VARIANT_NAMES[v]:45s} features={len(fit['cols']):2d}  C={fit['C']:<5}  val Brier={fit['val_brier']:.5f}")
     chosen = a.variant if a.variant != "auto" else min(fits, key=lambda v: fits[v]["val_brier"])
     why = " (lowest validation Brier)" if a.variant == "auto" else " (--variant)"
+    if a.variant == "auto" and chosen == "phase_motion":
+        # Motion on top of phase must beat phase alone by the same clear margin, else the best single extra.
+        gain = 1 - fits[chosen]["val_brier"] / fits["phase"]["val_brier"]
+        if gain < SAT_MIN_GAIN:
+            print(f"{VARIANT_NAMES[chosen]} improves validation Brier by only {gain:.2%} over cloud phase alone "
+                  f"(< {SAT_MIN_GAIN:.1%} needed)")
+            chosen = min(("phase", "motion"), key=lambda v: fits[v]["val_brier"])
+        else:
+            why = f" ({VARIANT_NAMES[chosen]} improves validation Brier by {gain:.2%} over cloud phase alone)"
     if a.variant == "auto" and chosen in ("motion", "phase"):
         # An extra satellite product must beat satellite without it by the same clear margin.
         gain = 1 - fits[chosen]["val_brier"] / fits["satellite"]["val_brier"]

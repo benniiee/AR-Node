@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Bridge;
 use App\Models\Building;
+use App\Models\Node;
+use App\Models\NodeLink;
 use App\Models\Pathway;
 use App\Services\GeoPoints;
-use App\Services\RouteNodes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PathwayController extends Controller
@@ -66,32 +69,28 @@ class PathwayController extends Controller
     }
 
     /**
-     * Lay ground-floor route nodes along a pathway every `spacing_m` metres
-     * (admin only), so the router can use a road or walkway that was only
-     * drawn. Covered walkways get `inside` nodes (sheltered in rain mode).
+     * Delete the route-node dots along a pathway (admin only): the pathway itself is a route now
+     * (src/pathfinding.js pathwayWaypoints), so the dots laid or placed along it are duplicates.
+     * Only ground-floor route nodes outside buildings within the path's half-width + 2 m (at least
+     * 3 m) go; never a staircase end, a node on a bridge or a destination (rooms are not route nodes).
      */
-    public function generateRouteNodes(Request $request, Pathway $pathway): JsonResponse
+    public function clearRouteNodes(Request $request, Pathway $pathway): JsonResponse
     {
         abort_unless($request->user()->isAdmin(), 403);
 
-        $validated = $request->validate([
-            'spacing_m' => 'sometimes|numeric|min:3|max:50',
-            'campus' => 'sometimes|in:A,B',
-        ]);
+        $line = $pathway->coordinates ?? [];
+        $reach = max(3.0, $pathway->widthM() / 2 + 2.0);
+        $stairEnds = NodeLink::pluck('node_a_id')->merge(NodeLink::pluck('node_b_id'))->unique();
+        $bridges = Bridge::all(['polygon']);
 
-        $created = RouteNodes::layAlong(
-            $pathway->coordinates,
-            (float) ($validated['spacing_m'] ?? 8),
-            0,
-            $pathway->nodePathType(),
-            $validated['campus'] ?? 'A',
-            $request->user()->id,
-        );
+        $along = Node::where('type', 'route')->whereNull('building_id')->where('floor_level', 0)
+            ->whereNotIn('id', $stairEnds)->get()
+            ->filter(fn (Node $n): bool => GeoPoints::distanceToLine($line, ['lat' => (float) $n->latitude, 'lng' => (float) $n->longitude]) <= $reach
+                && ! $bridges->contains(fn (Bridge $b): bool => GeoPoints::contains($b->polygon ?? [], (float) $n->latitude, (float) $n->longitude)));
 
-        return response()->json([
-            'created' => count($created),
-            'nodes' => $created,
-        ], 201);
+        DB::transaction(fn () => Node::whereIn('id', $along->pluck('id'))->delete());
+
+        return response()->json(['deleted' => $along->count(), 'reach_m' => round($reach, 1)]);
     }
 
     /**

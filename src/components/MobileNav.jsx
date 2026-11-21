@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { loadMap } from '../mobileApi';
 import { describeAge } from '../offlineData';
-import { computeRoute } from '../pathfinding';
+import { computeRoute, pathwayWaypoints } from '../pathfinding';
 import { buildingDestination, parseBuildingDestination, routableBuildings, routeToBuilding } from '../buildingDestinations';
 import { nodeArea, buildingArea } from '../campusAreas';
 import { qrNodeIdFrom, QR_PARAM } from '../qrPosition';
@@ -24,9 +24,9 @@ import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPU
 import { headingFromOrientationEvent, headingAccuracyFromEvent, createCompassWatcher, compassLabel } from '../heading';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../povMotion';
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine } from '../campusLayers';
-import { sunPosition } from '../sunShadow';
-import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon } from '../campusGeometry';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint } from '../campusLayers';
+import { sunPosition, roofLiftM } from '../sunShadow';
+import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
 import { LIST_CSS, bindScrollCue } from './ScrollWindow';
 import SatelliteControl, { SATELLITE_CSS } from './SatelliteControl';
 import { useSatelliteSettings, useSatelliteLayer } from '../useSatellite';
@@ -467,7 +467,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const lastRestartAtRef = useRef(0);
     const nodesRef = useRef([]);
     const bordersRef = useRef([]);
-    nodesRef.current = nodes;
+    // GPS snapping uses the same walkable network as routing: route nodes and the pathways' lines.
+    const walkNodes = useMemo(() => [...nodes, ...pathwayWaypoints(pathways)], [nodes, pathways]);
+    nodesRef.current = walkNodes;
     bordersRef.current = borders;
 
     // The map is locked to the campus box and must never leave it — least of
@@ -961,6 +963,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         const layer = shadowLayerRef.current;
         if (!layer) return undefined;
         drawShadows(layer, buildings, { date: sunDate, lat: CAMPUS_CENTER[0], lng: CAMPUS_CENTER[1] });
+        // The map darkens with the time of day (dusk, night), like the shadows follow the sun.
+        if (mapInstance.current) drawSkyTint(mapInstance.current, sunPosition(sunDate, CAMPUS_CENTER[0], CAMPUS_CENTER[1]).altitudeDeg);
         return undefined;
     }, [buildings, sunDate]);
 
@@ -1011,8 +1015,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 </div>`;
         };
         drawPathways(pathwayLayerRef.current, pathways, { theme: GPS_FLAVOR });
-        if (bridgeLayerRef.current) drawBridges(bridgeLayerRef.current, bridges, { theme: GPS_FLAVOR });
         drawBuildings(buildingLayerRef.current, buildings, { popup, theme: GPS_FLAVOR, extrude: true, sun: sunForWalls, skipIds: routeBuildingIds });
+        // After the buildings, raised like them (2.5D): the deck crosses over the road between them.
+        if (bridgeLayerRef.current) drawBridges(bridgeLayerRef.current, bridges, { theme: GPS_FLAVOR, extrude: true, links, nodes });
 
         // Long lists in the popup get the same scroll cue as the rest of the app.
         const map = mapInstance.current;
@@ -1022,7 +1027,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         map.on('popupopen', onOpen);
         return () => { map.off('popupopen', onOpen); unbind(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, bridges, pathways, nodes, sunWallsKey, routeBuildingKey]);
+    }, [buildings, bridges, pathways, nodes, links, sunWallsKey, routeBuildingKey]);
 
     // Render node markers — destinations only, and only for the selected
     // floor. Intermediate route nodes stay hidden on the 2D screen; the path
@@ -1161,12 +1166,16 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 buildings,
                 // Bridges with doors are got on and off only through them.
                 bridges,
+                // Every road and walkway is a route along its line.
+                pathways,
             });
             // A whole building: the shortest way to one of its doors (or its
             // ground floor when it has none yet).
             const destBuilding = parseBuildingDestination(destId);
             const target = destBuilding !== null ? buildingsById.get(destBuilding) : null;
-            const result = target ? routeToBuilding(target, nodes, routeTo) : routeTo(destId);
+            // walkNodes: with the pathways' points, so a building with no doors or nodes yet is reached at the
+            // walkway beside it (real outdoor nodes are few now: routes follow the pathways).
+            const result = target ? routeToBuilding(target, walkNodes, routeTo) : routeTo(destId);
             setRoute(result.success ? result : null);
             // Every failure is said out loud: a silent one left "Choose a destination" on screen
             // with a destination chosen.
@@ -1180,8 +1189,11 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 const entered = new Set(result.path.map((p) => p.building_id).filter((id) => id !== null && id !== undefined));
                 // A raised bridge deck is drawn flat on the ground map, so on the ground floor its part of the
                 // route is drawn too: up the stairs' walking line, along the deck, and down again.
-                const onDeck = (p) => activeFloor === 0 && p.building_id == null && floorOf(p) > 0 && (bridges || []).some((br) => br.status !== 'planned'
-                    && Number(br.deck_floor) === floorOf(p) && Array.isArray(br.polygon) && pointInPolygon(+p.latitude, +p.longitude, br.polygon));
+                const deckUnder = (p) => (activeFloor === 0 && p.building_id == null && floorOf(p) > 0 ? (bridges || []).find((br) => br.status !== 'planned'
+                    && Number(br.deck_floor) === floorOf(p) && Array.isArray(br.polygon) && pointInPolygon(+p.latitude, +p.longitude, br.polygon)) : null);
+                const onDeck = (p) => Boolean(deckUnder(p));
+                // On the raised (2.5D) deck, as drawBridges draws it: lifted by the deck's height.
+                const deckLift = (br) => roofLiftM(bridgeDeckHeightM(br)) / 111320;
                 const shown = (p) => p.type === 'user' || floorOf(p) === activeFloor || onDeck(p);
                 // One line per stretch on this floor: a route that leaves it and comes back is not
                 // joined straight across the gap (it used to draw the ground under a bridge).
@@ -1193,9 +1205,12 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                     if (!seg) segs.push(seg = []);
                     else if (prev && prev.type !== 'user' && floorOf(prev) !== floorOf(p)) {
                         const link = links.find((l) => (l.node_a_id === prev.id && l.node_b_id === p.id) || (l.node_a_id === p.id && l.node_b_id === prev.id));
-                        if (link) seg.push(...stairRouteLine(link, prev, p, () => 0).slice(1, -1));
+                        // Up (or down) the stairs from the ground to the raised deck.
+                        const br = deckUnder(p) || deckUnder(prev);
+                        if (link) seg.push(...stairRouteLine(link, prev, p, (f) => (f > 0 && br ? deckLift(br) : 0)).slice(1, -1));
                     }
-                    seg.push([p.latitude + cutawayLift(p, entered), p.longitude]);
+                    const br = deckUnder(p);
+                    seg.push([p.latitude + (br ? deckLift(br) : cutawayLift(p, entered)), p.longitude]);
                 });
                 const latlngs = segs.flat();
                 // A staircase marker where this floor's route ends (going
@@ -1308,7 +1323,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // `weather.rain_multiplier` / `weather.raining_now` rather than the
         // whole object: a poll rebuilds it every 5 minutes, and the route
         // only cares about the two values that change routing.
-    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, routeShade]);
+    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade]);
 
     // A destination on another floor is a normal case now (the route climbs
     // the linked stairs), so it is only dropped when the node itself is gone.

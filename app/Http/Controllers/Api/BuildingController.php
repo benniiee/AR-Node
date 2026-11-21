@@ -72,10 +72,9 @@ class BuildingController extends Controller
             abort(403, 'Only an admin can move a building to another department.');
         }
 
-        // Doors belong to the building's department: its staff manage them.
-        // An admin only does so for a building no department owns (a whole-
-        // building move still carries the doors along, see below).
-        if ($user->isAdmin() && $request->has('doors') && $building->department_id !== null) {
+        // Doors belong to the building's department: its staff manage them, never an admin (a whole-
+        // building move still carries the doors along, see below). No department yet: assign one first.
+        if ($user->isAdmin() && $request->has('doors')) {
             abort(403, 'Doors are managed by the staff of the department that owns this building.');
         }
 

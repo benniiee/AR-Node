@@ -53,4 +53,4 @@ Route::get('/{archive}.pmtiles', function (string $archive) {
     return response()->file($path, [
         'Content-Type' => 'application/octet-stream',
     ]);
-})->whereIn('archive', ['university', 'debug']);
+})->whereIn('archive', ['university']);

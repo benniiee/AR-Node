@@ -157,10 +157,24 @@ class BuildingTest extends TestCase
             ->assertInvalid('move_nodes_by.lat');
     }
 
+    /** A faculty member whose department owns these buildings (all around nodePayload()'s point). */
+    private function staffOwning(Building ...$buildings): User
+    {
+        $department = Department::factory()->create();
+        foreach ($buildings as $building) {
+            $building->update(['department_id' => $department->id, 'polygon' => [
+                ['lat' => 6.9130, 'lng' => 122.0610], ['lat' => 6.9130, 'lng' => 122.0612],
+                ['lat' => 6.9132, 'lng' => 122.0612], ['lat' => 6.9132, 'lng' => 122.0610],
+            ]]);
+        }
+
+        return User::factory()->create(['role' => 'faculty', 'department_id' => $department->id]);
+    }
+
     public function test_node_floor_must_exist_in_its_building(): void
     {
-        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $building = Building::factory()->create(['floors' => 3]);
+        Sanctum::actingAs($this->staffOwning($building));
 
         // Ground (0) to the top floor (floors - 1); no basements.
         $this->postJson('/api/nodes', $this->nodePayload(['building_id' => $building->id, 'floor_level' => 2]))
@@ -182,9 +196,9 @@ class BuildingTest extends TestCase
 
     public function test_moving_a_node_to_another_building_checks_the_new_buildings_floors(): void
     {
-        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $tall = Building::factory()->create(['floors' => 5]);
         $low = Building::factory()->create(['floors' => 1]);
+        Sanctum::actingAs($this->staffOwning($tall, $low));
         $node = Node::create($this->nodePayload(['building_id' => $tall->id, 'floor_level' => 4]));
 
         $this->putJson("/api/nodes/{$node->id}", ['building_id' => $low->id])

@@ -8,8 +8,9 @@ import { pathwayStyle, pathWeightPx, buildingStyle, bridgeStyle, esc } from '../
 import { toLocalMeters, fromLocalMeters } from '../geo';
 import { snapToOutline, placedDoors, doorFrames, doorWidth, DOOR_SNAP_M, DOOR_WIDTH_M, MIN_DOOR_WIDTH_M, MAX_DOOR_WIDTH_M, MAX_DOORS } from '../doors';
 import { lazyPreview } from './Lazy3D';
-import { addJoined, canExtendFrom } from '../shapeDraft';
+import { addJoined } from '../shapeDraft';
 import StairModal from './StairModal';
+import { confirmAction } from './ConfirmDialog';
 import { suggestEntrances } from '../pathfinding';
 
 // The door editor's 3D view (admin only): three.js loads when the editor opens.
@@ -140,6 +141,10 @@ export default function CampusEditor({
     // none selected, a tap adds after the last corner (the old behaviour).
     // Tap a corner to select it. Undo steps back through the additions.
     const [anchor, setAnchor] = useState(null);
+    // A path does not fork: tapping the map with a MIDDLE point selected starts a branch instead, drawn
+    // here and saved as its own walkway with the pathway. `branchAnchor`: the branch being drawn on.
+    const [branches, setBranches] = useState([]);
+    const [branchAnchor, setBranchAnchor] = useState(null);
     const historyRef = useRef([]);
     // A short note for the drawing bar (e.g. why a point cannot be extended).
     const [drawNote, setDrawNote] = useState(null);
@@ -157,10 +162,9 @@ export default function CampusEditor({
     // Legacy column, kept as it was: the campus now comes from the campus areas.
     const campus = record?.campus === 'B' ? 'B' : 'A';
     const [departmentId, setDepartmentId] = useState(record?.department_id ? String(record.department_id) : '');
-    // Doors belong to the building's department: its staff manage them; an
-    // admin only for a building no department owns (BuildingController).
+    // Doors belong to the building's department: its staff manage them, never an admin (BuildingController).
     const ownerName = record?.department?.name || departments.find((d) => String(d.id) === String(record?.department_id))?.name || 'its department';
-    const manageDoors = !canChangeDepartment || String(record?.department_id ?? '') === '';
+    const manageDoors = !canChangeDepartment;
     // An admin filing an existing building under another department.
     const departmentChanged = Boolean(isBuilding && record && canChangeDepartment
         && String(departmentId) !== String(record.department_id ?? ''));
@@ -314,11 +318,52 @@ export default function CampusEditor({
                 saved?.setStyle({ weight: pathWeightPx(map, savedMetres, savedStyle.weight) });
                 band.setStyle({ weight: pathWeightPx(map, metres, style.weight) });
             };
-            fitBand();
-            map.on('zoomend', fitBand);
             // The centre line only while reshaping (the points are dragged along it); otherwise just the band.
             if (step === 'shape') outline = L.polyline(latlngs, { ...style, interactive: false }).addTo(layer);
             drawn.push({ set: (l) => { outline?.setLatLngs(l); band.setLatLngs(l); } });
+        }
+
+        // Branches: the same width preview as the path (its band and centre line), each from its fork
+        // point; tap a branch's end to carry it on.
+        if (!isOutline) {
+            const style = pathwayStyle(kind, status, THEME);
+            const metres = pathwayWidthM(kind, widthM.trim() === '' ? null : Number(widthM));
+            const bands = branches.map((branch) => {
+                const lls = branch.map((q) => [q.lat, q.lng]);
+                const band = L.polyline(lls, { ...style, color: '#e5e7eb', opacity: 0.4, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer);
+                L.polyline(lls, { ...style, interactive: false }).addTo(layer);
+                return band;
+            });
+            if (bands.length) {
+                const fitPath = fitBand;
+                fitBand = () => {
+                    fitPath?.();
+                    for (const band of bands) band.setStyle({ weight: pathWeightPx(map, metres, style.weight) });
+                };
+            }
+            branches.forEach((branch, i) => {
+                branch.slice(1).forEach((q, k) => {
+                    const end = k === branch.length - 2;
+                    const live = end && branchAnchor === i;
+                    const m = L.marker([q.lat, q.lng], {
+                        icon: live ? VERTEX_ICON_SELECTED : VERTEX_ICON, bubblingMouseEvents: false, zIndexOffset: live ? 1000 : 0,
+                        title: end ? 'Branch end: tap to carry the branch on from here' : 'Branch point',
+                    }).addTo(layer);
+                    if (end) {
+                        m.on('click', () => {
+                            vertexPressAt.current = Date.now();
+                            setAnchor(null);
+                            setBranchAnchor((b) => (b === i ? null : i));
+                        });
+                    }
+                });
+            });
+        }
+
+        // Bands at their real width now and on every zoom (removed again on the effect's cleanup).
+        if (fitBand) {
+            fitBand();
+            map.on('zoomend', fitBand);
         }
 
         // Doors on the draft: a light gap in the outline and a numbered
@@ -380,7 +425,7 @@ export default function CampusEditor({
             const selected = anchor === k;
             const vm = L.marker([p.lat, p.lng], {
                 icon: selected ? VERTEX_ICON_SELECTED : VERTEX_ICON, draggable: true, bubblingMouseEvents: false,
-                zIndexOffset: selected ? 1000 : 0, title: selected ? 'Selected: the next corner joins here' : 'Tap to add corners after this one, or drag to move it',
+                zIndexOffset: selected ? 1000 : 0, title: selected ? 'Selected: the next point joins here' : 'Tap to select it (new points join it), or drag to move it',
             }).addTo(layer);
             const stamp = () => { vertexPressAt.current = Date.now(); };
             vm.on('mousedown', stamp);
@@ -388,11 +433,8 @@ export default function CampusEditor({
             // Tap (not drag): select this corner; tap it again to let go.
             vm.on('click', () => {
                 stamp();
-                if (!canExtendFrom(points, k, { closed: isOutline })) {
-                    setDrawNote('A path grows from its ends: tap its first or last point to continue it.');
-                    return;
-                }
                 setDrawNote(null);
+                setBranchAnchor(null);
                 setAnchor((a) => (a === k ? null : k));
             });
             vm.on('dragend', (e) => {
@@ -403,7 +445,7 @@ export default function CampusEditor({
         });
         return fitBand ? () => map.off('zoomend', fitBand) : undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors, widthM]);
+    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors, widthM, branches, branchAnchor]);
 
     // Put a door where the outline was tapped (map or 3D view).
     const addDoorAt = (lat, lng) => {
@@ -479,23 +521,33 @@ export default function CampusEditor({
         const onClick = (e) => {
             if (Date.now() - vertexPressAt.current < 350) return;
             const at = { lat: e.latlng.lat, lng: e.latlng.lng };
+            historyRef.current.push({ points, anchor, branches, branchAnchor });
+            setDrawNote(null);
+            // Carrying on a branch, or starting one from a middle point of a path: joined only to that point.
+            if (!isOutline && branchAnchor !== null && branches[branchAnchor]) {
+                setBranches(branches.map((b, i) => (i === branchAnchor ? [...b, at] : b)));
+                return;
+            }
+            if (!isOutline && anchor !== null && anchor > 0 && anchor < points.length - 1) {
+                setBranches([...branches, [points[anchor], at]]);
+                setBranchAnchor(branches.length);
+                setAnchor(null);
+                return;
+            }
             // The new point joins ONLY the selected one (see shapeDraft.js).
             const next = addJoined(points, anchor, at, { closed: isOutline });
-            if (!next) { setDrawNote('A path grows from its ends: tap its first or last point to continue it.'); return; }
-            historyRef.current.push({ points, anchor });
-            setDrawNote(null);
             setPoints(next.points);
             setAnchor(next.anchor);
             setSource((s) => (s === 'osm' && ref ? s : 'custom'));
         };
         map.on('click', onClick);
         return () => map.off('click', onClick);
-    }, [map, step, ref, points, anchor, isOutline]);
+    }, [map, step, ref, points, anchor, isOutline, branches, branchAnchor]);
 
     // Undo: back one addition (corner + which one was selected).
     const undo = () => {
         const last = historyRef.current.pop();
-        if (last) { setPoints(last.points); setAnchor(last.anchor); return; }
+        if (last) { setPoints(last.points); setAnchor(last.anchor); setBranches(last.branches || []); setBranchAnchor(last.branchAnchor ?? null); return; }
         setPoints((p) => p.slice(0, -1));
         setAnchor(null);
     };
@@ -563,12 +615,13 @@ export default function CampusEditor({
             } else {
                 const data = { name: name.trim() || null, kind, status, width_m: widthM.trim() === '' ? null : Number(widthM), coordinates: points, source, osm_ref: ref };
                 const saved = record ? await api.updatePathway(record.id, data) : await api.createPathway(data);
-                let message = record ? 'Pathway updated' : 'Pathway added';
-                if (!record && layNodes) {
-                    const res = await api.generatePathwayNodes(saved.id, { spacing_m: clampInt(spacing, 3, 50, 8), campus: 'A' });
-                    message += ` with ${res.created} route nodes`;
+                // Each branch: its own walkway, the same type and width, starting at its fork point.
+                const forks = branches.filter((b) => b.length >= 2);
+                for (const b of forks) {
+                    await api.createPathway({ name: null, kind, status, width_m: data.width_m, coordinates: b, source: 'custom' });
                 }
-                onSaved(message);
+                const branchNote = forks.length ? ` with ${forks.length} ${forks.length === 1 ? 'branch' : 'branches'}` : '';
+                onSaved(record ? `Pathway updated${branchNote}` : `${saved.name || 'Pathway'} added${branchNote}: routes now follow it`);
             }
         } catch (err) {
             onError(err.message);
@@ -581,11 +634,28 @@ export default function CampusEditor({
         if (!record) return;
         setSaving(true);
         try {
-            const res = isBridge
-                ? await api.generateBridgeNodes(record.id, { spacing_m: clampInt(spacing, 3, 50, 6), stairs: raisedDeck && endStairs })
-                : await api.generatePathwayNodes(record.id, { spacing_m: clampInt(spacing, 3, 50, 8) });
+            const res = await api.generateBridgeNodes(record.id, { spacing_m: clampInt(spacing, 3, 50, 6), stairs: raisedDeck && endStairs });
             const laid = res.created > 0 ? `${res.created} route nodes laid along the ${noun}` : `Every spot along this ${noun} already has a route node`;
             onSaved(`${laid}${stairsNote(res)}`);
+        } catch (err) {
+            onError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Pathways route by themselves (pathfinding.js pathwayWaypoints): the old route-node dots along one are duplicates.
+    const clearRouteNodes = async () => {
+        if (!record) return;
+        if (!(await confirmAction({
+            title: 'Clear the route nodes along this pathway?',
+            message: 'Routes follow the pathway itself now. This removes the route-node dots on the ground within a few metres of it. Staircase ends, nodes in buildings or on bridges, and rooms stay.',
+            confirmLabel: 'Clear route nodes', tone: 'danger',
+        }))) return;
+        setSaving(true);
+        try {
+            const res = await api.clearPathwayNodes(record.id);
+            onSaved(res.deleted ? `Removed ${res.deleted} route node${res.deleted === 1 ? '' : 's'} along the pathway` : 'No route nodes along this pathway to clear');
         } catch (err) {
             onError(err.message);
         } finally {
@@ -598,7 +668,12 @@ export default function CampusEditor({
         let hint;
         if (points.length > 0) {
             const part = isOutline ? 'corner' : 'point';
-            hint = drawNote || (anchor !== null
+            const middle = !isOutline && anchor !== null && anchor > 0 && anchor < points.length - 1;
+            hint = drawNote || (branchAnchor !== null
+                ? 'Drawing a branch: tap the map to carry it on from the green point. It is saved as its own walkway when you save.'
+                : middle
+                ? 'The green point is selected: tap the map to start a branch from it (a new walkway joined only to this point).'
+                : anchor !== null
                 ? `The green ${part} is selected: tap the map to add a ${part} joined only to it, and keep tapping to carry on from there. Tap it again to let go.`
                 : ready
                 ? `Tap a ${part} to add new ones after it, drag one to reshape, or drag the centre handle to move the whole ${noun}. Then press Next.`
@@ -620,7 +695,7 @@ export default function CampusEditor({
             <ActionBar title={record ? `Reshape ${noun}` : (isBuilding ? 'Label a building' : isBridge ? 'Add a bridge' : 'Add a pathway')} hint={hint}>
                 <button className="ui-btn ui-btn-secondary" onClick={undo} disabled={points.length === 0}>Undo</button>
                 <button className="ui-btn ui-btn-primary" onClick={() => setStep('details')} disabled={!ready}>Next</button>
-                <button className="ui-btn ui-btn-danger" onClick={record ? () => { setPoints(initialPoints()); setShift({ lat: 0, lng: 0 }); setAnchor(null); historyRef.current = []; setStep('details'); } : onClose}>
+                <button className="ui-btn ui-btn-danger" onClick={record ? () => { setPoints(initialPoints()); setShift({ lat: 0, lng: 0 }); setAnchor(null); setBranches([]); setBranchAnchor(null); historyRef.current = []; setStep('details'); } : onClose}>
                     {record ? 'Back' : 'Cancel'}
                 </button>
             </ActionBar>
@@ -951,18 +1026,30 @@ export default function CampusEditor({
                     </section>
                 )}
 
-                {!isBuilding && (
+                {!isOutline && (
+                    <div className="mt-pathnodes">
+                        <p className="ui-hint" style={{ margin: 0 }}>
+                            Routes follow this pathway on their own: no route nodes are needed along it.
+                            {record ? ' Clear the old route-node dots along it once it is drawn where people really walk.' : ''}
+                        </p>
+                        {record && (
+                            <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={clearRouteNodes} disabled={saving}>
+                                Clear route nodes along it
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {isBridge && (
                     <div className="mt-pathnodes">
                         {record ? (
                             <p className="ui-hint" style={{ margin: 0 }}>
-                                {isBridge
-                                    ? 'Routing uses route nodes. Lay them along the deck, on its floor, in one step (spots that already have one are skipped).'
-                                    : 'Routing uses route nodes. Lay them along this pathway in one step (spots that already have one are skipped).'}
+                                Routing uses route nodes. Lay them along the deck, on its floor, in one step (spots that already have one are skipped).
                             </p>
                         ) : (
                             <label className="mt-check">
                                 <input type="checkbox" checked={layNodes} onChange={(e) => setLayNodes(e.target.checked)} />
-                                <span>{isBridge ? 'Also lay route nodes along the deck so routes can cross it' : 'Also lay route nodes along it so routes can use it'}</span>
+                                <span>Also lay route nodes along the deck so routes can cross it</span>
                             </label>
                         )}
                         {raisedDeck && (record || layNodes) && (

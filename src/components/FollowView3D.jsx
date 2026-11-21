@@ -101,6 +101,18 @@ export default function FollowView3D({
         lead.add(leadEdge, leadCore);
         lead.visible = false;
         scene.add(lead);
+        // Round joints at both ends of the live piece: where it meets the fixed ribbon at the next stop
+        // (and at your feet), so the bend there is smooth instead of two open tube ends crossing.
+        const joints = [0, 1].map(() => {
+            const j = new THREE.Group();
+            j.add(
+                new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshBasicMaterial({ color: 0x16161b, side: THREE.BackSide })),
+                new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff })),
+            );
+            j.visible = false;
+            scene.add(j);
+            return j;
+        });
         const UP = new THREE.Vector3(0, 1, 0);
         const from = new THREE.Vector3();
         const to = new THREE.Vector3();
@@ -260,8 +272,12 @@ export default function FollowView3D({
                     lead.scale.set(1, len, 1);
                     lead.quaternion.setFromUnitVectors(UP, to.clone().sub(from).normalize());
                 }
+                joints[0].position.copy(from);
+                joints[1].position.copy(to);
+                for (const j of joints) j.visible = lead.visible;
             } else {
                 lead.visible = false;
+                for (const j of joints) j.visible = false;
             }
             if (s.pos) {
                 s.me.position.copy(s.pos);

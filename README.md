@@ -13,13 +13,11 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 **Admins** (admin console at `/admin`)
 - Manage buildings: label them from the base map or draw them; edit name, short name, floors, height and status; move, reshape or remove them. Removing a building also deletes every node filed under it (rooms, offices, indoor routes on all floors) and their staircases.
 - Assign a building to a department, or hand it over to another department. Its rooms and routes stay where they are, and the new department manages them.
-- Manage the doors of buildings that have no department.
 - Manage bridges (such as the footbridge between the two campuses): draw the deck's outline like a building, set its name, deck level (at ground level, or 1 to 5 floors up), height and roof, then lay route nodes along the deck in one step. A raised deck's route nodes are on its floor (at the deck's height), so routes reach it only by stairs. **Connect to ground** (the bridge's popup or Edit panel) joins it to the existing ground routes like a building's stairs: tap a deck node at one end, then the ground route node the stairs come down to, then set the stairs' shape and slope; once per end. (Where no ground route exists yet, "Also build new stairs down to new ground nodes" makes a 35° staircase and a ground node one stair-length beyond each end.) A roofed deck counts as sheltered in rain. Bridges show on the student map and in the 3D views (deck, railings, pillars, roof). **Manage entrances** (a bridge's openings; the same editor as a building's doors): with entrances, routes get on and off the deck only through them, on the deck's floor (the ground under a raised deck stays open), so a route cannot slip sideways off the deck into a building next to it. **Find entrances** places them where existing paths come in: ground paths into a staircase's foot, and paths joining the deck on its own floor (a path counts within 10 m of the outline). The same button is in a building's Manage doors, where it puts a door wherever a ground path crosses the outline. Check them, then Save. **Manage nodes** (the bridge's Edit panel or popup) lists the nodes on the deck with Edit / Remove, adds new ones on the deck's floor, and opens Connect to ground, like a building's. **Closed** (in its Edit panel, with a required reason such as "Campus A event until 5 PM") takes the whole bridge out of routing, from either side, until an admin reopens it: the map draws it grey with the reason, and when it was the only way students see "<name> is closed: <reason>." instead of a generic error. Removing a bridge also deletes the nodes on its deck and the staircases up to them (the ground routes stay). The `kind` column makes later connectors (a skywalk, a tunnel) one new value, not a new table.
 - Manage campus areas (the Campus A and Campus B outlines).
-- Manage roads and walkways: draw, edit (name, type, real width in metres) and reshape them, and lay route nodes along them automatically. The 2D map and the 3D views draw each one at its real width (blank = 5 m for a road, 2.4 m for a walkway).
-- Manage nodes anywhere, indoors and outdoors, on every floor: rooms and offices (destinations) and route nodes.
-- Swap two offices: they trade names and departments and keep their spots.
-- Manage every wall and every staircase between floors.
+- Manage roads and walkways (bottom bar → **Add path**): draw, edit (name, type, real width in metres) and reshape them. A pathway is a route by itself: routes follow its line, so it needs no route nodes, and a covered walkway counts as sheltered in rain. **Clear route nodes along it** (in its Edit panel) removes the old route-node dots within a few metres of it, never staircase ends, nodes in buildings or on bridges, or rooms. The 2D map and the 3D views draw each one at its real width (blank = 5 m for a road, 2.4 m for a walkway).
+- Manage nodes **only on bridges** (deck nodes and the stair feet under them). Rooms, offices and routes inside buildings, and their doors, belong to each building's department staff; outdoors, routes follow roads and walkways.
+- Manage every wall, and the staircases of bridges (Connect to ground). Staircases inside buildings are the department staff's.
 - Manage departments: create, rename, recolour, delete.
 - Manage every student course in the **Courses** tab (code, full name and the department it belongs to). A department's courses decide which students its staff see in the Activity log.
 - Manage staff accounts: create admins and faculty, assign departments, change roles, remove accounts. Nobody can remove or demote themselves, and at least one admin always remains.
@@ -28,11 +26,12 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Read the **Activity log**: every staff sign-in and change (by any admin or faculty member, so admins see each other's work), student sign-ins (name, course, year level), and what visitors open on the map (the map itself, a chosen destination, the 3D / AR view), with the visitor's IP address and device. Filter by staff, students or visitors, and search. Kept 180 days.
 
 **Faculty staff** (admin console at `/admin`; an admin must assign them a department first)
-- Add, edit, move and remove nodes (rooms, offices, route nodes) only inside their own department's buildings and on those buildings' floors, including nodes other people placed there.
-- Cannot add or edit nodes outside buildings. They can see the outdoor network, which admins manage.
-- Edit their own department's buildings: move, reshape, rename, change floors and height, place doors. They cannot add, remove or reassign buildings.
+- Add, edit, move and remove nodes (rooms, offices, route nodes) only inside their own department's buildings and on those buildings' floors, including nodes other people placed there. Admins do not edit these.
+- Cannot add or edit nodes outside buildings or on bridges: admins manage the outdoor network (roads, walkways, bridges).
+- Edit their own department's buildings: move, reshape, rename, change floors and height, and manage their **doors** (only department staff do; a building with no department gets none until an admin assigns one). They cannot add, remove or reassign buildings.
 - Draw walls, and edit or remove only the walls they drew.
 - Add staircases between their own nodes, or from one of their nodes to an outdoor node.
+- Swap two offices in their buildings: they trade names and departments and keep their spots.
 - Preview a route to any destination they can see, and print QR codes for nodes.
 - Add, rename and remove their own department's student courses in the **Courses** tab (a new course is always filed under their department). A course with students in it cannot be removed.
 - Read the **Activity log** of the students in their department's courses only (their sign-ins), not other staff or visitors.
@@ -104,8 +103,8 @@ The trained models (`ml/model.json`, `ml/model_h60.json`, `ml/heat_model.json`),
 ### Tests
 
 ```bash
-php artisan test --compact                  # 268 PHP tests
-node --test src/*.test.mjs tests/*.test.mjs # 124 JavaScript tests (routing, walls, stairs, doors, rain, heat, UV)
+php artisan test --compact                  # 269 PHP tests
+node --test src/*.test.mjs tests/*.test.mjs # 130 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, rain, heat, UV)
 python ml/test_satellite.py                 # satellite, cloud-motion and cloud-phase self-check (no network)
 vendor/bin/pint --format agent              # format PHP after changes
 ```
@@ -185,11 +184,12 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
    - *Why:* it is the only live estimate of rain actually falling around campus. Himawari alone gives cloud temperature, not rain, and the airport is a few km away. It should help most with drizzle and with showers already falling nearby.
    - *Why on hold:* it needs a free JAXA account; FTP details arrive by email after registering at the GSMaP site (sharaku.eorc.jaxa.jp). The site was down for maintenance when checked, so the archive dates and file format are still unconfirmed.
    - *How it would fit:* a `gsmap.py` next to `ml/satellite.py` (campus box statistics from the latest file, the same code for history and live), a `download_*.py` for history, a new variant in `ml/train.py`, and a flag on `satellite.py now`, like cloud motion below and cloud phase.
-2. **Himawari cloud motion (built, disabled: its history is too large to download for now).**
+2. **Himawari cloud motion (built, pilot tested Nov 21, 2026: no benefit, not adopted).**
    - *What it is:* `ml/satellite.py` matches the band-13 box around campus (about 66 km wide) against the scan 10 minutes earlier. It finds how far the clouds moved (block matching), then looks two moves upstream for the cloud that should be over campus in 20 minutes. Inputs: `sat_motion_kmh`, `sat_adv_bt_20min`, `sat_adv_cold_20min`, `sat_adv_minus_campus` (`MOTION_FEATURES`).
    - *Why:* today's satellite inputs only describe clouds over and around campus now (plus a rough "cold cloud upwind" share), so a storm drifting in is noticed late. A 2024 study over the Maritime Continent found this kind of extrapolation of Himawari images beat "nothing moves" at every lead time. It cannot predict clouds that form on the spot; the cooling inputs cover those.
    - *Why disabled:* the saved satellite history keeps only 10 numbers per scan, not the images. Training needs every :10 and :30 scan from Apr 2024 re-read together with the scan 10 minutes before it: about 44,000 pairs, **about 140 GB and 12-20 hours** of downloading (measured Nov 2026: 48 pairs took 85 s and 150 MB).
    - *What is ready:* the code, the self-checks in `ml/test_satellite.py`, the download (`python ml/download_satellite.py --start 2024-04-01 --motion`, resumable, writes `ml/data/satellite_motion.csv`), the training variant "satellite + cloud motion" (used only once that file covers at least 98% of the satellite steps), and the app side: a model with `sat_adv_*` or `sat_motion_*` inputs makes the server call `satellite.py now --motion` (two extra downloads per refresh). Live, the inputs are only computed when the model asks for them, so nothing is wasted today.
+   - *Pilot (Nov 21, 2026):* `python ml/download_satellite.py --motion --every 8 --start 2024-04-01` downloaded 1 scan pair in 8, spread evenly over every hour of the day (5,784 pairs, 17 GB, about 1.5 hours; 11% of the training steps; the rest read `sat_motion_missing` = 1). On validation, motion made the model slightly **worse**, alone and on top of cloud phase (20 minutes: 0.02338 with phase + motion against 0.02331 with phase; 1 hour: 0.02553 against 0.02547), and the test months showed no gain either, so the live model is unchanged and the full ~140 GB download is not worth it for now. `ml/train.py` also tries "cloud phase + motion" whenever the motion history exists.
 3. **Time-series neural network (experiment).** `python ml/train.py --sequence` (needs PyTorch) trains a GRU, a recurrent network, on the last 2 hours of inputs (8 steps of 15 minutes) next to the logistic regression, on the same rows and split. It writes `ml/reports/sequence_comparison.json` and never touches the model files. Result on Nov 19, 2026 (3 seeds averaged): validation Brier 0.02364 against 0.02369, only 0.2% better, so it **does not clear the 0.5% bar** and the app keeps the logistic regression. On the test months it looked a little better (Brier 0.0350 against 0.0364; 49.6% of rain starts warned against 46.6%, with 9.2% of dry moments warned against 10.2%; AUC 0.916 against 0.920), but choosing a model by its test score would tune on the test. Worth retrying once there is more data (cloud phase, ensemble history, a season of student rain reports). Using it would also need a scorer in the app (the GRU weights in JSON plus a small forward pass in PHP or in `satellite.py`), which is not built.
 4. **Ensemble forecasts.** Recording since Nov 18, 2026 (see above). Train with them after a few months of rows.
 5. **Himawari cloud phase:** adopted on Nov 19, 2026 (see the satellite bullet and Benchmarks above).
@@ -256,7 +256,7 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
 | `borders` | Walls: points sharing a `group_id`; routes never cross them. |
 | `buildings` | Outline, floors, height, status, doors, department. |
 | `bridges` | Connectors people walk through (footbridges): outline, `kind`, deck floor and height, roofed, status, `closed` and `closed_reason` (an admin closure). Public in the map feed, like buildings. |
-| `pathways` | Roads and walkways (drawn on the map; route nodes can be laid along them), with an optional real `width_m`. |
+| `pathways` | Roads and walkways, each a route along its line (no stored route nodes), with an optional real `width_m`. |
 | `campus_areas` | Named campus outlines. |
 | `departments` | Name and label colour. |
 | `courses` | Student courses: unique `code` (BSIT), full name, owning `department_id` (indexed foreign key; a removed department leaves its courses unassigned). Students point at one with `users.course_id` (indexed foreign key; a course with students cannot be deleted). The API still sends and accepts the course code. |
@@ -275,6 +275,7 @@ Foreign keys and the wall `group_id` are indexed. The public static file `/stora
 
 ### Routing rules (`src/pathfinding.js`)
 
+- Every road and walkway is walkable along its line: the router lays virtual route nodes every 6 m along it (`pathwayWaypoints`, never stored or drawn), which join everything nearby like any route node. GPS snapping uses them too.
 - Walking links use a Gabriel graph on each floor: two nodes are linked if no other reachable node sits between them and the line crosses no wall. Staircases are the only links between floors.
 - Labelled buildings (not "planned") are obstacles; with doors, routes enter only through them.
 - A closed bridge's deck nodes (and so both its staircases) are left out of routing.

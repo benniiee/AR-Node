@@ -348,3 +348,21 @@ export function roofLight(sun) {
     if (!sun || sun.altitudeDeg <= 0) return 0.35;
     return 0.55 + 0.45 * Math.sin(Math.min(90, sun.altitudeDeg) * RAD);
 }
+
+const GOLDEN = [245, 158, 94];
+const NIGHT = [30, 42, 90];
+
+/**
+ * The map's sky tint for the sun's height (degrees above the horizon), laid over the satellite
+ * tiles with a multiply blend: none in daylight, a light warm tint from 10 degrees down to sunset,
+ * then deepening navy through twilight to full night at -12 degrees (nautical dusk).
+ * @returns {{ color: string, opacity: number }}
+ */
+export function skyTint(altitudeDeg) {
+    const alt = Number(altitudeDeg);
+    if (!Number.isFinite(alt) || alt >= 10) return { color: '#000000', opacity: 0 };
+    const hex = (c) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+    if (alt >= 0) return { color: hex(GOLDEN), opacity: 0.18 * (1 - alt / 10) };
+    const t = Math.min(1, -alt / 12);
+    return { color: hex(GOLDEN.map((g, i) => g + (NIGHT[i] - g) * t)), opacity: 0.18 + (0.6 - 0.18) * t };
+}

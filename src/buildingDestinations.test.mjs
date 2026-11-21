@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildingDestination, buildingDestinationId, parseBuildingDestination, buildingTargets, routeToBuilding } from './buildingDestinations.js';
-import { computeRoute } from './pathfinding.js';
+import { computeRoute, pathwayWaypoints } from './pathfinding.js';
 import { fromLocalMeters } from './geo.js';
 
 const LAT = 6.913;
@@ -40,4 +40,8 @@ test('without doors the route ends on the building ground floor, else at the nea
     const upstairs = node(6, 0, 35, { building_id: 1, floor_level: 1 });
     assert.deepEqual(buildingTargets(b, [node(1, 0, 10), inside, upstairs]), [5]);
     assert.deepEqual(buildingTargets(b, [node(1, 0, 10), node(2, 0, 90)]), [1]);
+    // No doors or nodes: the walkway beside it wins over a far node (the bridge stairs, in the real case).
+    const walkway = pathwayWaypoints([{ id: 3, kind: 'walkway', status: 'existing', coordinates: [ll(-20, 10), ll(20, 10)] }]);
+    const [nearest] = buildingTargets(b, [node(1, 0, 90), ...walkway]);
+    assert.ok(nearest < 0, 'a walkway point, not node 1');
 });

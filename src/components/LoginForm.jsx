@@ -17,6 +17,86 @@ const DEMO_ACCOUNTS = !SHOW_DEMO ? [] : [
     { email: 'csm.staff@campus.test', tag: 'CSM', name: 'CSM department staff' },
 ];
 
+// The route the art panel draws, and the one its walker follows: up through the campus, then round to
+// the door of the building beside it (BUILDINGS[4]), its destination.
+// The last piece is one curve (no joint at the bend): it leaves the middle stretch on the same heading, so
+// the turn round the swamp is a single smooth arc.
+const ROUTE = 'M70 710 C 70 630, 220 630, 220 550 S 120 450, 250 400 C 345 363, 330 315, 265 290';
+const DEST = [265, 290];
+// A small swamp in the pocket between the route's middle stretch and its last one, which bends round
+// its right side (its shore clears the route by 5+, and stays 40 below the door): centre, radii.
+const LAKE = { cx: 234, cy: 352, rx: 54, ry: 23 };
+const LAKE_WOBBLE = [1, 0.9, 1.06, 0.94, 1.08, 0.9, 1.02, 0.95, 1.05, 0.92];
+
+/** A smooth irregular closed shape: an ellipse whose radius wobbles by `wobble` around it. */
+function blob(cx, cy, rx, ry, wobble = LAKE_WOBBLE) {
+    const n = wobble.length;
+    const p = wobble.map((f, i) => {
+        const a = (i / n) * Math.PI * 2;
+        return [cx + Math.cos(a) * rx * f, cy + Math.sin(a) * ry * f];
+    });
+    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const f = (q) => `${q[0].toFixed(1)} ${q[1].toFixed(1)}`;
+    let d = `M${f(mid(p[n - 1], p[0]))}`;
+    p.forEach((q, i) => { d += ` Q${f(q)} ${f(mid(q, p[(i + 1) % n]))}`; });
+    return `${d} Z`;
+}
+// Reed tufts on the shore ([x, y] of each tuft's foot) and lily pads ([x, y, r]).
+const REEDS = [[184, 344], [190, 363], [277, 366], [279, 352], [212, 332]];
+const LILIES = [[220, 355, 4.2], [251, 345, 3.4], [258, 360, 2.8]];
+// Campus buildings beside the route, in the student map's 2.5D look: [centre x, centre y, width, depth,
+// rotation (deg), storeys]. Kept off the route and away from the copy in the top-left corner.
+const BUILDINGS = [[400, 530, 130, 70, -12, 2], [80, 425, 96, 58, 8, 3], [462, 405, 70, 100, 4, 4], [305, 625, 90, 58, 10, 1], [262, 262, 84, 50, -6, 2], [42, 600, 56, 78, -4, 2]];
+const DOOR_W = 8;
+const DOOR_H = 9;
+const STOREY_PX = 12;
+const ROOF = '#f6f5f2';
+const WALL_LIT = '#d9d5ce';
+const WALL_SHADE = '#8f8b85';
+
+/** One 2.5D building: its roof lifted by its height, the walls facing the viewer (south), storey lines. */
+function building([cx, cy, w, d, rot, storeys]) {
+    const t = (rot * Math.PI) / 180;
+    const at = (x, y) => [cx + x * Math.cos(t) - y * Math.sin(t), cy + x * Math.sin(t) + y * Math.cos(t)];
+    const base = [at(-w / 2, -d / 2), at(w / 2, -d / 2), at(w / 2, d / 2), at(-w / 2, d / 2)];
+    const h = storeys * STOREY_PX;
+    const up = ([x, y], f = 1) => [x, y - h * f];
+    const pts = (ps) => ps.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    const walls = base.map((a, i) => {
+        const b = base[(i + 1) % base.length];
+        const mid = [(a[0] + b[0]) / 2 - cx, (a[1] + b[1]) / 2 - cy];
+        if (mid[1] <= 0.5) return null; // faces away (north): hidden behind the building
+        return { a, b, lit: mid[0] < 0 };
+    }).filter(Boolean);
+    return { roof: pts(base.map((q) => up(q))), walls: walls.map((wl) => ({
+        face: pts([wl.a, wl.b, up(wl.b), up(wl.a)]),
+        lit: wl.lit,
+        lines: Array.from({ length: storeys - 1 }, (_, k) => [up(wl.a, (k + 1) / storeys), up(wl.b, (k + 1) / storeys)]),
+        door: doorway(wl.a, wl.b, h),
+    })) };
+}
+
+/** A door in the middle of the wall a-b (when it is long enough): its opening, and its frame. */
+function doorway(a, b, h) {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 40) return null;
+    const along = (t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    const p0 = along(0.5 - DOOR_W / 2 / len);
+    const p1 = along(0.5 + DOOR_W / 2 / len);
+    const top = Math.min(DOOR_H, h * 0.8);
+    const pts = (ps) => ps.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    return {
+        opening: pts([p0, p1, [p1[0], p1[1] - top], [p0[0], p0[1] - top]]),
+        frame: pts([p0, [p0[0], p0[1] - top], [p1[0], p1[1] - top], p1]),
+        sill: [p0, p1],
+    };
+}
+// The walker: draws on after the route, walks it, rests at the destination, again.
+const WALK_START = 3.6;
+const WALK_S = 6;
+// Reduced motion: no walker at all (SMIL animations ignore the CSS media query).
+const REDUCED = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 const LOGIN_CSS = `
     .login { display: flex; min-height: 100vh; min-height: 100dvh; background: ${C.page}; }
 
@@ -35,11 +115,49 @@ const LOGIN_CSS = `
     .login-art-copy p { margin: 12px 0 0; font-size: ${TYPE.lead}; line-height: 1.5; color: ${C.muted}; }
 
     .login-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 2.6s var(--ease-in-out) 0.3s forwards; }
-    .login-node { transform-box: fill-box; transform-origin: center; animation: popIn 0.6s var(--ease-spring) both; animation-delay: calc(1s + var(--k, 0) * 0.55s); }
-    .login-dest { transform-box: fill-box; transform-origin: center; animation: popIn 0.7s var(--ease-spring) 3.1s both; }
-    /* Hidden until its delayed animation starts, otherwise the ring is visible from the first frame. */
-    .login-beacon { opacity: 0; transform-box: fill-box; transform-origin: center; animation: ring 2.4s var(--ease-out) 3.6s 3; } /* a few pulses, then rest: no endless decorative motion */
-    .login-art-copy { animation: rise 0.9s var(--ease-out) 0.2s both; }
+    /* Reduced motion (animations off): the route is simply there. */
+    @media (prefers-reduced-motion: reduce) { .login-draw { stroke-dashoffset: 0; } }
+    .login-dest { transform-box: fill-box; transform-origin: center; animation: loginDrop 0.8s var(--ease-spring) 3.1s both; }
+
+    /* The campus around the route: 2.5D buildings rising in one after another. */
+    .login-bldg { animation: loginBldg 0.9s var(--ease-out) both; animation-delay: calc(0.15s + var(--k, 0) * 0.12s); }
+    /* The swamp: reeds sway from their feet, ripples drift and fade on the water. */
+    .login-reed { transform-box: fill-box; transform-origin: 50% 100%; animation: loginReed 3.2s ease-in-out infinite alternate; animation-delay: calc(var(--k, 0) * -0.7s); }
+    .login-ripple { animation: loginRipple 4.5s ease-in-out infinite alternate; animation-delay: calc(var(--k, 0) * -2.2s); }
+
+    /* The walker: legs and arms swing in turn as it goes. */
+    .login-limb { transform-box: fill-box; transform-origin: 50% 0%; animation: loginStride 0.42s ease-in-out infinite alternate; }
+    .login-limb.is-back { animation-delay: -0.42s; }
+    .login-arm { animation-name: loginSwing; }
+
+    /* The copy: logo spins in, then the name, then the line; "Node" catches the light once. */
+    .login-art-logo { animation: loginLogo 0.9s var(--ease-spring) 0.1s both; }
+    .login-art-copy .login-mark { animation: rise 0.7s var(--ease-out) 0.3s both; }
+    .login-art-copy p { animation: rise 0.7s var(--ease-out) 0.45s both; }
+    .login-art-copy .login-mark b {
+        background: linear-gradient(100deg, ${C.brandAccent} 40%, #ffffff 50%, ${C.brandAccent} 60%);
+        background-size: 250% 100%; background-position: 0% 0;
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        animation: loginSheen 1.6s var(--ease-in-out) 1.2s both;
+    }
+
+    @keyframes loginBldg { from { opacity: 0; transform: translateY(16px); } }
+    @keyframes loginReed { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+    @keyframes loginRipple { from { opacity: 0.1; transform: translateX(-3px); } to { opacity: 0.35; transform: translateX(3px); } }
+    @keyframes loginStride { from { transform: rotate(26deg); } to { transform: rotate(-26deg); } }
+    @keyframes loginSwing { from { transform: rotate(-20deg); } to { transform: rotate(20deg); } }
+    @keyframes loginDrop { 0% { opacity: 0; transform: translateY(-18px) scale(0.6); } 60% { opacity: 1; } }
+    @keyframes loginLogo { from { opacity: 0; transform: scale(0.6) rotate(-35deg); } }
+    @keyframes loginSheen { from { background-position: 100% 0; } }
+
+    /* Sign in: a light sweep across on hover. */
+    .login-form .ui-btn-primary { position: relative; overflow: hidden; isolation: isolate; }
+    .login-form .ui-btn-primary::after {
+        content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+        background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.28) 50%, transparent 70%);
+        transform: translateX(-120%); transition: transform 0.7s var(--ease-out);
+    }
+    .login-form .ui-btn-primary:hover:not(:disabled)::after { transform: translateX(120%); }
     .login-form .ui-btn { margin-top: 4px; }
 
     .login-pane { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px 20px; }
@@ -140,26 +258,79 @@ export default function LoginForm({ onLogin, error }) {
                 <svg viewBox="0 0 520 720" preserveAspectRatio="xMidYMid slice">
                     <defs>
                         <mask id="routeReveal" maskUnits="userSpaceOnUse" x="0" y="0" width="520" height="720">
-                            <path
-                                className="login-draw" pathLength="1" fill="none" stroke="#fff" strokeWidth="24" strokeLinecap="round"
-                                d="M70 650 C 70 570, 220 570, 220 490 S 120 390, 250 340 S 400 310, 380 230 S 330 170, 400 130"
-                            />
+                            <path className="login-draw" pathLength="1" fill="none" stroke="#fff" strokeWidth="24" strokeLinecap="round" d={ROUTE} />
                         </mask>
                     </defs>
-                    <g mask="url(#routeReveal)">
-                    <path
-                        d="M70 650 C 70 570, 220 570, 220 490 S 120 390, 250 340 S 400 310, 380 230 S 330 170, 400 130"
-                        fill="none" stroke={C.brand} strokeOpacity="0.22" strokeWidth="16" strokeLinecap="round"
-                    />
-                    <path
-                        d="M70 650 C 70 570, 220 570, 220 490 S 120 390, 250 340 S 400 310, 380 230 S 330 170, 400 130"
-                        fill="none" stroke={C.brand} strokeWidth="4" strokeLinecap="round" strokeDasharray="2 12"
-                    />
+                    {BUILDINGS.map((spec, k) => {
+                        const b = building(spec);
+                        return (
+                            <g key={spec.join()} className="login-bldg" style={{ '--k': k }} opacity="0.88">
+                                {b.walls.map((wl, i) => (
+                                    <g key={i}>
+                                        <polygon points={wl.face} fill={wl.lit ? WALL_LIT : WALL_SHADE} stroke="#16161b" strokeWidth="0.8" strokeLinejoin="round" />
+                                        {wl.lines.map(([a, c], j) => (
+                                            <line key={j} x1={a[0]} y1={a[1]} x2={c[0]} y2={c[1]} stroke="#16161b" strokeOpacity="0.35" strokeWidth="0.8" />
+                                        ))}
+                                        {wl.door && (
+                                            <>
+                                                <polygon points={wl.door.opening} fill="#2a2420" />
+                                                <polyline points={wl.door.frame} fill="none" stroke="#ffffff" strokeWidth="1.2" strokeLinejoin="round" />
+                                                <line x1={wl.door.sill[0][0]} y1={wl.door.sill[0][1]} x2={wl.door.sill[1][0]} y2={wl.door.sill[1][1]} stroke="#ffffff" strokeWidth="1.6" strokeLinecap="round" />
+                                            </>
+                                        )}
+                                    </g>
+                                ))}
+                                <polygon points={b.roof} fill={ROOF} stroke="#16161b" strokeWidth="1.2" strokeLinejoin="round" />
+                            </g>
+                        );
+                    })}
+                    {/* The swamp: a muddy shore, dark water, lily pads, reeds and a couple of ripples. */}
+                    <g className="login-bldg" style={{ '--k': BUILDINGS.length }}>
+                        <path d={blob(LAKE.cx, LAKE.cy + 1.5, LAKE.rx + 7, LAKE.ry + 5)} fill="#24302a" fillOpacity="0.9" />
+                        <path d={blob(LAKE.cx, LAKE.cy, LAKE.rx, LAKE.ry)} fill="#10303c" stroke="#2d5e6b" strokeWidth="1.2" />
+                        <path d={blob(LAKE.cx - 6, LAKE.cy - 4, LAKE.rx * 0.55, LAKE.ry * 0.45)} fill="#174552" fillOpacity="0.7" />
+                        {[[212, 347, 20], [246, 362, 16]].map(([x, y, w], k) => (
+                            <path key={k} className="login-ripple" style={{ '--k': k }} d={`M${x} ${y} q${w / 2} -3 ${w} 0`} fill="none" stroke="#ffffff" strokeWidth="1.1" strokeLinecap="round" />
+                        ))}
+                        {LILIES.map(([x, y, r]) => (
+                            <path key={`${x}-${y}`} d={`M${x} ${y} L${x + r} ${y - r * 0.35} A${r} ${r * 0.6} 0 1 0 ${x + r} ${y + r * 0.2} Z`} fill="#3d7a4f" stroke="#244d33" strokeWidth="0.6" />
+                        ))}
+                        {REEDS.map(([x, y], k) => (
+                            <g key={`${x}-${y}`} className="login-reed" style={{ '--k': k }}>
+                                {[[-2.5, 11, -2], [0, 14, 0], [2.5, 10, 2]].map(([dx, h, lean], j) => (
+                                    <path key={j} d={`M${x + dx} ${y} q${lean} ${-h / 2} ${lean * 1.6} ${-h}`} fill="none" stroke={j === 1 ? '#6b8f4e' : '#4e7340'} strokeWidth="1.4" strokeLinecap="round" />
+                                ))}
+                                <ellipse cx={x + 0.3} cy={y - 13.5} rx="1.1" ry="2.4" fill="#7a5a36" />
+                            </g>
+                        ))}
                     </g>
-                    {[[220, 490], [250, 340], [380, 230]].map(([x, y], k) => (
-                        <circle key={`${x}-${y}`} className="login-node" style={{ '--k': k }} cx={x} cy={y} r="6" fill={C.bar} stroke={C.brandAccent} strokeWidth="2" />
-                    ))}
-                    <circle className="login-dest" cx="400" cy="130" r="7" fill={C.white} />
+                    <g mask="url(#routeReveal)">
+                        <path d={ROUTE} fill="none" stroke={C.brand} strokeOpacity="0.22" strokeWidth="16" strokeLinecap="round" />
+                        <path d={ROUTE} fill="none" stroke={C.brand} strokeWidth="4" strokeLinecap="round" strokeDasharray="2 12" />
+                    </g>
+                    {!REDUCED && (
+                        <>
+                            {/* Arrival: the destination pulses each time the walker reaches it. */}
+                            <circle cx={DEST[0]} cy={DEST[1]} r="7" fill="none" stroke={C.white} strokeWidth="1.5" opacity="0">
+                                <animate attributeName="r" values="7;7;26;26" keyTimes="0;0.74;0.95;1" dur={`${WALK_S}s`} begin={`${WALK_START}s`} repeatCount="indefinite" />
+                                <animate attributeName="opacity" values="0;0;0.9;0;0" keyTimes="0;0.74;0.76;0.95;1" dur={`${WALK_S}s`} begin={`${WALK_START}s`} repeatCount="indefinite" />
+                            </circle>
+                            {/* The walker: a person like the 3D view's, its feet on the route, ringed like "you". */}
+                            <g opacity="0">
+                                <animateMotion path={ROUTE} keyPoints="0;1;1" keyTimes="0;0.74;1" calcMode="linear" dur={`${WALK_S}s`} begin={`${WALK_START}s`} repeatCount="indefinite" />
+                                <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.06;0.7;0.78;1" dur={`${WALK_S}s`} begin={`${WALK_START}s`} repeatCount="indefinite" />
+                                <ellipse cx="0" cy="0" rx="12" ry="4.5" fill="none" stroke="#ffffff" strokeOpacity="0.55" strokeWidth="1.6" />
+                                <ellipse cx="2" cy="0.5" rx="6.5" ry="2.2" fill="#000000" fillOpacity="0.45" />
+                                <line className="login-limb" x1="-1.6" y1="-11" x2="-1.6" y2="-0.5" stroke="#cfd2d8" strokeWidth="3" strokeLinecap="round" />
+                                <line className="login-limb is-back" x1="1.6" y1="-11" x2="1.6" y2="-0.5" stroke="#e5e7eb" strokeWidth="3" strokeLinecap="round" />
+                                <line className="login-limb login-arm is-back" x1="-4.6" y1="-19.5" x2="-4.6" y2="-12" stroke="#cfd2d8" strokeWidth="2.4" strokeLinecap="round" />
+                                <rect x="-4" y="-21" width="8" height="11.5" rx="3.2" fill="#e5e7eb" />
+                                <line className="login-limb login-arm" x1="4.6" y1="-19.5" x2="4.6" y2="-12" stroke="#f3f4f6" strokeWidth="2.4" strokeLinecap="round" />
+                                <circle cx="0" cy="-25.5" r="4.2" fill="#f3f4f6" />
+                            </g>
+                        </>
+                    )}
+                    <circle className="login-dest" cx={DEST[0]} cy={DEST[1]} r="6" fill={C.white} />
                 </svg>
                 <div className="login-art-copy">
                     <BrandLogo size={72} className="login-art-logo" />

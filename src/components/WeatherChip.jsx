@@ -1,6 +1,9 @@
 import React from 'react';
 import { C, TAP, TYPE } from '../uiTokens';
 import { heatSummary } from '../heatIndex';
+
+/** Plain words for the hotter heat categories; Caution and below just say the temperature. */
+const HEAT_WORDS = { extreme_caution: 'very hot', danger: 'dangerously hot', extreme_danger: 'dangerously hot' };
 import { heatModeActive } from '../weatherCost';
 
 /**
@@ -12,11 +15,11 @@ import { heatModeActive } from '../weatherCost';
  * data would mislead), only a neutral line saying routing ignores the weather,
  * which is exactly what it does then.
  *
- * Next line, when the 60-minute rain model ran and it is not raining yet: the chance
- * of rain at any time within the next hour, amber from that model's alert level.
+ * Next line, when the 60-minute rain model ran and it is not raining yet: plain words
+ * for students ("No rain expected in the next hour"), amber from that model's alert level.
  *
- * Last line: the heat index ("Feels like 38°C, Extreme caution") and the
- * 1-3 hour outlook from the heat model, amber from Extreme caution up.
+ * Last line: how hot it feels ("Feels like 38°C, very hot"), plus the heat model's
+ * warning when an hour could get too hot. Percentages and trends stay on the admin page.
  *
  * The Open-Meteo credit is a licence requirement of the free tier, so it
  * rides along in the tooltip of every variant.
@@ -82,19 +85,19 @@ export default function WeatherChip({ weather, inline = false, shadeActive = fal
             : weather.raining_now_source === 'forecast' ? 'Rain now: forecast model (no fresh airport report)' : null;
 
     const hourChance = Number(weather.rain_probability_hour);
-    const hourLine = !raining && weather.rain_probability_hour != null && Number.isFinite(hourChance)
-        ? `Next hour: ${Math.round(hourChance)}% chance of rain`
-        : null;
-    const hourWarn = hourLine !== null && hourChance >= Number(weather.rain_hour_alert ?? 101);
+    const hourKnown = !raining && weather.rain_probability_hour != null && Number.isFinite(hourChance);
+    const hourWarn = hourKnown && hourChance >= Number(weather.rain_hour_alert ?? 101);
+    const hourLine = hourKnown ? (hourWarn ? 'Rain likely in the next hour' : 'No rain expected in the next hour') : null;
 
     const heat = heatSummary(weather);
-    const heatParts = [heat?.short, heat?.outlook, heat?.hotRisk, uvLine].filter(Boolean);
+    const feels = heat ? `Feels like ${Math.round(heat.now)}°C${HEAT_WORDS[heat.key] ? `, ${HEAT_WORDS[heat.key]}` : ''}` : null;
+    const heatParts = [feels, heat?.hotRisk, uvLine].filter(Boolean);
     const heatLine = heatParts.length ? heatParts.join(' · ') : null;
     const heatWarn = Boolean(heat?.warning) || (uvShown && uv >= 6);
 
     const title = [
         label,
-        hourLine ? `${hourLine} (campus AI model, rain at any time in the next 60 min)` : null,
+        hourKnown ? `${hourLine} (campus AI model: ${Math.round(hourChance)}% chance in the next 60 min)` : null,
         heatLine,
         rainSource,
         sourceNote,

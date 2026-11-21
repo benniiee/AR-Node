@@ -117,6 +117,28 @@ class GeoPoints
      * @param  array{lat: float, lng: float}  $b
      * @return array{0: float, 1: float}
      */
+    /**
+     * Shortest distance in metres from a point to a polyline (any of its segments).
+     *
+     * @param  list<array{lat: float, lng: float}>  $line
+     * @param  array{lat: float, lng: float}  $point
+     */
+    public static function distanceToLine(array $line, array $point): float
+    {
+        $best = INF;
+        for ($i = 1; $i < count($line); $i++) {
+            [$ax, $ay] = self::offset($point, $line[$i - 1]);
+            [$bx, $by] = self::offset($point, $line[$i]);
+            $dx = $bx - $ax;
+            $dy = $by - $ay;
+            $len2 = $dx ** 2 + $dy ** 2;
+            $t = $len2 > 0 ? max(0.0, min(1.0, -($ax * $dx + $ay * $dy) / $len2)) : 0.0;
+            $best = min($best, hypot($ax + $t * $dx, $ay + $t * $dy));
+        }
+
+        return count($line) === 1 ? self::distance($line[0], $point) : $best;
+    }
+
     private static function offset(array $a, array $b): array
     {
         $north = deg2rad($b['lat'] - $a['lat']) * self::EARTH_RADIUS_M;

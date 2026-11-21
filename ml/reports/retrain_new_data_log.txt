@@ -1,0 +1,86 @@
+== openmeteo 15:52
+C:\Users\Ash\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.4.3)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+fetching 2026-10-07 -> 2026-11-05
+fetching 2026-11-06 -> 2026-11-19
+
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\data\openmeteo_minutely15.csv (171,264 rows) and C:\Users\Ash\Desktop\Website\AR-Node\ml\data\openmeteo_hourly.csv (42,816 rows)
+Missing share per column (high = variable unavailable for this location):
+precipitation                0.000
+temperature_2m               0.000
+relative_humidity_2m         0.000
+dew_point_2m                 0.000
+wind_speed_10m               0.000
+wind_direction_10m           0.000
+wind_gusts_10m               0.000
+cape                         0.000
+weather_code                 0.000
+pressure_msl                 0.000
+cloud_cover                  0.000
+precipitation_probability    0.476
+precipitation                0.000
+
+Data: Open-Meteo.com (CC BY 4.0)
+== multimodel 15:52
+C:\Users\Ash\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.4.3)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+fetching 2026-10-17 -> 2026-11-15
+fetching 2026-11-16 -> 2026-11-19
+
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\data\openmeteo_multimodel_hourly.csv (25,296 rows)
+Share of hours with a value, per model (rain):
+  ecmwf_ifs                        100.0%
+  ecmwf_ifs025                      95.9%
+  gfs_seamless                     100.0%
+  icon_seamless                    100.0%
+  jma_seamless                     100.0%
+  cma_grapes_global                 95.5%
+  ukmo_global_deterministic_10km   100.0%
+  gem_seamless                     100.0%
+  meteofrance_seamless             100.0%
+
+Data: Open-Meteo.com (CC BY 4.0)
+== metar 15:52
+C:\Users\Ash\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.4.3)/charset_normalizer (3.4.5) doesn't match a supported version!
+  warnings.warn(
+fetching RPMZ 2022-01-01 -> 2022-12-31
+  6,153 reports
+fetching RPMZ 2023-01-01 -> 2023-12-31
+  6,189 reports
+fetching RPMZ 2024-01-01 -> 2024-12-31
+  6,200 reports
+fetching RPMZ 2025-01-01 -> 2025-12-31
+  6,941 reports
+fetching RPMZ 2026-01-01 -> 2026-11-20
+  6,187 reports
+
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\data\metar.csv (31,670 reports, 2,737 with present-weather codes)
+Data: Iowa Environmental Mesonet / station METAR (as-is, minimal quality control).
+== satellite 15:52
+band 13 (satellite_b13.csv) 2024-01-01 -> 2026-11-20: 126,600 scans, 125,760 already done, 840 to go (about 1.2 GB)
+band 10 (satellite_b10.csv) 2024-01-01 -> 2026-11-20: 50,640 scans, 50,304 already done, 336 to go (about 0.4 GB)
+only the campus strip of each image is read; nothing but the extracted numbers is kept
+
+  band 13: 200/840 scans  (0.29 GB read, 2.1/s, about 0.1 h left)  ok=200 missing=0 errors=0
+  band 13: 400/840 scans  (0.59 GB read, 2.2/s, about 0.1 h left)  ok=400 missing=0 errors=0
+  band 13: 600/840 scans  (0.90 GB read, 2.2/s, about 0.0 h left)  ok=600 missing=0 errors=0
+  band 13: 800/840 scans  (1.22 GB read, 2.2/s, about 0.0 h left)  ok=798 missing=2 errors=0
+  band 13: 840/840 scans  (1.28 GB read, 2.2/s, about 0.0 h left)  ok=838 missing=2 errors=0
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\data\satellite_b13.csv: 838 scans read, 2 not in the archive, 0 to retry
+
+  band 10: 200/336 scans  (0.24 GB read, 2.6/s, about 0.0 h left)  ok=200 missing=0 errors=0
+  band 10: 336/336 scans  (0.41 GB read, 2.6/s, about 0.0 h left)  ok=334 missing=2 errors=0
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\data\satellite_b10.csv: 334 scans read, 2 not in the archive, 0 to retry
+
+Data: Himawari-8/9 data: Japan Meteorological Agency (JMA), distributed by NOAA (registry.opendata.aws/noaa-himawari)
+== cloud phase 16:01
+cloud phase (satellite_phase.csv) 2024-04-01 -> 2026-11-20: 46,272 scans, 45,360 already done, 912 to go (about 0.1 GB)
+  band 13: 200/912 scans  (0.03 GB read, 0.6/s, about 0.4 h left)  ok=200 missing=0 errors=0
+  band 13: 400/912 scans  (0.05 GB read, 0.6/s, about 0.3 h left)  ok=400 missing=0 errors=0
+  band 13: 600/912 scans  (0.08 GB read, 0.6/s, about 0.2 h left)  ok=600 missing=0 errors=0
+  band 13: 800/912 scans  (0.11 GB read, 0.6/s, about 0.1 h left)  ok=800 missing=0 errors=0
+  band 13: 912/912 scans  (0.12 GB read, 0.6/s, about 0.0 h left)  ok=912 missing=0 errors=0
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\data\satellite_phase.csv: 912 scans read, 0 not in the archive, 0 to retry
+
+Data: NOAA Enterprise cloud phase for Himawari-9 (registry.opendata.aws/noaa-himawari)
+== downloads done 16:28

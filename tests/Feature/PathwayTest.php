@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Node;
+use App\Models\NodeLink;
 use App\Models\Pathway;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -53,25 +54,28 @@ class PathwayTest extends TestCase
         $this->postJson('/api/pathways', ['coordinates' => $this->line()])->assertForbidden();
         $this->putJson("/api/pathways/{$pathway->id}", ['name' => 'X'])->assertForbidden();
         $this->deleteJson("/api/pathways/{$pathway->id}")->assertForbidden();
-        $this->postJson("/api/pathways/{$pathway->id}/route-nodes")->assertForbidden();
+        $this->postJson("/api/pathways/{$pathway->id}/clear-route-nodes")->assertForbidden();
     }
 
-    public function test_route_nodes_are_laid_along_a_pathway_without_duplicates(): void
+    public function test_clearing_a_pathway_removes_only_the_route_nodes_along_it(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
-        Sanctum::actingAs($admin);
-        $pathway = Pathway::factory()->covered()->create(['coordinates' => $this->line()]);
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $pathway = Pathway::factory()->create(['kind' => 'walkway', 'coordinates' => $this->line()]);
+        $route = fn (array $extra) => Node::create($extra + ['type' => 'route', 'floor_level' => 0, 'path_type' => 'outside', 'latitude' => 6.91301, 'longitude' => 122.0612]);
 
-        $first = $this->postJson("/api/pathways/{$pathway->id}/route-nodes", ['spacing_m' => 10])->assertCreated();
+        $along = $route([]);                                             // ~1 m off the line: a duplicate
+        $far = $route(['latitude' => 6.9131]);                           // ~11 m away: kept
+        $stairFoot = $route(['longitude' => 122.0614]);                  // on the line but a staircase end: kept
+        $upstairs = $route(['floor_level' => 1, 'longitude' => 122.0614]);
+        NodeLink::create(['node_a_id' => $stairFoot->id, 'node_b_id' => $upstairs->id, 'kind' => 'stairs']);
+        $room = $route(['type' => 'location', 'name' => 'Office', 'longitude' => 122.0613]); // a destination: kept
 
-        // 0, 10, 20, 30, 40 m and the end point at ~49 m.
-        $this->assertSame(6, $first->json('created'));
-        $this->assertSame(6, Node::where('type', 'route')->where('path_type', 'inside')->where('created_by', $admin->id)->count());
+        $this->postJson("/api/pathways/{$pathway->id}/clear-route-nodes")->assertOk()->assertJsonPath('deleted', 1);
 
-        // Running it again finds every spot already taken.
-        $this->postJson("/api/pathways/{$pathway->id}/route-nodes", ['spacing_m' => 10])
-            ->assertCreated()
-            ->assertJsonPath('created', 0);
+        $this->assertModelMissing($along);
+        foreach ([$far, $stairFoot, $upstairs, $room] as $kept) {
+            $this->assertModelExists($kept);
+        }
     }
 
     public function test_map_data_includes_pathways(): void

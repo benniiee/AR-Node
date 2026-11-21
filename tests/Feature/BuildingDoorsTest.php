@@ -50,10 +50,19 @@ class BuildingDoorsTest extends TestCase
         ], 'doors' => $doors]);
     }
 
-    public function test_admin_saves_doors_and_the_map_feed_carries_them(): void
+    /** A faculty member of a department that owns $building. */
+    private function staffOf(Building $building): User
     {
-        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $department = Department::factory()->create();
+        $building->update(['department_id' => $department->id]);
+
+        return User::factory()->create(['role' => 'faculty', 'department_id' => $department->id]);
+    }
+
+    public function test_staff_save_doors_and_the_map_feed_carries_them(): void
+    {
         $building = $this->building();
+        Sanctum::actingAs($this->staffOf($building));
 
         $this->putJson("/api/buildings/{$building->id}", ['doors' => [$this->at(0, 20) + ['junk' => 1]]])
             ->assertOk()
@@ -70,8 +79,8 @@ class BuildingDoorsTest extends TestCase
 
     public function test_a_door_width_is_saved_and_range_checked(): void
     {
-        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $building = $this->building();
+        Sanctum::actingAs($this->staffOf($building));
 
         $this->putJson("/api/buildings/{$building->id}", ['doors' => [$this->at(0, 20) + ['width_m' => 1.234]]])
             ->assertOk()
@@ -80,6 +89,15 @@ class BuildingDoorsTest extends TestCase
             ->assertUnprocessable()
             ->assertInvalid('doors.0.width_m');
         // The gap a door cuts into its wall is drawn and routed on the phone (src/doors.test.mjs).
+    }
+
+    public function test_admins_never_set_doors_even_without_a_department(): void
+    {
+        $building = $this->building();
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        $this->putJson("/api/buildings/{$building->id}", ['doors' => [$this->at(0, 20)]])->assertForbidden();
+        $this->assertEmpty($building->fresh()->doors);
     }
 
     public function test_doors_of_a_department_building_are_managed_by_its_staff_not_admins(): void

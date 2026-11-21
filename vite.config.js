@@ -30,6 +30,32 @@ function syncLogo() {
     };
 }
 
+/**
+ * The dev server answers URLs the way Laravel does once built (routes/web.php): the root opens the
+ * student/visitor map, and the admin console lives at /admin. Without this, / served index.html (the
+ * admin console) in dev only.
+ */
+function devRoutes() {
+    return {
+        name: 'arnode-dev-routes',
+        apply: 'serve',
+        configureServer(server) {
+            server.middlewares.use((req, res, next) => {
+                const [pathname, query = ''] = (req.url || '').split('?');
+                const search = query ? `?${query}` : '';
+                if (pathname === '/') {
+                    res.statusCode = 302;
+                    res.setHeader('Location', `/map${search}`);
+                    res.end();
+                    return;
+                }
+                if (pathname === '/admin' || pathname === '/admin/') req.url = `/index.html${search}`;
+                next();
+            });
+        },
+    };
+}
+
 /** TILE_FILE from src/campusMap.js: the campus base map archive the app reads. */
 function campusTileFile() {
     const source = fs.readFileSync(path.resolve('src/campusMap.js'), 'utf8');
@@ -97,7 +123,7 @@ export default defineConfig(({ mode, command }) => {
 
     return {
     // mapServiceWorker writes public/sw.js (the installable /map app's offline copy) on every build.
-    plugins: [react(), syncLogo(), mapServiceWorker()],
+    plugins: [react(), syncLogo(), mapServiceWorker(), devRoutes()],
     root: '.',
     // The build lives in public/admin/, so its asset URLs must start with
     // /admin/ (the dev server keeps serving from /).
@@ -151,7 +177,7 @@ export default defineConfig(({ mode, command }) => {
             },
             // Campus vector tiles: same backend as /api (relative URL works
             // in both dev and production builds). One pattern for every archive
-            // (university.pmtiles, debug.pmtiles, ...): an archive the proxy
+            // (university.pmtiles, ...): an archive the proxy
             // misses is answered with index.html, and PMTiles then fails with
             // "Wrong magic number" and renders an empty grid.
             '^/[\\w-]+\\.pmtiles$': {

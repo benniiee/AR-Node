@@ -94,6 +94,21 @@ class Bridge extends Model
     }
 
     /**
+     * Whether a point is on any bridge (inside its outline): its deck and the stair feet under it.
+     * Admins manage the nodes and staircases there; everywhere else nodes belong to department staff.
+     */
+    public static function covers(float $lat, float $lng): bool
+    {
+        return static::all(['polygon'])->contains(fn (self $b): bool => GeoPoints::contains($b->polygon ?? [], $lat, $lng));
+    }
+
+    /** A node outside every building, on a bridge. */
+    public static function holds(Node $node): bool
+    {
+        return $node->building_id === null && static::covers((float) $node->latitude, (float) $node->longitude);
+    }
+
+    /**
      * The nodes on the deck: inside its outline, in no building, and raised (any floor above the
      * ground) for a raised deck, or on the ground for a deck at ground level. Any raised floor,
      * not only deck_floor: a node typed in on another floor still sits on this bridge. Bridges

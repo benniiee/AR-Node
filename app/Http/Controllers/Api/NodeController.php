@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Bridge;
 use App\Models\Building;
 use App\Models\Node;
 use App\Models\User;
@@ -15,6 +16,9 @@ use Illuminate\Validation\ValidationException;
 
 class NodeController extends Controller
 {
+    /** Admins keep the outdoor network (pathways, bridges); nodes in buildings are the departments'. */
+    private const ADMIN_NODES_ONLY_ON_BRIDGES = 'Admins add and edit nodes only on bridges. Rooms and routes inside a building are managed by its department staff, and outdoor walks are roads and walkways (Add path).';
+
     /**
      * Relations every node response carries.
      *
@@ -78,7 +82,13 @@ class NodeController extends Controller
         ]);
 
         if ($user->isAdmin()) {
-            $departmentId = $validated['department_id'] ?? null;
+            // Admins look after the outdoor network: roads and walkways (pathways) and bridges. Their
+            // only nodes are on bridge decks; rooms and routes in buildings are the departments'.
+            abort_unless(
+                ($validated['building_id'] ?? null) === null && Bridge::covers((float) $validated['latitude'], (float) $validated['longitude']),
+                403, self::ADMIN_NODES_ONLY_ON_BRIDGES,
+            );
+            $departmentId = null;
         } else {
             abort_unless(
                 $user->department_id !== null, 422,
@@ -151,6 +161,14 @@ class NodeController extends Controller
         // Staff moving or re-filing a node must keep it inside one of their
         // department's buildings (admins move nodes anywhere).
         $user = $request->user();
+        if ($user->isAdmin()) {
+            // A bridge node stays on a bridge.
+            abort_unless(
+                ($validated['building_id'] ?? null) === null
+                    && Bridge::covers((float) ($validated['latitude'] ?? $node->latitude), (float) ($validated['longitude'] ?? $node->longitude)),
+                403, self::ADMIN_NODES_ONLY_ON_BRIDGES,
+            );
+        }
         if (! $user->isAdmin() && (isset($validated['latitude']) || isset($validated['longitude']) || array_key_exists('building_id', $validated))) {
             $validated['building_id'] = $this->staffBuildingFor(
                 $user,
@@ -189,14 +207,14 @@ class NodeController extends Controller
     }
 
     /**
-     * Swap two offices (admin only): the two location nodes keep their spot,
+     * Swap two offices (department staff, both offices in their buildings): the two location nodes keep their spot,
      * building and floor, but trade what is there: name and department. This
      * is the "the Registrar and the Cashier swapped rooms" case, done in one
      * atomic step instead of two renames that briefly leave duplicate names.
      */
     public function swap(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isAdmin(), 403);
+        abort_if($request->user()->isAdmin(), 403, 'Offices are managed by the staff of the department that owns the building.');
 
         $validated = $request->validate([
             'node_a_id' => 'required|integer|exists:nodes,id',
@@ -205,6 +223,9 @@ class NodeController extends Controller
 
         $a = Node::findOrFail($validated['node_a_id']);
         $b = Node::findOrFail($validated['node_b_id']);
+        // Both offices in the staff member's own department's buildings.
+        $this->authorizeNode($request, $a);
+        $this->authorizeNode($request, $b);
 
         if (! $a->isDestination() || ! $b->isDestination()) {
             throw ValidationException::withMessages([
@@ -292,6 +313,8 @@ class NodeController extends Controller
         $user = $request->user();
 
         if ($user->isAdmin()) {
+            abort_unless(Bridge::holds($node), 403, self::ADMIN_NODES_ONLY_ON_BRIDGES);
+
             return;
         }
 

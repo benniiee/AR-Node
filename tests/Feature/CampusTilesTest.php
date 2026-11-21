@@ -14,7 +14,7 @@ class CampusTilesTest extends TestCase
      */
     public static function archives(): array
     {
-        return ['original' => ['university'], 'debug' => ['debug']];
+        return ['original' => ['university']];
     }
 
     #[DataProvider('archives')]

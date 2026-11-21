@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sunPosition, shadowOffsetM, shadowRings, buildingHeightM, shadowOpacity, penumbraLayers, shadowColor, MAX_SHADOW_FACTOR, PENUMBRA_FRACTIONS, visibleWalls, roofLiftM, wallLight } from './sunShadow.js';
+import { sunPosition, shadowOffsetM, shadowRings, buildingHeightM, shadowOpacity, penumbraLayers, shadowColor, MAX_SHADOW_FACTOR, PENUMBRA_FRACTIONS, visibleWalls, roofLiftM, wallLight, skyTint } from './sunShadow.js';
 
 // Campus (Zamboanga City), UTC+8. Local solar noon there is ~11:52.
 const LAT = 6.913;
@@ -176,4 +176,16 @@ test('rim shadow strips never leave the roof (regression: slanted strips overhun
     const low = parapetShadowQuads(inner, { altitudeDeg: 3, azimuthDeg: 180 });
     const maxDLat = Math.max(...low.flat().map((p) => p.lat)) - Math.min(...low.flat().map((p) => p.lat));
     assert.ok(maxDLat * 111320 <= PARAPET_H * MAX_SHADOW_FACTOR + 0.01, `rim shadow ${maxDLat * 111320} m`);
+});
+
+test('skyTint: clear by day, warm at sunset, navy and darkest at night', () => {
+    assert.equal(skyTint(45).opacity, 0);
+    const sunset = skyTint(0);
+    assert.equal(sunset.color, '#f59e5e');
+    assert.ok(Math.abs(sunset.opacity - 0.18) < 1e-9);
+    const night = skyTint(-30);
+    assert.equal(night.color, '#1e2a5a');
+    assert.ok(Math.abs(night.opacity - 0.6) < 1e-9);
+    assert.ok(skyTint(-6).opacity > sunset.opacity && skyTint(-6).opacity < night.opacity);
+    assert.equal(skyTint(NaN).opacity, 0);
 });

@@ -173,7 +173,7 @@ class DepartmentOwnershipTest extends TestCase
         $this->assertEquals($department->id, $node->refresh()->department_id);
     }
 
-    public function test_admin_can_edit_any_node_and_reassign_department(): void
+    public function test_admins_cannot_edit_department_nodes(): void
     {
         $a = Department::factory()->create();
         $b = Department::factory()->create();
@@ -185,12 +185,9 @@ class DepartmentOwnershipTest extends TestCase
         $node->created_by = $faculty->id;
         $node->save();
 
-        $this->putJson("/api/nodes/{$node->id}", ['name' => 'Renamed', 'department_id' => $b->id])
-            ->assertOk()
-            ->assertJsonPath('department.id', $b->id);
-
-        // created_by is immutable — even admins cannot rewrite attribution.
-        $this->assertEquals($faculty->id, $node->refresh()->created_by);
+        // Nodes belong to department staff; admins keep pathways and bridges.
+        $this->putJson("/api/nodes/{$node->id}", ['name' => 'Renamed', 'department_id' => $b->id])->assertForbidden();
+        $this->assertSame([$a->id, $faculty->id], [$node->refresh()->department_id, $node->created_by]);
     }
 
     public function test_node_responses_carry_department_and_creator(): void

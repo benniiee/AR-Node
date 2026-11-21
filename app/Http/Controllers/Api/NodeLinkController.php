@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Bridge;
 use App\Models\Building;
 use App\Models\Node;
 use App\Models\NodeLink;
@@ -168,6 +169,12 @@ class NodeLinkController extends Controller
         $user = $request->user();
 
         if ($user->isAdmin()) {
+            // Admins wire staircases only on bridges (deck down to the ground); stairs in buildings are the departments'.
+            abort_unless(
+                Bridge::holds($a) || Bridge::holds($b), 403,
+                'Admins add staircases only on bridges. Stairs in a building are managed by its department staff.'
+            );
+
             return;
         }
 

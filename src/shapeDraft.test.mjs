@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addJoined, canExtendFrom } from './shapeDraft.js';
+import { addJoined } from './shapeDraft.js';
 
 // Corners named by letter so the order is easy to read.
 const P = (s) => s.split('').map((c) => ({ id: c }));
@@ -54,14 +54,16 @@ test('outline: one or two corners so far', () => {
     assert.equal(ids(addJoined([], null, { id: 'X' })), 'X');
 });
 
-test('path: grows only from its ends', () => {
+test('path: grows from its ends, and a middle point gets the new one right after it', () => {
     assert.equal(ids(addJoined(P('ABCD'), 3, { id: 'X' }, { closed: false })), 'ABCDX');
     const start = addJoined(P('ABCD'), 0, { id: 'X' }, { closed: false });
     assert.equal(ids(start), 'XABCD');
     assert.equal(start.anchor, 0);
-    assert.equal(addJoined(P('ABCD'), 1, { id: 'X' }, { closed: false }), null);
-    assert.equal(canExtendFrom(P('ABCD'), 1, { closed: false }), false);
-    assert.equal(canExtendFrom(P('ABCD'), 1, { closed: true }), true);
+    const middle = addJoined(P('ABCD'), 1, { id: 'X' }, { closed: false });
+    assert.equal(ids(middle), 'ABXCD');
+    assert.equal(middle.anchor, 2);
+    // The next tap carries on from the inserted point.
+    assert.equal(ids(addJoined(middle.points, middle.anchor, { id: 'Y' }, { closed: false })), 'ABXYCD');
 });
 
 test('an out-of-range selection is clamped, never lost', () => {

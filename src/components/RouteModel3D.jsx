@@ -5,10 +5,10 @@ import { toLocalMeters, fromLocalMeters } from '../geo';
 import { floorOf, floorAria } from '../floors';
 import { buildingHeightM } from '../sunShadow';
 import { doorFrames, DOOR_HEIGHT_M } from '../doors';
-import { planFromLink, stairTreads, walkLine } from '../stairGeometry';
+import { planFromLink, stairTreads, walkLine, footprint } from '../stairGeometry';
 import { makeLabel, disposeTree } from './StairPreview3D';
 import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
-import { convexHull, clipToConvex } from '../planarGeometry';
+import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -120,22 +120,32 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
     };
 
     let radius = 12;
-    // Roads and walkways on the ground (follow view): flat strips a little lighter than the ground.
+    // Roads and walkways on the ground (follow view): flat strips a little lighter than the ground, with a
+    // round disc at every point so corners and ends are rounded (square strip ends stuck out at corners).
+    // Roads sit a hair under walkways, so where the two meet they never flicker into each other.
     if (follow) {
         const roadMat = new THREE.MeshStandardMaterial({ color: 0x3a3b42, roughness: 1 });
         const walkMat = new THREE.MeshStandardMaterial({ color: 0x4a4b52, roughness: 1 });
         for (const pw of pathways || []) {
             const pts = (pw.coordinates || []).map((c) => xz(c.lat, c.lng));
             const width = pathwayWidthM(pw.kind, pw.width_m);
+            const mat = pw.kind === 'road' ? roadMat : walkMat;
+            const y = pw.kind === 'road' ? 0.005 : 0.009;
             for (let i = 1; i < pts.length; i += 1) {
                 const a = pts[i - 1];
                 const b = pts[i];
                 const len = Math.hypot(b.x - a.x, b.z - a.z);
                 if (len < 0.1) continue;
-                const strip = new THREE.Mesh(new THREE.BoxGeometry(width, 0.02, len + width * 0.5), pw.kind === 'road' ? roadMat : walkMat);
-                strip.position.set((a.x + b.x) / 2, 0.005, (a.z + b.z) / 2);
+                const strip = new THREE.Mesh(new THREE.BoxGeometry(width, 0.02, len), mat);
+                strip.position.set((a.x + b.x) / 2, y, (a.z + b.z) / 2);
                 strip.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
                 group.add(strip);
+            }
+            const disc = new THREE.CylinderGeometry(width / 2, width / 2, 0.02, 32);
+            for (const p of pts) {
+                const joint = new THREE.Mesh(disc, mat);
+                joint.position.set(p.x, y, p.z);
+                group.add(joint);
             }
         }
     }
@@ -297,14 +307,13 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
     // long sides (the short ends stay open: that is where people walk on), and a roof
     // when it has one. Planned ones are not built yet, so not drawn.
     const deckTop = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.85 });
-    const deckSide = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9 });
     const railMat = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
     const roofMat = new THREE.MeshStandardMaterial({ color: BRIDGE_ROOF, roughness: 0.6, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
     const postMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
     const bridgeEdge = new THREE.LineBasicMaterial({ color: 0x5eead4 });
-    // Stairs that come up under a deck: the part of the deck over their steps is a stairwell.
-    // Such a deck is drawn see-through (and casts no shadow over the steps) with the opening outlined.
-    const stairwells = new Map();
+    // Stairs that come up under a deck: the part of the deck over their steps is a stairwell,
+    // cut out of the deck (outlined) so the steps below are seen through the opening.
+    const stairHoles = new Map();
     if (bridges?.length) {
         const nodeById = new Map([...(nodes || []), ...path].filter((n) => n?.id != null).map((n) => [n.id, n]));
         for (const l of links || []) {
@@ -314,14 +323,19 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             if (!deck) continue;
             const { plan, bottom } = planFromLink(l, a, b);
             const base = xz(bottom.latitude, bottom.longitude);
-            const hull = convexHull(stairTreads(plan).flatMap((t) => t.ring.map(([e, n]) => ({ x: base.x + e, z: base.z - n }))));
-            const well = clipToConvex(deck.polygon.map((p) => xz(p.lat, p.lng)), hull);
-            if (well.length >= 3) stairwells.set(deck.id, [...(stairwells.get(deck.id) || []), well]);
+            // One opening per flight and landing (an L-shaped staircase's whole hull would cut the deck across).
+            const deckRing = deck.polygon.map((p) => xz(p.lat, p.lng));
+            const holes = footprint(plan)
+                .map((f) => convexHull(f.ring.map(([e, n]) => ({ x: base.x + e, z: base.z - n }))))
+                .filter((hole) => clipToConvex(deckRing, hole).length >= 3);
+            stairHoles.set(deck.id, [...(stairHoles.get(deck.id) || []), ...holes]);
         }
     }
-    const seeTop = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.85, transparent: true, opacity: 0.38, depthWrite: false });
-    const seeSide = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false });
     const wellEdge = new THREE.LineBasicMaterial({ color: STAIR });
+    const wallMat = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9, side: THREE.DoubleSide });
+    const underMat = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9, side: THREE.BackSide });
+    const doorPane = new THREE.MeshBasicMaterial({ color: 0xe5e7eb, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
+    const doorEdge = new THREE.LineBasicMaterial({ color: 0xffffff });
     for (const br of bridges || []) {
         if (br.status === 'planned' || !Array.isArray(br.polygon) || br.polygon.length < 3) continue;
         const ring = br.polygon.map((p) => xz(p.lat, p.lng));
@@ -329,20 +343,41 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         const h = bridgeDeckHeightM(br);
         const shape = new THREE.Shape(ring.map((p) => new THREE.Vector2(p.x, -p.z)));
         const slab = Math.min(DECK_SLAB_M, Math.max(0.05, h));
-        const geo = new THREE.ExtrudeGeometry(shape, { depth: slab, bevelEnabled: false });
-        geo.rotateX(-Math.PI / 2);
-        const wells = stairwells.get(br.id) || [];
-        const deck = new THREE.Mesh(geo, wells.length ? [seeTop, seeSide] : [deckTop, deckSide]);
-        deck.position.y = Math.max(0, h - slab);
-        group.add(deck);
-        for (const well of wells) {
-            group.add(new THREE.LineLoop(
-                new THREE.BufferGeometry().setFromPoints(well.map((p) => new THREE.Vector3(p.x, h + 0.02, p.z))), wellEdge,
-            ));
+        const y0 = Math.max(0, h - slab);
+        // The deck's top and underside: triangulated first, so each stairwell is cut out of convex
+        // triangles (exact, no slivers), then laid flat. Walls are built only where the deck really ends.
+        const tris = THREE.ShapeUtils.triangulateShape(ring.map((p) => new THREE.Vector2(p.x, p.z)), []).map((t) => t.map((i) => ring[i]));
+        const { pieces, outline, wellEdges } = cutStairwells(ring, stairHoles.get(br.id) || [], tris);
+        for (const piece of pieces) {
+            const face = new THREE.ShapeGeometry(new THREE.Shape(piece.map((p) => new THREE.Vector2(p.x, -p.z))));
+            face.rotateX(-Math.PI / 2);
+            const top = new THREE.Mesh(face, deckTop);
+            top.position.y = h;
+            group.add(top);
+            const under = new THREE.Mesh(face, underMat);
+            under.position.y = y0;
+            group.add(under);
         }
-        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), bridgeEdge);
-        edges.position.y = deck.position.y;
-        group.add(edges);
+        const wall = (a, c, mat = wallMat) => {
+            const g = new THREE.BufferGeometry();
+            g.setAttribute('position', new THREE.Float32BufferAttribute([
+                a.x, y0, a.z, c.x, y0, c.z, c.x, h, c.z, a.x, y0, a.z, c.x, h, c.z, a.x, h, a.z,
+            ], 3));
+            g.computeVertexNormals();
+            group.add(new THREE.Mesh(g, mat));
+        };
+        const edgeLine = (a, c, y, mat) => group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x, y, a.z), new THREE.Vector3(c.x, y, c.z)]), mat));
+        // The outline, open where a stairwell reaches the deck's edge.
+        for (const [a, c] of outline) {
+            wall(a, c);
+            edgeLine(a, c, h, bridgeEdge);
+            edgeLine(a, c, y0, bridgeEdge);
+        }
+        // Each stairwell's own edge where it runs over the deck: a wall into the opening, outlined in amber.
+        for (const [p, q] of wellEdges) {
+            wall(p, q);
+            edgeLine(p, q, h + 0.02, wellEdge);
+        }
         // Long sides: the edges running along the deck's walking line.
         const line = (br.centre_line || []).map((p) => xz(p.lat, p.lng));
         const axis = line.length >= 2 ? new THREE.Vector2(line[1].x - line[0].x, line[1].z - line[0].z).normalize() : null;
@@ -358,6 +393,23 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             rail.computeVertexNormals();
             group.add(new THREE.Mesh(rail, railMat));
             group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x, h + RAIL_M, a.z), new THREE.Vector3(c.x, h + RAIL_M, c.z)]), bridgeEdge));
+        }
+        // Each entrance: on the ground under the deck's edge (where people walk in to the stairs),
+        // a door-high opening framed in white with a faint pane. A deck on the ground has it on the deck.
+        const doorBase = h - slab >= 1.5 ? 0 : h;
+        const doorTop = h - slab >= 1.5 ? Math.min(DOOR_HEIGHT_M, h - slab) : h + DOOR_HEIGHT_M;
+        for (const d of doorFrames(br.polygon, br.doors)) {
+            const a = xz(d.a.lat, d.a.lng);
+            const c = xz(d.b.lat, d.b.lng);
+            const [y0, top] = [doorBase, doorTop];
+            const pane = new THREE.BufferGeometry();
+            pane.setAttribute('position', new THREE.Float32BufferAttribute([
+                a.x, y0, a.z, c.x, y0, c.z, c.x, top, c.z, a.x, y0, a.z, c.x, top, c.z, a.x, top, a.z,
+            ], 3));
+            group.add(new THREE.Mesh(pane, doorPane));
+            group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(a.x, y0 + 0.02, a.z), new THREE.Vector3(a.x, top, a.z), new THREE.Vector3(c.x, top, c.z), new THREE.Vector3(c.x, y0 + 0.02, c.z),
+            ]), doorEdge));
         }
         // Pillars under a raised deck, and posts holding the roof.
         for (const p of ring) {
@@ -441,9 +493,30 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         }
     }
     if (pts.length >= 2) {
+        // Each turn rounded off with a short curve (up to 1 m each side), so the ribbon bends smoothly
+        // instead of kinking: a tube pinches and twists at a sharp corner.
         const curve = new THREE.CurvePath();
-        for (let i = 1; i < pts.length; i += 1) curve.add(new THREE.LineCurve3(pts[i - 1], pts[i]));
-        const segs = Math.min(2000, pts.length * 6);
+        let at = pts[0];
+        for (let i = 1; i < pts.length - 1; i += 1) {
+            const p = pts[i];
+            const back = pts[i - 1].clone().sub(p);
+            const ahead = pts[i + 1].clone().sub(p);
+            const r = Math.min(1, back.length() / 2, ahead.length() / 2);
+            back.normalize();
+            ahead.normalize();
+            if (r < 0.05 || back.dot(ahead) < -0.999) {
+                if (at.distanceTo(p) > 1e-3) curve.add(new THREE.LineCurve3(at, p));
+                at = p;
+                continue;
+            }
+            const enter = p.clone().addScaledVector(back, r);
+            const leave = p.clone().addScaledVector(ahead, r);
+            if (at.distanceTo(enter) > 1e-3) curve.add(new THREE.LineCurve3(at, enter));
+            curve.add(new THREE.QuadraticBezierCurve3(enter, p, leave));
+            at = leave;
+        }
+        curve.add(new THREE.LineCurve3(at, pts[pts.length - 1]));
+        const segs = Math.min(4000, pts.length * 16);
         // White route with a thin dark edge: the edge tube shows only its back
         // faces, so it outlines the white tube instead of covering it.
         group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.3, 10, false), new THREE.MeshBasicMaterial({ color: ROUTE_EDGE, side: THREE.BackSide })));
@@ -476,9 +549,6 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         }
     }
 
-    const north = screenLabel('N', {}, 0.035);
-    north.position.set(0, 0.5, -(radius * 1.4));
-    group.add(north);
     // Scene position back to latitude / longitude (the follow view's test walk).
     const toLatLng = (x, z) => fromLocalMeters(originLL.lat, originLL.lng, x, -z);
     return { target: new THREE.Vector3(0, 3, 0), radius, xz, toLatLng, routePts: pts, stops };

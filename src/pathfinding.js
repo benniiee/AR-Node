@@ -33,7 +33,7 @@
  *    so the route follows the road (no flying over uncounted nodes).
  */
 
-import { toLocalMeters } from './geo.js';
+import { toLocalMeters, fromLocalMeters } from './geo.js';
 import { edgeRainFactor, isRoutable, noRouteMessage } from './weatherCost.js';
 import { edgeShadeFactor } from './shadeRouting.js';
 import { floorOf, floorAria } from './floors.js';
@@ -235,6 +235,47 @@ function onClosedDeck(node, closedBridges) {
     if (node?.building_id != null) return false;
     const p = { lat: Number(node.latitude), lng: Number(node.longitude) };
     return closedBridges.some((br) => floorOf(node) === Math.trunc(Number(br.deck_floor) || 0) && insidePolygon(p, br.polygon));
+}
+
+/** Metres between the virtual route nodes laid along a pathway. */
+export const PATHWAY_STEP_M = 6;
+
+/**
+ * A pathway (road, walkway, covered walkway) is a route: virtual route nodes every PATHWAY_STEP_M along
+ * each stretch of its line, every corner and both ends included (a route turns where the path turns, and
+ * a branch drawn from a corner joins right there), on the ground floor. Not stored and never drawn as dots; the router and
+ * GPS snapping join them to everything nearby like any route node. A covered walkway is sheltered in
+ * rain. Planned or unfinished pathways are not walkable yet.
+ */
+export function pathwayWaypoints(pathways) {
+    const out = [];
+    for (const pw of pathways || []) {
+        if (!pw || pw.status === 'planned' || pw.status === 'under_construction') continue;
+        const line = (pw.coordinates || []).filter((c) => Number.isFinite(+c.lat) && Number.isFinite(+c.lng));
+        if (line.length < 2) continue;
+        const points = [];
+        for (let i = 1; i < line.length; i += 1) {
+            const a = line[i - 1];
+            const [e, n] = toLocalMeters(+line[i].lat, +line[i].lng, +a.lat, +a.lng);
+            const length = Math.hypot(e, n);
+            if (length < 1e-6) continue;
+            if (points.length === 0) points.push({ lat: +a.lat, lng: +a.lng });
+            // Evenly along the stretch, none crowding its far corner (within a quarter step).
+            for (let at = PATHWAY_STEP_M; at < length - PATHWAY_STEP_M * 0.25; at += PATHWAY_STEP_M) {
+                const p = fromLocalMeters(+a.lat, +a.lng, (e * at) / length, (n * at) / length);
+                points.push({ lat: p.latitude, lng: p.longitude });
+            }
+            // The corner (or the end) itself.
+            points.push({ lat: +line[i].lat, lng: +line[i].lng });
+        }
+        if (points.length < 2) continue;
+        points.forEach((p, k) => out.push({
+            id: -(2000000 + Number(pw.id) * 10000 + k), type: 'route', name: null,
+            latitude: p.lat, longitude: p.lng, elevation: 0, floor_level: 0,
+            path_type: pw.kind === 'covered' ? 'inside' : 'outside', building_id: null, pathway_id: pw.id,
+        }));
+    }
+    return out;
 }
 
 export function bridgeDoorWaypoints(bridges) {
@@ -562,7 +603,8 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
         .map((br) => ({ floor: Math.trunc(Number(br.deck_floor)), polygon: br.polygon }));
     const walls = overDecks.length ? (wallBorders || []).map((w) => ({ ...w, overDecks })) : (wallBorders || []);
     const borders = [...walls, ...buildingBarriers(options.buildings), ...bridgeBarriers(options.bridges)];
-    const doorNodes = [...doorWaypoints(options.buildings), ...bridgeDoorWaypoints(options.bridges)];
+    // options.pathways: every pathway is walkable along its line (pathwayWaypoints).
+    const doorNodes = [...doorWaypoints(options.buildings), ...bridgeDoorWaypoints(options.bridges), ...pathwayWaypoints(options.pathways)];
     const allNodes = nodes;
     const closedBridges = (options.bridges || []).filter((br) => br?.closed && Array.isArray(br.polygon) && br.polygon.length >= 3);
     if (closedBridges.length && nodes) nodes = nodes.filter((n) => !onClosedDeck(n, closedBridges));

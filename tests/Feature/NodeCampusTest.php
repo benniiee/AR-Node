@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Bridge;
 use App\Models\Node;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -11,6 +12,16 @@ use Tests\TestCase;
 class NodeCampusTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Admins place and edit nodes only on bridges: one over the test point.
+        Bridge::factory()->create(['polygon' => [
+            ['lat' => 6.9100, 'lng' => 122.0712], ['lat' => 6.9100, 'lng' => 122.0714],
+            ['lat' => 6.9102, 'lng' => 122.0714], ['lat' => 6.9102, 'lng' => 122.0712],
+        ]]);
+    }
 
     private function payload(array $overrides = []): array
     {

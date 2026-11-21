@@ -68,7 +68,8 @@ Route::middleware(['auth:sanctum', EnsureStaff::class, LogStaffActions::class])-
     Route::apiResource('pathways', PathwayController::class);
     // Campus areas (Campus A, Campus B, ...): staff read, admins edit (enforced in the controller).
     Route::apiResource('campus-areas', CampusAreaController::class);
-    Route::post('/pathways/{pathway}/route-nodes', [PathwayController::class, 'generateRouteNodes']);
+    // A pathway routes by itself: this removes the duplicate route-node dots along it.
+    Route::post('/pathways/{pathway}/clear-route-nodes', [PathwayController::class, 'clearRouteNodes']);
     // Bridges and other connectors: staff read, admins edit (enforced in the controller).
     Route::apiResource('bridges', BridgeController::class);
     Route::post('/bridges/{bridge}/route-nodes', [BridgeController::class, 'generateRouteNodes']);

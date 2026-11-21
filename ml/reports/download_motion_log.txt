@@ -20,3 +20,14 @@ cloud motion (satellite_motion.csv) 2024-04-01 -> 2026-11-20: 5,784 scans, 0 alr
   band 13: 3,800/5,784 scans  (10.93 GB read, 1.1/s, about 0.5 h left)  ok=3,515 missing=285 errors=0
   band 13: 4,000/5,784 scans  (11.54 GB read, 1.1/s, about 0.4 h left)  ok=3,714 missing=286 errors=0
   band 13: 4,200/5,784 scans  (12.17 GB read, 1.1/s, about 0.4 h left)  ok=3,914 missing=286 errors=0
+  band 13: 4,400/5,784 scans  (12.74 GB read, 1.1/s, about 0.3 h left)  ok=4,114 missing=286 errors=0
+  band 13: 4,600/5,784 scans  (13.34 GB read, 1.1/s, about 0.3 h left)  ok=4,314 missing=286 errors=0
+  band 13: 4,800/5,784 scans  (13.97 GB read, 1.1/s, about 0.2 h left)  ok=4,514 missing=286 errors=0
+  band 13: 5,000/5,784 scans  (14.58 GB read, 1.1/s, about 0.2 h left)  ok=4,712 missing=288 errors=0
+  band 13: 5,200/5,784 scans  (15.21 GB read, 1.1/s, about 0.1 h left)  ok=4,911 missing=289 errors=0
+  band 13: 5,400/5,784 scans  (15.83 GB read, 1.1/s, about 0.1 h left)  ok=5,110 missing=290 errors=0
+  band 13: 5,600/5,784 scans  (16.45 GB read, 1.1/s, about 0.0 h left)  ok=5,308 missing=292 errors=0
+  band 13: 5,784/5,784 scans  (16.99 GB read, 1.1/s, about 0.0 h left)  ok=5,491 missing=293 errors=0
+wrote C:\Users\Ash\Desktop\Website\AR-Node\ml\data\satellite_motion.csv: 5,491 scans read, 293 not in the archive, 0 to retry
+
+Data: Himawari-8/9 data: Japan Meteorological Agency (JMA), distributed by NOAA (registry.opendata.aws/noaa-himawari)

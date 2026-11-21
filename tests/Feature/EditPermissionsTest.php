@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Border;
+use App\Models\Bridge;
 use App\Models\Building;
 use App\Models\Department;
 use App\Models\Node;
@@ -98,13 +99,23 @@ class EditPermissionsTest extends TestCase
         $this->assertSame(6.9131, $node->fresh()->latitude);
     }
 
-    public function test_admin_can_move_and_remove_any_node_including_unattributed_ones(): void
+    public function test_admins_edit_and_remove_nodes_only_on_bridges(): void
     {
         $byFaculty = $this->nodeBy($this->faculty());
         $unattributed = $this->nodeBy(null);
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
 
-        $this->putJson("/api/nodes/{$byFaculty->id}", ['latitude' => 6.9140, 'longitude' => 122.0620])->assertOk();
+        // Rooms and routes are the departments'; outdoor walks are pathways.
+        $this->putJson("/api/nodes/{$byFaculty->id}", ['latitude' => 6.9140, 'longitude' => 122.0620])->assertForbidden();
+        $this->deleteJson("/api/nodes/{$unattributed->id}")->assertForbidden();
+
+        // On a bridge: the admin's.
+        Bridge::factory()->create(['polygon' => [
+            ['lat' => 6.9130, 'lng' => 122.0610], ['lat' => 6.9130, 'lng' => 122.0612],
+            ['lat' => 6.9132, 'lng' => 122.0612], ['lat' => 6.9132, 'lng' => 122.0610],
+        ]]);
+        $this->putJson("/api/nodes/{$byFaculty->id}", ['name' => 'Deck'])->assertOk();
+        $this->putJson("/api/nodes/{$byFaculty->id}", ['latitude' => 6.9140, 'longitude' => 122.0620])->assertForbidden();
         $this->deleteJson("/api/nodes/{$unattributed->id}")->assertOk();
     }
 
@@ -160,13 +171,21 @@ class EditPermissionsTest extends TestCase
         $this->assertSame(6.9131, $node->fresh()->latitude);
     }
 
-    public function test_admins_place_nodes_anywhere(): void
+    public function test_admins_place_nodes_only_on_bridges(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $payload = ['type' => 'route', 'path_type' => 'inside', 'floor_level' => 1];
 
-        $this->postJson('/api/nodes', ['type' => 'route', 'path_type' => 'outside', 'latitude' => 6.9150, 'longitude' => 122.0630])
-            ->assertCreated()
-            ->assertJsonPath('building_id', null);
+        $this->postJson('/api/nodes', $payload + ['latitude' => 6.9150, 'longitude' => 122.0630])->assertForbidden();
+        $this->postJson('/api/nodes', $payload + ['latitude' => 6.9131, 'longitude' => 122.0611, 'building_id' => $this->departmentBuilding()->id])
+            ->assertForbidden();
+
+        Bridge::factory()->create(['polygon' => [
+            ['lat' => 6.9149, 'lng' => 122.0629], ['lat' => 6.9149, 'lng' => 122.0631],
+            ['lat' => 6.9151, 'lng' => 122.0631], ['lat' => 6.9151, 'lng' => 122.0629],
+        ]]);
+        $this->postJson('/api/nodes', $payload + ['latitude' => 6.9150, 'longitude' => 122.0630])
+            ->assertCreated()->assertJsonPath('building_id', null);
     }
 
     public function test_faculty_wall_is_stamped_with_its_creator(): void

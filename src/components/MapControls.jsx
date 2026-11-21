@@ -53,7 +53,8 @@ export const ICONS = {
     ),
 };
 
-export function ToolDock({ viewOpen, onAdd, onWalls, onPin, onView, onCampus = null, campusOpen = false }) {
+// addPath: admins draw roads and walkways outdoors (department staff place the nodes in their buildings).
+export function ToolDock({ viewOpen, onAdd, onWalls, onPin, onView, onCampus = null, campusOpen = false, addPath = false }) {
     // `short`: the label on very narrow phones.
     const btn = (key, icon, label, onClick, pressed, short = null) => (
         <button key={key} className="mt-dock-btn" onClick={onClick} aria-pressed={pressed} aria-label={short ? label : undefined}>
@@ -65,7 +66,7 @@ export function ToolDock({ viewOpen, onAdd, onWalls, onPin, onView, onCampus = n
     );
     return (
         <div className="mt-card mt-dock mt-enter" role="toolbar" aria-label="Map tools" style={onCampus ? { gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' } : undefined}>
-            {btn('add', ICONS.add, 'Add node', onAdd, undefined, 'Add')}
+            {addPath ? btn('add', ICONS.add, 'Add path', onAdd, undefined, 'Path') : btn('add', ICONS.add, 'Add node', onAdd, undefined, 'Add')}
             {btn('walls', ICONS.walls, 'Walls', onWalls)}
             {onCampus && btn('campus', ICONS.campus, 'Campus', onCampus, campusOpen)}
             {btn('pin', ICONS.pin, 'My pin', onPin)}

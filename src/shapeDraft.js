@@ -8,15 +8,15 @@
 //     corner is added after it. It then joins the selected corner; the
 //     outline closes from it back to the first corner (the editor draws that
 //     closing side dashed while drawing). The building keeps its shape.
-//   open (a path): a path does not branch, so it only grows from its ends:
-//     from the last point (append) or the first (prepend). A middle point
-//     cannot be extended.
+//   open (a path): from the last point it grows (append), from the first
+//     it grows backwards (prepend), and from a middle point the new point is
+//     inserted right after it (a path does not branch: a branch is a new
+//     pathway, made from the map's pathway points).
 
 /**
  * Add `at` to a draft shape, joined to the point at index `anchor` (or the
  * last point when `anchor` is null).
- * @returns {{ points: Array, anchor: number|null } | null} null when the
- *   selected point cannot be extended (a middle point of a path).
+ * @returns {{ points: Array, anchor: number|null }}
  */
 export function addJoined(points, anchor, at, { closed = true } = {}) {
     const pts = Array.isArray(points) ? points : [];
@@ -31,11 +31,5 @@ export function addJoined(points, anchor, at, { closed = true } = {}) {
     }
     if (k === pts.length - 1) return { points: [...pts, at], anchor: pts.length };
     if (k === 0) return { points: [at, ...pts], anchor: 0 };
-    return null;
-}
-
-/** Can the point at `index` be extended (always for outlines; ends only for paths)? */
-export function canExtendFrom(points, index, { closed = true } = {}) {
-    if (closed) return true;
-    return index === 0 || index === (points?.length || 0) - 1;
+    return { points: [...pts.slice(0, k + 1), at, ...pts.slice(k + 1)], anchor: k + 1 };
 }

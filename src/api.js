@@ -179,11 +179,9 @@ export const api = {
     deleteCampusArea: (id) =>
         request(`/campus-areas/${id}`, { method: 'DELETE' }),
 
-    generatePathwayNodes: (id, data = {}) =>
-        request(`/pathways/${id}/route-nodes`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        }),
+    // A pathway routes by itself: remove the duplicate route-node dots along it.
+    clearPathwayNodes: (id) =>
+        request(`/pathways/${id}/clear-route-nodes`, { method: 'POST' }),
 
     // Departments (list: any logged-in user; write: admin only)
     getDepartments: () =>

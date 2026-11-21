@@ -18,15 +18,16 @@
 // uiTokens.js), so neither is used here.
 import L from 'leaflet';
 import { C, FONT_STACK, TYPE } from './uiTokens.js';
-import { polygonCentroid, floorCountLabel, statusLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, pathwayWidthM } from './campusGeometry.js';
+import { polygonCentroid, floorCountLabel, statusLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, pathwayWidthM, bridgeDeckHeightM, pointInPolygon } from './campusGeometry.js';
 import { floorAria, floorOf } from './floors.js';
 import { doorFrames, doorGapWalls, DOOR_HEIGHT_M } from './doors.js';
-import { planFromLink, stairTreads, walkLine } from './stairGeometry.js';
+import { planFromLink, stairTreads, walkLine, footprint } from './stairGeometry.js';
 import { fromLocalMeters } from './geo.js';
+import { convexHull, clipToConvex, cutStairwells } from './planarGeometry.js';
 import {
     sunPosition, shadowRings, buildingHeightM, shadowOpacity, penumbraLayers, shadowColor,
     roofLiftM, visibleWalls, wallLight, insetPolygon, parapetShadowQuads, edgesWithNormals, roofLight,
-    PARAPET_W, STOREY_M, EXTRUDE_FACTOR,
+    PARAPET_W, STOREY_M, EXTRUDE_FACTOR, skyTint,
 } from './sunShadow.js';
 
 const STYLE_ID = 'campus-layer-styles';
@@ -141,6 +142,7 @@ export function pathwayStyle(kind, status, theme = 'dark') {
 /**
  * Map panes for the sunlit look, bottom to top:
  *   campusGround (380)  pathways: the ground that shadows fall onto
+ *   skyTint      (375)  time-of-day tint over the base map (drawSkyTint)
  *   campusShadow (390)  sun shadows (blurred)
  *   overlayPane  (400)  buildings, walls, route  (Leaflet default)
  * Call once per map before drawing; harmless to call again.
@@ -169,6 +171,40 @@ export function prepareCampusPanes(map) {
         map.on('zoomend', blur);
         blur();
     }
+}
+
+/**
+ * Darken (or warm) the base map for the time of day: skyTint for the sun's height, multiplied over
+ * the tiles under the roads, buildings and route, so those stay readable at night. `altitudeDeg`
+ * null clears it (Admin view, where the imagery is traced).
+ */
+export function drawSkyTint(map, altitudeDeg) {
+    if (!map.getPane('skyTint')) {
+        const pane = map.createPane('skyTint');
+        pane.style.zIndex = 375;
+        pane.style.pointerEvents = 'none';
+        pane.style.mixBlendMode = 'multiply';
+    }
+    const { color, opacity } = skyTint(altitudeDeg);
+    if (!map._skyTint) {
+        // A plain sheet, not a vector shape: vectors are redrawn only after a zoom ends, which left the newly
+        // shown edges untinted while zooming out. The sheet covers the view three times over, kept centred
+        // on it as the map moves, so zooms and pans never reach its edge.
+        const sheet = L.DomUtil.create('div', '', map.getPane('skyTint'));
+        sheet.style.position = 'absolute';
+        const place = () => {
+            const size = map.getSize();
+            const topLeft = map.containerPointToLayerPoint([-size.x, -size.y]);
+            L.DomUtil.setPosition(sheet, topLeft);
+            sheet.style.width = `${size.x * 3}px`;
+            sheet.style.height = `${size.y * 3}px`;
+        };
+        map.on('move resize viewreset zoomend', place);
+        place();
+        map._skyTint = sheet;
+    }
+    map._skyTint.style.background = color;
+    map._skyTint.style.opacity = String(opacity);
 }
 
 /** Wall colours for the 2.5D look: `shade` facing away from the sun, `lit` facing it. */
@@ -735,35 +771,123 @@ export function bridgeStyle(status, theme = 'dark') {
     return { color: c, weight: 2.5, opacity: 0.95, lineJoin: 'round', fillColor: c, fillOpacity: theme === 'light' ? 0.28 : 0.32 };
 }
 
+/** How thick a raised deck is drawn, metres (its edge band in 2.5D). */
+const DECK_SLAB_M = 0.6;
+/** Railing height along a deck's long sides, metres (RouteModel3D's RAIL_M). */
+const RAIL_M = 1.05;
+
 /**
- * Draw every bridge (and other connector) into `layer` (cleared first): the deck in teal
- * and a label chip such as "Footbridge · 1 floor up". Same `popup` / `skipId` / `theme`
- * options as drawBuildings.
+ * Draw every bridge into `layer` (cleared first): the deck in teal and a label chip such as
+ * "Footbridge · 1 floor up". `extrude` (the student map and Student view, like the 2.5D buildings):
+ * a raised deck is lifted to its real height (bridgeDeckHeightM, the 3D views' height) on pillars,
+ * with its edge band facing the viewer (north-up). Call it after drawBuildings so the deck crosses over them.
+ * Raised decks look like the 3D views: railings that stop at each entrance, door-high entrance frames,
+ * and with `links` and `nodes` the staircases from the ground up to the deck, seen through the
+ * stairwell cut out of the deck above them.
  */
-export function drawBridges(layer, bridges, { popup = null, skipId = null, theme = 'dark' } = {}) {
+export function drawBridges(layer, bridges, { popup = null, skipId = null, theme = 'dark', extrude = false, links = [], nodes = [] } = {}) {
     ensureStyles();
     layer.clearLayers();
+    const nodeById = new Map((nodes || []).map((n) => [n.id, n]));
     for (const b of bridges || []) {
         if (b.id === skipId || !Array.isArray(b.polygon) || b.polygon.length < 3) continue;
-        const latlngs = b.polygon.map((p) => [p.lat, p.lng]);
-        const deck = L.polygon(latlngs, {
-            // Closed (an event): drawn like a planned structure, grey and dashed.
-            ...bridgeStyle(b.closed ? 'planned' : b.status, theme), interactive: Boolean(popup), className: popup ? 'campus-hit' : '',
-        }).addTo(layer);
-        if (popup) deck.bindPopup(() => popup(b));
-        // Doors: a light gap across the outline, like a building's on the flat map.
-        for (const d of doorFrames(b.polygon, b.doors)) {
-            const line = [[d.a.lat, d.a.lng], [d.b.lat, d.b.lng]];
-            L.polyline(line, { color: '#16161b', weight: 8, opacity: 0.85, lineCap: 'butt', interactive: false }).addTo(layer);
-            L.polyline(line, { color: '#ffffff', weight: 4, opacity: 1, lineCap: 'butt', interactive: false }).addTo(layer);
+        // Closed (an event): drawn like a planned structure, grey and dashed.
+        const style = bridgeStyle(b.closed ? 'planned' : b.status, theme);
+        const heightM = extrude && b.status !== 'planned' ? bridgeDeckHeightM(b) : 0;
+        const lift = heightM > 0.3 ? roofLiftM(heightM) / 111320 : 0;
+        // A point raised by a share f of the deck's lift (north-up, as drawBuildings with viewDeg 0).
+        const up = (p, f = 1) => [p.lat + lift * f, p.lng];
+        // Stairwells: one opening per flight and landing over the deck, in flat metres east (x) / north (z)
+        // of the deck's first corner, as the 3D views cut them.
+        const holes = [];
+        const ref = b.polygon[0];
+        const k = Math.cos((ref.lat * Math.PI) / 180) * 111320;
+        const toLocal = (p) => ({ x: (p.lng - ref.lng) * k, z: (p.lat - ref.lat) * 111320 });
+        const toLL = (p) => up({ lat: +ref.lat + p.z / 111320, lng: +ref.lng + p.x / k });
+        const ring = b.polygon.map(toLocal);
+        if (lift > 0) {
+            const under = Math.max(0, (heightM - DECK_SLAB_M) / heightM);
+            // The ground it crosses, faint; pillars at the deck's corners; the deck's edge facing the viewer.
+            L.polygon(b.polygon.map((p) => [p.lat, p.lng]), { stroke: false, fillColor: style.color, fillOpacity: 0.08, interactive: false }).addTo(layer);
+            for (const p of b.polygon) {
+                L.polyline([[p.lat, p.lng], up(p, under)], { color: theme === 'dark' ? '#9ca3af' : '#6b7280', weight: 3, opacity: 0.9, lineCap: 'round', interactive: false }).addTo(layer);
+            }
+            // Staircases from the ground up to this deck, under the see-through deck as in 3D.
+            const onDeck = (n) => n && n.building_id == null && floorOf(n) === Number(b.deck_floor)
+                && pointInPolygon(+n.latitude, +n.longitude, b.polygon);
+            for (const l of links || []) {
+                const a = nodeById.get(l.node_a_id);
+                const z = nodeById.get(l.node_b_id);
+                if (!a || !z || floorOf(a) === floorOf(z) || !(onDeck(a) || onDeck(z))) continue;
+                drawStairs25D(layer, l, a, z, (f) => (f > 0 ? lift : 0), { muted: Boolean(b.closed) });
+                const { plan, bottom } = planFromLink(l, a, z);
+                const base = toLocal({ lat: +bottom.latitude, lng: +bottom.longitude });
+                for (const f of footprint(plan)) {
+                    const hole = convexHull(f.ring.map(([e, n]) => ({ x: base.x + e, z: base.z + n })));
+                    if (clipToConvex(ring, hole).length >= 3) holes.push(hole);
+                }
+            }
+            // Each entrance is on the ground, under the deck's edge: a door-high white frame with a faint
+            // pane, drawn before the deck so the deck covers the ones behind it.
+            const door = Math.min(DOOR_HEIGHT_M / heightM, under);
+            for (const d of doorFrames(b.polygon, b.doors)) {
+                L.polygon([up(d.a, 0), up(d.b, 0), up(d.b, door), up(d.a, door)], { stroke: false, fillColor: '#e5e7eb', fillOpacity: 0.16, interactive: false }).addTo(layer);
+                L.polyline([up(d.a, 0), up(d.a, door), up(d.b, door), up(d.b, 0)], { color: '#ffffff', weight: 2, opacity: 1, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(layer);
+                L.polyline([up(d.a, 0), up(d.b, 0)], { color: '#ffffff', weight: 3, opacity: 1, lineCap: 'round', interactive: false }).addTo(layer);
+            }
+            for (const w of visibleWalls(b.polygon, 0)) {
+                L.polygon([up(w.a, under), up(w.b, under), up(w.b), up(w.a)], {
+                    stroke: true, color: mixHex(style.color, '#000000', 0.45), weight: 0.6, opacity: 0.7,
+                    fillColor: mixHex(style.color, '#000000', 0.3), fillOpacity: b.closed ? 0.45 : 0.95, interactive: false,
+                }).addTo(layer);
+            }
         }
+        // The stairwells are holes in the deck: the steps below show through them. With holes the
+        // outline is drawn on its own (a cut ring's own stroke would trace slivers across the opening).
+        const cut = holes.length ? cutStairwells(ring, holes) : null;
+        const deck = L.polygon(cut ? cut.pieces.map((piece) => piece.map(toLL)) : b.polygon.map((p) => up(p)), {
+            ...style, ...(lift > 0 && !b.closed ? { fillOpacity: 0.9 } : {}), ...(cut ? { stroke: false } : {}),
+            interactive: Boolean(popup), className: popup ? 'campus-hit' : '',
+        }).addTo(layer);
+        if (cut) {
+            // Drawn on their own (the pieces' own strokes would show the cuts between them): the deck's
+            // outline, open where a stairwell reaches its edge, and each stairwell's edge over the deck in amber.
+            const seg = ([p, q], color, weight) => L.polyline([toLL(p), toLL(q)], { color, weight, opacity: style.opacity, lineCap: 'round', interactive: false }).addTo(layer);
+            cut.outline.forEach((part) => seg(part, style.color, style.weight));
+            cut.wellEdges.forEach((part) => seg(part, STAIR_TREAD, 1.5));
+        }
+        if (lift > 0) {
+            // Railings along the long sides (the walking line's direction), a faint panel with a top rail.
+            const rail = (RAIL_M + heightM) / heightM;
+            const line = Array.isArray(b.centre_line) ? b.centre_line : [];
+            const k = Math.cos((b.polygon[0].lat * Math.PI) / 180);
+            const vec = (p, q) => [(q.lng - p.lng) * k, q.lat - p.lat];
+            const axis = line.length >= 2 ? vec(line[0], line[1]) : null;
+            b.polygon.forEach((p, i) => {
+                const q = b.polygon[(i + 1) % b.polygon.length];
+                const d = vec(p, q);
+                const len = Math.hypot(...d);
+                if (len * 111320 < 0.2) return;
+                if (axis && Math.abs((d[0] * axis[0] + d[1] * axis[1]) / (len * Math.hypot(...axis))) < 0.7) return;
+                L.polygon([up(p), up(q), up(q, rail), up(p, rail)], { stroke: false, fillColor: '#e5e7eb', fillOpacity: 0.15, interactive: false }).addTo(layer);
+                L.polyline([up(p, rail), up(q, rail)], { color: style.color, weight: 1.5, opacity: 0.9, interactive: false }).addTo(layer);
+            });
+        } else {
+            // Flat map: each door is a light gap across the outline, like a building's.
+            for (const d of doorFrames(b.polygon, b.doors)) {
+                const line = [[d.a.lat, d.a.lng], [d.b.lat, d.b.lng]];
+                L.polyline(line, { color: '#16161b', weight: 8, opacity: 0.85, lineCap: 'butt', interactive: false }).addTo(layer);
+                L.polyline(line, { color: '#ffffff', weight: 4, opacity: 1, lineCap: 'butt', interactive: false }).addTo(layer);
+            }
+        }
+        if (popup) deck.bindPopup(() => popup(b));
         const c = polygonCentroid(b.polygon);
         if (c) {
             const meta = b.closed ? `Closed${b.closed_reason ? ` · ${b.closed_reason}` : ''}`
                 : b.status === 'under_construction' || b.status === 'planned' ? statusLabel(b.status) : deckLevelLabel(b.deck_floor);
             const html = `<div class="bldg-label is-bridge" data-rank="1" title="${esc(b.name)} · ${esc(bridgeKindLabel(b.kind))}">`
                 + `<span class="bl-name">${esc(b.short_name || b.name)}</span><span class="bl-meta">${esc(meta)}</span></div>`;
-            L.marker([c.lat, c.lng], { icon: L.divIcon({ className: '', html, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layer);
+            L.marker(up(c), { icon: L.divIcon({ className: '', html, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layer);
         }
     }
 }
@@ -782,10 +906,19 @@ export function drawPathways(layer, pathways, { popup = null, skipId = null, the
     for (const p of pathways || []) {
         if (p.id === skipId || !Array.isArray(p.coordinates) || p.coordinates.length < 2) continue;
         const latlngs = p.coordinates.map((c) => [c.lat, c.lng]);
-        // On the ground pane (under the shadows) when the map has one.
-        const pane = layer._map?.getPane('campusGround') ? 'campusGround' : undefined;
         const style = pathwayStyle(p.kind, p.status, theme);
-        const line = L.polyline(latlngs, { ...style, pane, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer);
+        // On the ground pane (under the shadows) when the map has one, in a sub-pane per see-through level:
+        // the lines are drawn solid and the pane fades them as one, so where pathways cross or join they
+        // read as one surface instead of a darker overlap.
+        const ground = layer._map?.getPane('campusGround');
+        let pane;
+        let opacity = style.opacity;
+        if (ground) {
+            pane = `campusGround${Math.round(style.opacity * 100)}`;
+            if (!layer._map.getPane(pane)) layer._map.createPane(pane, ground).style.opacity = String(style.opacity);
+            opacity = 1;
+        }
+        const line = L.polyline(latlngs, { ...style, opacity, pane, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer);
         lines.push({ line, minPx: style.weight, widthM: pathwayWidthM(p.kind, p.width_m) });
         if (popup) {
             // Fat invisible hit line: a 3 px walkway is untappable on phones.

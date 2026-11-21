@@ -19,7 +19,7 @@ import ScrollWindow from './ScrollWindow';
 import SunTimeSlider from './SunTimeSlider';
 import { useSatelliteSettings, useSatelliteLayer } from '../useSatellite';
 import { sunPosition } from '../sunShadow';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS, drawSkyTint } from '../campusLayers';
 import { buildingAt, nodePlaceLabel, floorCountLabel, statusLabel, kindLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, bridgeDeckHeightM, pointInPolygon } from '../campusGeometry';
 import {
     MAP_CONTROLS_CSS, ToolDock, ActionBar, Sheet, NodeForm, MenuToggle, MenuAction, StairLinks, NewStairModal,
@@ -257,6 +257,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // Connect a bridge to the ground: { bridgeId }. Tap a deck node, then the stairs
     // flow (stairPick, filtered to the ground floor) picks the existing ground node.
     const [bridgeConnect, setBridgeConnect] = useState(null);
+    // Pathway points: connecting one walkway to another ({ pathwayId, idx }), and the point a popup is on.
+    const [pathConnect, setPathConnect] = useState(null);
     // Manage nodes for a bridge: the nodes on its deck, like a building's floor list.
     const [manageBridgeId, setManageBridgeId] = useState(null);
     const [stairConfig, setStairConfig] = useState(null);
@@ -413,8 +415,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const myId = currentUser?.id;
     const myDeptId = currentUser?.department?.id ?? null;
     const canEditNode = (node) => {
-        if (isAdmin) return true;
-        // Outside buildings: admins only. Inside: the building's department.
+        // Admins: only nodes on bridges (decks and stair feet); rooms and routes in buildings are the departments'.
+        if (isAdmin) return node?.building_id == null && bridges.some((br) => pointInPolygon(+node.latitude, +node.longitude, br.polygon || []));
+        // Outside buildings: not staff. Inside: the building's department.
         if (node?.building_id == null) return false;
         const b = buildings.find((x) => x.id === node.building_id);
         return myDeptId !== null && Boolean(b) && (b.department?.id ?? b.department_id) === myDeptId;
@@ -552,11 +555,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             userLocation.longitude,
             0,
             borders,
-            { buildings, bridges, links },
+            { buildings, bridges, links, pathways },
         );
         setRouteResult(result);
         drawRoute(result);
-    }, [userLocation, selectedDestination, nodes, borders, drawRoute, buildings, bridges, links]);
+    }, [userLocation, selectedDestination, nodes, borders, drawRoute, buildings, bridges, links, pathways]);
     const loadData = useCallback(async () => {
         try {
             const nodesData = await api.getNodes();
@@ -852,7 +855,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             let pickRole = null; // 'source' | 'candidate' | 'muted'
             if (swapPick) {
                 if (node.id === swapPick.sourceId) pickRole = 'source';
-                else if (node.type === 'location') pickRole = 'candidate';
+                // Only offices in the staff member's own buildings (NodeController::swap checks both).
+                else if (node.type === 'location' && canEditNode(node)) pickRole = 'candidate';
                 else pickRole = 'muted';
             } else if (stairStart) {
                 // First end of a new staircase: this building's nodes on the floor shown.
@@ -1011,6 +1015,19 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         });
         // Colours follow the base map of the current view (light / dark).
         drawPathways(pLayer, pathways, { popup: pathwayPopup, skipId: editingId('pathway'), theme: mapTheme });
+        // Each pathway's points, clickable: connect to another walkway, remove the point, edit the pathway.
+        if (isAdmin && !isStudentView) {
+            for (const pw of pathways) {
+                if (pw.id === editingId('pathway')) continue;
+                (pw.coordinates || []).forEach((c, idx) => {
+                    const from = pathConnect && pathConnect.pathwayId === pw.id && pathConnect.idx === idx;
+                    L.circleMarker([c.lat, c.lng], {
+                        radius: from ? 7 : 5, color: '#1f2937', weight: 2, fillColor: from ? '#22c55e' : '#ffffff', fillOpacity: 1,
+                        bubblingMouseEvents: false, className: 'campus-hit',
+                    }).on('click', () => window.__pathPoint?.(pw.id, idx)).addTo(pLayer);
+                });
+            }
+        }
         // Solid roofs only where shadows are drawn (Student view); Admin view
         // keeps the see-through fill so the base-map outline shows for tracing.
         // Student view: 2.5D buildings (lifted roofs, sun-shaded walls), like /map.
@@ -1022,9 +1039,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             xray: new Set((routeResult?.path || []).map((p) => p.building_id).filter((id) => id !== null && id !== undefined)),
         });
         // After the buildings: in the shared overlay pane the last drawn is on top, and decks cross over them.
-        if (brLayer) drawBridges(brLayer, bridges, { popup: bridgePopup, skipId: editingId('bridge'), theme: mapTheme });
+        if (brLayer) drawBridges(brLayer, bridges, { popup: bridgePopup, skipId: editingId('bridge'), theme: mapTheme, extrude: isStudentView, links, nodes });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, pathways, bridges, showCampus, campusEdit, isCampusTool, nodes, isAdmin, mapTheme, isStudentView, sunWallsKey, routeResult, campusFilter, campusAreas]);
+    }, [buildings, pathways, bridges, showCampus, campusEdit, isCampusTool, nodes, links, isAdmin, mapTheme, isStudentView, sunWallsKey, routeResult, campusFilter, campusAreas, pathConnect]);
 
     // Campus outlines: only in Manage campus areas (and, for context, while one of
     // them is being drawn or edited). Anywhere else they would sit over the whole
@@ -1083,6 +1100,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         drawShadows(layer, buildings, { date: sunDate, lat: CAMPUS_CENTER[0], lng: CAMPUS_CENTER[1] });
         return undefined;
     }, [buildings, isStudentView, showCampus, sunDate]);
+    // Student view: the map darkens with the time of day (follows the sun slider too). Admin view stays clear for tracing.
+    useEffect(() => {
+        if (!mapInstance.current) return;
+        drawSkyTint(mapInstance.current, isStudentView ? sunPosition(sunDate, CAMPUS_CENTER[0], CAMPUS_CENTER[1]).altitudeDeg : null);
+    }, [isStudentView, sunDate]);
     // Leaving Student view ends the demo (Admin view draws no shadows).
     useEffect(() => { if (!isStudentView) { setSunDemoOn(false); setSunDemoDate(null); } }, [isStudentView]);
 
@@ -1365,7 +1387,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         window.__editNode = (id) => {
             const node = nodes.find(n => n.id === id);
             if (!node) return;
-            if (!canEditNode(node)) { onError(node.building_id == null ? 'Only admins edit nodes outside buildings.' : "You can edit nodes only inside your department's buildings."); return; }
+            if (!canEditNode(node)) { onError(isAdmin ? "Admins edit nodes only on bridges. A building's rooms and routes are managed by its department staff." : node.building_id == null ? 'Only admins edit nodes on bridges.' : "You can edit nodes only inside your department's buildings."); return; }
             // Exclusive modes: opening Edit closes any in-progress Add Node
             // (pending marker, placement clicks and all) or wall edit.
             cancelWallEdit();
@@ -1404,7 +1426,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setRouteResult(null);
 
             try {
-                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links });
+                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links, pathways });
                 setRouteResult(result);
                 drawRoute(result);
             } catch (err) {
@@ -1461,7 +1483,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             delete window.__editWall;
         };
     // Everything the handlers read, or a click runs an old copy (it refused CCS staff their own lab before the buildings loaded).
-    }, [loadData, onError, nodes, userLocation, borders, drawRoute, mode, buildings, bridges, links, isAdmin, myDeptId, myId]);
+    }, [loadData, onError, nodes, userLocation, borders, drawRoute, mode, buildings, bridges, links, pathways, isAdmin, myDeptId, myId]);
 
     // Popup buttons on buildings and pathways (re-bound every render so they
     // always see the current lists).
@@ -1537,11 +1559,36 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             const p = pathways.find((x) => x.id === id);
             if (p) startCampus('pathway', p);
         };
+        // A pathway point was tapped: it becomes the selected (green) point, the one a tap on the map
+        // extends from. Tapping a point on another walkway while one is selected joins the two, then
+        // selects it; tapping the selected point again lets go of it.
+        window.__pathPoint = async (pathwayId, idx) => {
+            const pw = pathways.find((x) => x.id === pathwayId);
+            const at = pw?.coordinates?.[idx];
+            if (!at) return;
+            mapInstance.current?.closePopup();
+            if (pathConnect && pathConnect.pathwayId === pathwayId && pathConnect.idx === idx) { setPathConnect(null); return; }
+            const from = pathConnect && pathConnect.pathwayId !== pathwayId
+                ? pathways.find((x) => x.id === pathConnect.pathwayId) : null;
+            const start = from?.coordinates?.[pathConnect.idx];
+            if (start) {
+                try {
+                    // A short walkway joining the two points (covered only when both ends are).
+                    await api.createPathway({
+                        kind: from.kind === 'covered' && pw.kind === 'covered' ? 'covered' : 'walkway',
+                        status: 'existing', source: 'custom', coordinates: [start, at],
+                    });
+                    await loadData();
+                    showToast('Walkways connected');
+                } catch (err) { onError(err.message); return; }
+            }
+            setPathConnect({ pathwayId, idx });
+        };
         window.__deletePathway = async (id) => {
             const p = pathways.find((x) => x.id === id);
             if (!(await confirmAction({
                 title: `Remove ${p?.name || 'this pathway'}?`,
-                message: 'The drawn line goes. Route nodes laid along it stay, so routing is unchanged.',
+                message: 'Routes stop following it. Anything that was reached only along it may become unreachable.',
                 confirmLabel: 'Remove pathway', tone: 'danger',
             }))) return;
             try {
@@ -1571,6 +1618,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             delete window.__deleteBuilding;
             delete window.__editPathway;
             delete window.__deletePathway;
+            delete window.__pathPoint;
             delete window.__editBridge;
             delete window.__connectBridge;
             delete window.__manageBridge;
@@ -1619,6 +1667,34 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 return;
             }
 
+            // Extending a pathway: a new point where the map was tapped, joined to the selected point. From an
+            // end the pathway itself grows; from a middle point a branch starts. The new point stays selected,
+            // so each tap adds the next one.
+            if (pathConnect) {
+                const pw = pathways.find((x) => x.id === pathConnect.pathwayId);
+                const from = pw?.coordinates?.[pathConnect.idx];
+                if (!from) { setPathConnect(null); return; }
+                const to = { lat, lng };
+                const last = pw.coordinates.length - 1;
+                try {
+                    if (pathConnect.idx === 0 || pathConnect.idx === last) {
+                        const atStart = pathConnect.idx === 0 && last > 0;
+                        await api.updatePathway(pw.id, { coordinates: atStart ? [to, ...pw.coordinates] : [...pw.coordinates, to] });
+                        await loadData();
+                        setPathConnect({ pathwayId: pw.id, idx: atStart ? 0 : last + 1 });
+                    } else {
+                        const made = await api.createPathway({
+                            kind: pw.kind, status: 'existing', source: 'custom', coordinates: [from, to],
+                            ...(pw.width_m ? { width_m: pw.width_m } : {}),
+                        });
+                        await loadData();
+                        setPathConnect(made?.id ? { pathwayId: made.id, idx: 1 } : null);
+                    }
+                    showToast('Point added');
+                } catch (err) { onError(err.message); }
+                return;
+            }
+
             if (mode === 'addNode') {
                 // With a floor guide up, the tap lands on the raised floor
                 // plate: shift it back down to the real (ground) position.
@@ -1639,7 +1715,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
 
         map.on('click', handleMapClick);
         return () => map.off('click', handleMapClick);
-    }, [mode, isSettingPosition, editingNode, isSettingUserLoc, isDrawingBorder, drawingBorderPoints, borders, editingWallId, showBorders]);
+    }, [mode, isSettingPosition, editingNode, isSettingUserLoc, isDrawingBorder, drawingBorderPoints, borders, editingWallId, showBorders, pathConnect, pathways]);
 
     // Cursor circle when setting position
     useEffect(() => {
@@ -2257,7 +2333,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     };
 
     // Exactly one surface owns the bottom of the screen at any time.
-    const surface = swapPick ? 'swap-pick' : stairPick ? 'stair-pick' : stairStart ? 'stair-start' : bridgeConnect ? 'bridge-connect' : surfaceFor({ tool, hasPending: !!pendingNode, hasEditing: !!editingNode, hasManaging: !!manageBuilding || !!manageBridge });
+    const surface = swapPick ? 'swap-pick' : stairPick ? 'stair-pick' : stairStart ? 'stair-start' : bridgeConnect ? 'bridge-connect' : pathConnect ? 'path-connect' : surfaceFor({ tool, hasPending: !!pendingNode, hasEditing: !!editingNode, hasManaging: !!manageBuilding || !!manageBridge });
 
     // Connect a raised bridge to the ground routes, from its popup or Edit panel.
     const startBridgeConnect = (br) => {
@@ -2849,12 +2925,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 {surface === 'dock' && campusOpen && isAdmin && (
                     <div className="mt-card mt-menu mt-enter ui-stagger" role="group" aria-label="Campus tools">
                         <MenuAction label={`Label a building (${buildings.length} labelled)`} onClick={() => startCampus('building')} />
-                        <MenuAction label={`Add a road or walkway (${pathways.length} drawn)`} onClick={() => startCampus('pathway')} />
                         <MenuAction label={`Add a bridge (${bridges.length} drawn)`} onClick={() => startCampus('bridge')} />
                         <MenuAction label={`Manage campus areas (${campusAreas.length} drawn)`} onClick={startManageAreas} />
                         <p className="ui-hint" style={{ margin: '4px 12px 8px' }}>
                             Adopt a shape from the base map or draw a new one (e.g. a building under construction).
-                            Tap a building, bridge or pathway on the map to edit it. To swap two offices, open one and choose Swap.
+                            Tap a building or bridge on the map to edit it. Roads and walkways: Add path. Rooms, offices and doors are managed by each building's department staff.
                         </p>
                     </div>
                 )}
@@ -2862,7 +2937,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 {surface === 'dock' && (
                     <ToolDock
                         viewOpen={viewOpen}
-                        onAdd={enterAddNodeMode}
+                        addPath={isAdmin}
+                        // Admins draw roads and walkways (routes); department staff place the nodes in their buildings.
+                        onAdd={isAdmin ? () => { setViewOpen(false); setCampusOpen(false); startCampus('pathway'); } : enterAddNodeMode}
                         onWalls={toggleWallDrawing}
                         onPin={toggleUserPin}
                         onView={() => { setCampusOpen(false); setViewOpen((v) => !v); }}
@@ -2884,7 +2961,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         onClose={endCampus}
                         onSaved={(message) => { endCampus(); loadData(); showToast(message); }}
                         // Edit is where a building's nodes are managed.
-                        onManageNodes={campusEdit.mode === 'bridge' ? openManageBridge : openManageNodes}
+                        onManageNodes={campusEdit.mode === 'bridge' ? openManageBridge : (isAdmin ? null : openManageNodes)}
                         onConnectBridge={startBridgeConnect}
                         canChangeDepartment={isAdmin}
                         nodes={nodes}
@@ -2998,6 +3075,34 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         title={qrSheet.title} subtitle={qrSheet.subtitle} nodes={qrSheet.nodes}
                         buildingsById={buildingsById} onClose={() => setQrSheet(null)}
                     />
+                )}
+
+                {surface === 'path-connect' && (
+                    <ActionBar
+                        title={(() => {
+                            const pw = pathways.find((x) => x.id === pathConnect.pathwayId);
+                            return pw ? `Point ${pathConnect.idx + 1} of ${pw.coordinates?.length || 0} · ${pw.name || kindLabel(pw.kind)}` : 'Pathway point';
+                        })()}
+                        hint="Tap the map to add a point joined to the green one (keep tapping to go on). Tap another point to select it instead, or a point on another walkway to join the two."
+                    >
+                        <button onClick={async () => {
+                            const pw = pathways.find((x) => x.id === pathConnect.pathwayId);
+                            if (!pw) return;
+                            if (pw.coordinates.length <= 2) { onError('A pathway needs at least two points. Remove the pathway instead.'); return; }
+                            try {
+                                await api.updatePathway(pw.id, { coordinates: pw.coordinates.filter((_, i) => i !== pathConnect.idx) });
+                                setPathConnect(null);
+                                loadData();
+                                showToast('Point removed');
+                            } catch (err) { onError(err.message); }
+                        }} className="ui-btn ui-btn-danger">Remove point</button>
+                        <button className="ui-btn" onClick={() => {
+                            const pw = pathways.find((x) => x.id === pathConnect.pathwayId);
+                            setPathConnect(null);
+                            if (pw) startCampus('pathway', pw);
+                        }}>Edit pathway</button>
+                        <button className="ui-btn ui-btn-primary" onClick={() => setPathConnect(null)}>Done</button>
+                    </ActionBar>
                 )}
 
                 {surface === 'bridge-connect' && (() => {
@@ -3215,7 +3320,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                             buildings={ownBuildings} buildingId={editBuilding} setBuildingId={setEditBuilding} allowOutdoors={isAdmin}
                             departments={isAdmin ? departments : null} departmentId={editDept} setDepartmentId={setEditDept}
                         />
-                        {isAdmin && editingNode.type === 'location' && (
+                        {!isAdmin && editingNode.type === 'location' && (
                             <section className="mt-stairs" aria-label="Swap offices">
                                 <h3 className="mt-stairs-title">Office moved?</h3>
                                 <p className="ui-hint" style={{ margin: '0 0 10px' }}>

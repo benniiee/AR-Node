@@ -71,8 +71,9 @@ f = s.features_at(step, one_scan, None, wv, {"20261113_0200": m})
 assert f["sat_adv_bt_20min"] == -60.0 and f["sat_adv_minus_campus"] == -10.0
 f = s.features_at(step, one_scan, None, wv, {"20261113_0200": {}})   # earlier scan missing: persistence
 assert f["sat_motion_kmh"] == 0.0 and f["sat_adv_bt_20min"] == -50.0 and f["sat_adv_minus_campus"] == 0.0
-f = s.features_at(step, one_scan, None, wv, {})                      # not downloaded: unknown
-assert all(f[k] != f[k] for k in s.MOTION_FEATURES)                  # NaN
+assert f["sat_motion_missing"] == 0.0
+f = s.features_at(step, one_scan, None, wv, {})                      # not downloaded: persistence, flagged
+assert f["sat_motion_missing"] == 1.0 and f["sat_motion_kmh"] == 0.0 and f["sat_adv_minus_campus"] == 0.0
 assert not any(k in s.features_at(step, one_scan, None, wv) for k in s.MOTION_FEATURES)  # no motion asked for
 # ---- cloud phase: the step uses the newest scan whose phase file is online (scan start + 20 min)
 import cloud_phase as cp  # noqa: E402
@@ -86,4 +87,41 @@ assert cp.features_at(datetime(2026, 11, 13, 10, 30), {"20261113_0200": p})["sat
 assert cp.features_at(datetime(2026, 11, 13, 10, 30), {"20261113_0200": p})["sat_phase_missing"] == 0.0
 f = cp.features_at(datetime(2026, 11, 13, 10, 30), {"20261113_0110": p})  # older than MAX_AGE_MIN: an input, not NaN
 assert f["sat_phase_missing"] == 1.0 and all(f[k] == 0.0 for k in cp.CLOUD_FEATURES if k != "sat_phase_missing")
+# ---- network retries: two failed name lookups, then the answer (no real waiting)
+import urllib.error  # noqa: E402
+
+calls = {"n": 0}
+
+
+class _Answer:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return b"ok"
+
+
+def _flaky(req, timeout):
+    calls["n"] += 1
+    if calls["n"] <= 2:
+        raise urllib.error.URLError("[Errno 11003] getaddrinfo failed")
+    return _Answer()
+
+
+_real_open, _real_sleep = s.urllib.request.urlopen, s.time.sleep
+s.urllib.request.urlopen, s.time.sleep = _flaky, lambda _w: None
+try:
+    assert s._fetch(s.urllib.request.Request("https://example.invalid/")) == b"ok" and calls["n"] == 3
+    calls["n"] = -10  # never recovers: gives up after every wait
+    try:
+        s._fetch(s.urllib.request.Request("https://example.invalid/"))
+        raise AssertionError("expected the last error")
+    except urllib.error.URLError:
+        assert calls["n"] == -10 + len(s.RETRY_WAITS_S) + 1
+finally:
+    s.urllib.request.urlopen, s.time.sleep = _real_open, _real_sleep
+
 print("satellite self-check passed")

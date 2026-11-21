@@ -1,0 +1,8 @@
+cloud motion (satellite_motion.csv) 2024-04-01 -> 2026-11-20: 5,784 scans, 0 already done, 5,784 to go (about 17.5 GB, two strips each, 1 in 8)
+  band 13: 200/5,784 scans  (0.61 GB read, 1.0/s, about 1.5 h left)  ok=200 missing=0 errors=0
+  band 13: 400/5,784 scans  (1.24 GB read, 1.0/s, about 1.4 h left)  ok=400 missing=0 errors=0
+  band 13: 600/5,784 scans  (1.87 GB read, 1.0/s, about 1.4 h left)  ok=599 missing=1 errors=0
+  band 13: 800/5,784 scans  (2.49 GB read, 1.0/s, about 1.3 h left)  ok=799 missing=1 errors=0
+  band 13: 1,000/5,784 scans  (3.12 GB read, 1.1/s, about 1.3 h left)  ok=999 missing=1 errors=0
+  band 13: 1,200/5,784 scans  (3.72 GB read, 1.1/s, about 1.2 h left)  ok=1,194 missing=6 errors=0
+  band 13: 1,400/5,784 scans  (4.34 GB read, 1.1/s, about 1.2 h left)  ok=1,393 missing=7 errors=0

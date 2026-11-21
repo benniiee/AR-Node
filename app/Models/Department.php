@@ -18,6 +18,16 @@ class Department extends Model
     ];
 
     /**
+     * Student courses this department owns: its staff add and edit them and see their students' activity.
+     *
+     * @return HasMany<Course, $this>
+     */
+    public function courses(): HasMany
+    {
+        return $this->hasMany(Course::class);
+    }
+
+    /**
      * Faculty members assigned to this department.
      */
     public function users(): HasMany

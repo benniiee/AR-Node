@@ -21,9 +21,11 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Swap two offices: they trade names and departments and keep their spots.
 - Manage every wall and every staircase between floors.
 - Manage departments: create, rename, recolour, delete.
+- Manage every student course in the **Courses** tab (code, full name and the department it belongs to). A department's courses decide which students its staff see in the Activity log.
 - Manage staff accounts: create admins and faculty, assign departments, change roles, remove accounts. Nobody can remove or demote themselves, and at least one admin always remains.
 - Manage student accounts: add, edit, reset a password (gives a one-time temporary password), remove.
 - Open the Weather Dashboard (prediction history and accuracy) and update the weather now.
+- Read the **Activity log**: every staff sign-in and change (by any admin or faculty member, so admins see each other's work), student sign-ins (name, course, year level), and what visitors open on the map (the map itself, a chosen destination, the 3D / AR view), with the visitor's IP address and device. Filter by staff, students or visitors, and search. Kept 180 days.
 
 **Faculty staff** (admin console at `/admin`; an admin must assign them a department first)
 - Add, edit, move and remove nodes (rooms, offices, route nodes) only inside their own department's buildings and on those buildings' floors, including nodes other people placed there.
@@ -32,6 +34,8 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Draw walls, and edit or remove only the walls they drew.
 - Add staircases between their own nodes, or from one of their nodes to an outdoor node.
 - Preview a route to any destination they can see, and print QR codes for nodes.
+- Add, rename and remove their own department's student courses in the **Courses** tab (a new course is always filed under their department). A course with students in it cannot be removed.
+- Read the **Activity log** of the students in their department's courses only (their sign-ins), not other staff or visitors.
 - Cannot open the Weather Dashboard, Departments & accounts, or Students.
 
 **Students** (`/map`, signed in with their school ID or school email)
@@ -100,7 +104,7 @@ The trained models (`ml/model.json`, `ml/model_h60.json`, `ml/heat_model.json`),
 ### Tests
 
 ```bash
-php artisan test --compact                  # 244 PHP tests
+php artisan test --compact                  # 264 PHP tests
 node --test src/*.test.mjs tests/*.test.mjs # 122 JavaScript tests (routing, walls, stairs, doors, rain, heat, UV)
 python ml/test_satellite.py                 # satellite, cloud-motion and cloud-phase self-check (no network)
 vendor/bin/pint --format agent              # format PHP after changes
@@ -180,7 +184,7 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
    - *What it is:* a satellite rain estimate (microwave + Himawari), every 30 minutes, near real time, whole globe since 2019.
    - *Why:* it is the only live estimate of rain actually falling around campus. Himawari alone gives cloud temperature, not rain, and the airport is a few km away. It should help most with drizzle and with showers already falling nearby.
    - *Why on hold:* it needs a free JAXA account; FTP details arrive by email after registering at the GSMaP site (sharaku.eorc.jaxa.jp). The site was down for maintenance when checked, so the archive dates and file format are still unconfirmed.
-   - *How it would fit:* a `gsmap.py` next to `ml/satellite.py` (campus box statistics from the latest file, the same code for history and live), a `download_*.py` for history, a new variant in `ml/train.py`, and a flag on `satellite.py now`, like the two below.
+   - *How it would fit:* a `gsmap.py` next to `ml/satellite.py` (campus box statistics from the latest file, the same code for history and live), a `download_*.py` for history, a new variant in `ml/train.py`, and a flag on `satellite.py now`, like cloud motion below and cloud phase.
 2. **Himawari cloud motion (built, disabled: its history is too large to download for now).**
    - *What it is:* `ml/satellite.py` matches the band-13 box around campus (about 66 km wide) against the scan 10 minutes earlier. It finds how far the clouds moved (block matching), then looks two moves upstream for the cloud that should be over campus in 20 minutes. Inputs: `sat_motion_kmh`, `sat_adv_bt_20min`, `sat_adv_cold_20min`, `sat_adv_minus_campus` (`MOTION_FEATURES`).
    - *Why:* today's satellite inputs only describe clouds over and around campus now (plus a rough "cold cloud upwind" share), so a storm drifting in is noticed late. A 2024 study over the Maritime Continent found this kind of extrapolation of Himawari images beat "nothing moves" at every lead time. It cannot predict clouds that form on the spot; the cooling inputs cover those.
@@ -189,6 +193,7 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
 3. **Time-series neural network (experiment).** `python ml/train.py --sequence` (needs PyTorch) trains a GRU, a recurrent network, on the last 2 hours of inputs (8 steps of 15 minutes) next to the logistic regression, on the same rows and split. It writes `ml/reports/sequence_comparison.json` and never touches the model files. Result on Nov 19, 2026 (3 seeds averaged): validation Brier 0.02364 against 0.02369, only 0.2% better, so it **does not clear the 0.5% bar** and the app keeps the logistic regression. On the test months it looked a little better (Brier 0.0350 against 0.0364; 49.6% of rain starts warned against 46.6%, with 9.2% of dry moments warned against 10.2%; AUC 0.916 against 0.920), but choosing a model by its test score would tune on the test. Worth retrying once there is more data (cloud phase, ensemble history, a season of student rain reports). Using it would also need a scorer in the app (the GRU weights in JSON plus a small forward pass in PHP or in `satellite.py`), which is not built.
 4. **Ensemble forecasts.** Recording since Nov 18, 2026 (see above). Train with them after a few months of rows.
 5. **Himawari cloud phase:** adopted on Nov 19, 2026 (see the satellite bullet and Benchmarks above).
+6. **Airport temperature as a rain input (tested Nov 21, 2026, not adopted).** The rain model reads Open-Meteo's temperature, which runs 1.4-2 °C cooler than the airport thermometer, so two inputs were tried: the airport's latest temperature and dew-point gap minus the forecast's (0 without a recent report). Same data and split as the current model. Validation Brier got slightly **worse** (20 minutes 0.02353 against 0.02331, 1 hour 0.02567 against 0.02547), and the 1-hour test score too (0.0389 against 0.0377), so the code was removed again. The model gave them little weight: the forecast temperature and the satellite's cloud-top temperatures already carry it.
 
 **Retraining** uses the training dashboard: `python ml/gui.py` (install packages once with `python -m pip install -r ml/requirements.txt`). In the Rain model section: 1 Download Open-Meteo, 2 Download METAR, 2b Download satellite (optional, many hours from 2024, resumable; the cloud-phase history is a separate command, `python ml/download_satellite.py --start 2024-04-01 --cloud`, about 9 GB and 5 hours, resumable, needs `h5py`), 3 Train and evaluate (the 20-minute model), 3b Train 60-min model (optional). The Evaluation tab compares every input set, including the share of **rain starts** each one warned about. "Run parity check" proves the PHP app computes the same numbers as Python.
 
@@ -254,8 +259,10 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
 | `pathways` | Roads and walkways (drawn on the map; route nodes can be laid along them). |
 | `campus_areas` | Named campus outlines. |
 | `departments` | Name and label colour. |
+| `courses` | Student courses: unique `code` (BSIT), full name, owning `department_id` (indexed foreign key; a removed department leaves its courses unassigned). Students point at one with `users.course_id` (indexed foreign key; a course with students cannot be deleted). The API still sends and accepts the course code. |
 | `weather_predictions` | Every 10-minute prediction and what the airport saw (kept 180 days). |
 | `rain_reports` | "It's raining here" taps: who and when (kept 180 days). |
+| `activity_logs` | Sign-ins, staff changes (`LogStaffActions` middleware: which fields, never their values) and visitor map activity (`POST /api/activity`, 30 a minute per IP). Snapshots the person's role, name, course, year level and department, plus IP and device. Kept 180 days. |
 | `weather_ensembles` | Every refresh's ensemble-forecast summary per model and hour (never pruned; training history for a future input). |
 
 Foreign keys and the wall `group_id` are indexed. The public static file `/storage/data/map.json` holds buildings only; signed-in users get the full map from `GET /api/map-data`.

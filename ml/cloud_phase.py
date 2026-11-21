@@ -23,7 +23,7 @@ import re
 import urllib.request
 from datetime import datetime, timedelta
 
-from satellite import AREA_KM, LAT, LON, NEAR_KM, UA, ScanMissing, _geometry, _get, stamp_of
+from satellite import AREA_KM, LAT, LON, NEAR_KM, UA, ScanMissing, _fetch, _geometry, _get, stamp_of
 
 BUCKET = "https://noaa-himawari9.s3.amazonaws.com"
 FIRST_DAY = datetime(2023, 8, 1)
@@ -82,9 +82,7 @@ def phase_url(stamp: str) -> tuple[str, int]:
     """URL and size of scan 'YYYYMMDD_HHMM' (UTC)'s cloud-phase file (its name ends in the creation time, so it is listed)."""
     t = datetime.strptime(stamp, "%Y%m%d_%H%M")
     prefix = f"AHI-L2-FLDK-Clouds/{t:%Y/%m/%d/%H%M}/AHI-CPHS_"
-    req = urllib.request.Request(f"{BUCKET}/?list-type=2&prefix={prefix}", headers=UA)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        xml = r.read().decode()
+    xml = _fetch(urllib.request.Request(f"{BUCKET}/?list-type=2&prefix={prefix}", headers=UA)).decode()
     found = re.search(r"<Key>([^<]+)</Key>.*?<Size>(\d+)</Size>", xml, re.S)
     if not found:
         raise ScanMissing(stamp)

@@ -13,7 +13,7 @@ import { SyncPill } from './SyncPill';
 import AppMenu from './AppMenu';
 import { useInstallPrompt } from '../pwa';
 import { useAutoSync } from '../useAutoSync';
-import { sessionHeaders } from '../studentSession';
+import { sessionHeaders, logVisit } from '../studentSession';
 import StairHint from './StairHint';
 import StairModal from './StairModal';
 import { nodeRainStatus, nodeRainLabel, rainMultiplierOf, heatModeActive, NODE_STATUS } from '../weatherCost';
@@ -155,6 +155,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const installOffer = useInstallPrompt();
     const showInstall = installOffer.canInstall || installOffer.iosHint;
     const authHeaders = useMemo(() => sessionHeaders(session), [session]);
+    // Activity log: a visitor's map visit (students are logged when they sign in).
+    useEffect(() => { if (isVisitor) logVisit('map.opened'); }, [isVisitor]);
     const mapRef = useRef(null);
     const mapInstance = useRef(null);
     const markersRef = useRef({});
@@ -1384,6 +1386,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // Coming back reverses it with a shorter "Back to the 2D map" overlay.
     const launch3D = () => {
         if (!route || !userLocation || leaving || launching || showAR) return;
+        if (isVisitor) logVisit('route.3d', route.path?.[route.path.length - 1]?.name);
         // Fresh local trail for every 3D session.
         try { sessionStorage.removeItem('ar-cam-log'); } catch { /* private mode */ }
         setLaunching(true);
@@ -1626,6 +1629,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         setDestinationOpen(false);
     };
     const chooseDestination = (d) => {
+        if (isVisitor) logVisit('route.chosen', d.name || d.short_name);
         setDestId(String(d.id));
         setDestinationOpen(false);
         // Different floor than the one shown: ask where the student is (a
@@ -2393,7 +2397,10 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                         <StairHint
                             stair={stairHint}
                             onGoToFloor={(f) => setFloor(f)}
-                            onRouteIn3D={routeBuildingIds.size > 0 ? () => setRouteModelOpen(true) : null}
+                            onRouteIn3D={routeBuildingIds.size > 0 ? () => {
+                                setRouteModelOpen(true);
+                                if (isVisitor) logVisit('route.model3d', route?.path?.[route.path.length - 1]?.name);
+                            } : null}
                         />
                     )}
                 </div>

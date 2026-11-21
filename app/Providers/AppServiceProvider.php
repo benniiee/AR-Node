@@ -55,6 +55,8 @@ class AppServiceProvider extends ServiceProvider
         // in /storage/data/, so these are fallbacks. Generous, because many phones can share
         // one public address.
         RateLimiter::for('public-read', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        // Visitor activity from the public map: a few events per route, so 30 a minute per IP is plenty.
+        RateLimiter::for('activity', fn (Request $request) => Limit::perMinute(30)->by('activity|'.$request->ip()));
         // Manual weather refresh from the admin Weather Dashboard: each one makes 4-5 calls to the
         // free Open-Meteo and aviationweather.gov services, so a few per minute is plenty.
         RateLimiter::for('weather-refresh', fn (Request $request) => Limit::perMinute(3)->by((string) ($request->user()?->id ?? $request->ip())));

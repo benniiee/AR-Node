@@ -71,7 +71,8 @@ return [
 
     'python' => env('WEATHER_PYTHON', 'python'),
 
-    'satellite_timeout' => (int) env('WEATHER_SATELLITE_TIMEOUT', 45),
+    // Room for ml/satellite.py's network retries (a few seconds of DNS drop-out) before giving up.
+    'satellite_timeout' => (int) env('WEATHER_SATELLITE_TIMEOUT', 120),
 
     // Ensemble forecasts recorded every refresh (weather_ensembles) to train a future rain-model input:
     // the Ensemble API keeps only ~3 days of the past. Free for non-commercial use (10,000 calls a day).

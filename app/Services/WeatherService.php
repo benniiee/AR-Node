@@ -92,7 +92,8 @@ class WeatherService
                 ->connectTimeout(3)
                 ->timeout(8)
                 // GET is idempotent, so retrying transient failures is safe.
-                ->retry([200, 600], 0, function (Throwable $exception): bool {
+                // Waits long enough to ride out a few seconds of failed name lookups (DNS drop-outs).
+                ->retry([1000, 3000], 0, function (Throwable $exception): bool {
                     return $exception instanceof ConnectionException
                         || ($exception instanceof RequestException
                             && ($exception->response->serverError() || $exception->response->status() === 429));
@@ -542,6 +543,10 @@ class WeatherService
 
         try {
             $result = Process::path(base_path('ml'))
+                // The whole environment, not Symfony's default: under a web server (Update now) that keeps
+                // only variables also in $_SERVER, which drops Windows' SystemRoot, and without it every
+                // address lookup in Python fails ("getaddrinfo failed"), so the satellite was never read.
+                ->env(getenv())
                 ->timeout((int) config('weather.satellite_timeout', 45))
                 ->run($command);
         } catch (Throwable $exception) {
@@ -636,7 +641,7 @@ class WeatherService
         return Http::withHeaders(['User-Agent' => (string) config('weather.user_agent')])
             ->connectTimeout(4)
             ->timeout(8)
-            ->retry([300, 900], 0, function (Throwable $exception): bool {
+            ->retry([1000, 3000], 0, function (Throwable $exception): bool {
                 return $exception instanceof ConnectionException
                     || ($exception instanceof RequestException
                         && ($exception->response->serverError() || $exception->response->status() === 429));

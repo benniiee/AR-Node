@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import L from 'leaflet';
-import { routeArrowMarkers } from '../routeArrows';
 import { createDestinationPinIcon } from '../mapIcons';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../povMotion';
 import { APP_TAG } from '../mobileApi';
@@ -1061,7 +1060,6 @@ export default function ARView({
     const miniRouteGlowRef = useRef(null);
     const miniRouteRef = useRef(null);
     const miniDestRef = useRef(null);
-    const miniArrowsRef = useRef(null);
     // POV wedge (absolute camera heading) + relative-direction arrow
     // (signed angle from camera facing to the nearest node). Both ride on
     // the user dot and are rotated straight in the DOM — no React renders.
@@ -3604,7 +3602,6 @@ export default function ARView({
             miniRouteGlowRef.current = null;
             miniRouteRef.current = null;
             miniDestRef.current = null;
-            miniArrowsRef.current = null;
             miniPovRef.current = null;
             miniDirRef.current = null;
             miniBuildingsRef.current = null;
@@ -3658,10 +3655,6 @@ export default function ARView({
                     color: C.route, weight: 4, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false,
                 }).addTo(map);
             }
-            // Direction arrows, rebuilt with the route (same cue as the 2D screen).
-            if (!miniArrowsRef.current) miniArrowsRef.current = L.layerGroup().addTo(map);
-            miniArrowsRef.current.clearLayers();
-            routeArrowMarkers(latlngs, map.getZoom()).forEach((m) => m.addTo(miniArrowsRef.current));
             const dest = latlngs[latlngs.length - 1];
             if (miniDestRef.current) {
                 miniDestRef.current.setLatLng(dest);
@@ -3670,7 +3663,6 @@ export default function ARView({
             }
         } else {
             // No route (yet): clear stale path layers, keep the user dot.
-            if (miniArrowsRef.current) miniArrowsRef.current.clearLayers();
             for (const ref of [miniRouteGlowRef, miniRouteRef, miniDestRef]) {
                 if (ref.current) {
                     map.removeLayer(ref.current);

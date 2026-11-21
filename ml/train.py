@@ -402,13 +402,18 @@ def main() -> None:
             # An extra product only counts if its history covers the satellite steps; otherwise it would shrink every variant.
             sat_only = sat[SAT_FEATURES].dropna()
             covered = sat.loc[sat_only.index, extra_cols].notna().all(axis=1)
-            if name == "phase":  # never NaN (a missing scan is an input): count the steps that really have one
+            # Never NaN (a missing scan is an input): count the steps that really have one.
+            if name == "phase":
                 covered &= sat.loc[sat_only.index, "sat_phase_missing"].eq(0)
+            if name == "motion":
+                covered &= sat.loc[sat_only.index, "sat_motion_missing"].eq(0)
             labelled = covered.index[y.reindex(covered.index).notna().to_numpy()]
             share = float(covered.reindex(labelled).mean()) if len(labelled) else 0.0
             # Cloud phase: NOAA's archive has no phase files from 12 Oct to 25 Nov 2025 (checked Nov 2026), so 91%
             # is all there is; those steps stay in, with sat_phase_missing = 1.
-            need = 0.90 if name == "phase" else 0.98
+            # Cloud motion: the full history is ~140 GB, so download_satellite.py --every 8 keeps 1 scan in 8
+            # (about 12% of the steps); the rest read sat_motion_missing = 1. It still has to beat the 0.5% rule.
+            need = {"phase": 0.90, "motion": 0.10}.get(name, 0.98)
             if share < need:
                 print(f"{VARIANT_NAMES[name]}: covers {share:.0%} of the labelled satellite steps ({need:.0%} needed): skipped. "
                       f"Let {how} finish, then train again.")

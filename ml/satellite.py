@@ -61,7 +61,9 @@ SAT_FEATURES = ["sat_bt_campus", "sat_bt_min_10km", "sat_bt_min_30km", "sat_cold
                 "sat_wv_campus", "sat_wv_minus_ir_campus", "sat_wv_minus_ir_10km", "sat_wv_min_30km"]
 # Cloud-motion inputs (features_at(..., motion=...)); kept apart from SAT_FEATURES so models trained without
 # them are unchanged. Persistence (no motion, today's campus values) when the earlier scan is missing.
-MOTION_FEATURES = ["sat_motion_kmh", "sat_adv_bt_20min", "sat_adv_cold_20min", "sat_adv_minus_campus"]
+# sat_motion_missing: 1 when that scan's motion was not downloaded (download_satellite.py --every keeps only
+# 1 scan in N); the others then read as persistence. Live, motion is always computed, so it is 0.
+MOTION_FEATURES = ["sat_motion_kmh", "sat_adv_bt_20min", "sat_adv_cold_20min", "sat_adv_minus_campus", "sat_motion_missing"]
 MOTION_KEYS = ["speed_kmh", "shift_e_km", "shift_n_km", "adv_bt", "adv_cold"]
 MOTION_MAX_PX = 6         # search +-6 pixels (2 km) per 10 minutes = up to ~70 km/h
 MOTION_MIN_TEXTURE = 1.0  # deg C: a box flatter than this (clear sky, flat overcast) gives no usable motion
@@ -94,24 +96,39 @@ def _segment() -> int:
     return int((line - 1) // 550) + 1
 
 
-def _get(url: str, start: int, end: int) -> bytes:
-    req = urllib.request.Request(url, headers={**UA, "Range": f"bytes={start}-{end}"})
-    for attempt in range(3):
+# A dropped connection, a failed name lookup (this PC's DNS drops out for several seconds at a
+# time: "getaddrinfo failed", Nov 2026) or a server error is retried after these waits, then the
+# read gives up and the app scores its model without satellite. Worst case about 90 s, inside
+# weather.satellite_timeout.
+RETRY_WAITS_S = (1, 2, 4, 8)
+NET_TIMEOUT_S = 15
+
+
+def _fetch(req: urllib.request.Request) -> bytes:
+    """The response body, retrying network and server errors (other HTTP errors are raised at once)."""
+    for wait in (*RETRY_WAITS_S, None):
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=NET_TIMEOUT_S) as r:
                 return r.read()
         except urllib.error.HTTPError as exc:
-            if exc.code in (403, 404):
-                raise ScanMissing(url) from exc
-            if exc.code == 416:  # range past the end of the file
-                return b""
-            if attempt == 2:
+            if exc.code < 500 or wait is None:
                 raise
         except (urllib.error.URLError, TimeoutError, ConnectionError):
-            if attempt == 2:
+            if wait is None:
                 raise
-        time.sleep(1.5 * (attempt + 1))
+        time.sleep(wait)
     return b""
+
+
+def _get(url: str, start: int, end: int) -> bytes:
+    try:
+        return _fetch(urllib.request.Request(url, headers={**UA, "Range": f"bytes={start}-{end}"}))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (403, 404):
+            raise ScanMissing(url) from exc
+        if exc.code == 416:  # range past the end of the file
+            return b""
+        raise
 
 
 def fetch_rows(stamp: str, rows_needed, band: int = BAND) -> tuple[dict, bytes, int]:
@@ -364,7 +381,7 @@ def features_at(t_local: datetime, scans: dict, wind_dir: float | None, wv: dict
 
     motion {stamp: motion_stats() or {} when the earlier scan was missing} adds MOTION_FEATURES for the
     scan used: {} = persistence (no motion, the campus values); a stamp not in motion at all (history not
-    downloaded) = NaN. Without motion (None) they are left out.
+    downloaded) = persistence with sat_motion_missing = 1. Without motion (None) they are left out.
 
     Uses the newest band-13 scan online at t, if it is at most MAX_AGE_MIN old, and band 10 of that same
     scan; None = satellite missing (either band). A missing earlier scan makes its cloud-top change 0.
@@ -416,8 +433,6 @@ def features_at(t_local: datetime, scans: dict, wind_dir: float | None, wv: dict
 
 
 def _motion_features(m: dict | None, now: dict) -> dict:
-    if m is None:
-        return {k: float("nan") for k in MOTION_FEATURES}
     adv_bt = float(m["adv_bt"]) if m else float(now["campus_bt"])
     return {
         "sat_motion_kmh": float(m["speed_kmh"]) if m else 0.0,
@@ -425,6 +440,7 @@ def _motion_features(m: dict | None, now: dict) -> dict:
         "sat_adv_cold_20min": float(m["adv_cold"]) if m else float(now["cold_10km"]),
         # Negative = a colder (taller) cloud is on its way to campus.
         "sat_adv_minus_campus": adv_bt - float(now["campus_bt"]),
+        "sat_motion_missing": 1.0 if m is None else 0.0,
     }
 
 

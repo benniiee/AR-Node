@@ -18,7 +18,7 @@
 // uiTokens.js), so neither is used here.
 import L from 'leaflet';
 import { C, FONT_STACK, TYPE } from './uiTokens.js';
-import { polygonCentroid, floorCountLabel, statusLabel, interiorPoint, bridgeKindLabel, deckLevelLabel } from './campusGeometry.js';
+import { polygonCentroid, floorCountLabel, statusLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, pathwayWidthM } from './campusGeometry.js';
 import { floorAria, floorOf } from './floors.js';
 import { doorFrames, doorGapWalls, DOOR_HEIGHT_M } from './doors.js';
 import { planFromLink, stairTreads, walkLine } from './stairGeometry.js';
@@ -146,6 +146,14 @@ export function pathwayStyle(kind, status, theme = 'dark') {
 export function prepareCampusPanes(map) {
     ensureStyles();
     if (!map.getPane('campusGround')) map.createPane('campusGround').style.zIndex = 380;
+    // The floor guide (drawFloorGuide) sits above the buildings (overlay pane, 400) and under the
+    // node pins (600): buildings are redrawn on every view change, and in a shared pane the last
+    // drawn wins, which buried the guide's floor plate after Student view -> Admin view -> Student view.
+    if (!map.getPane('floorGuide')) {
+        const guide = map.createPane('floorGuide');
+        guide.style.zIndex = 410;
+        guide.style.pointerEvents = 'none';
+    }
     if (!map.getPane('campusShadow')) {
         const pane = map.createPane('campusShadow');
         pane.style.zIndex = 390;
@@ -479,11 +487,12 @@ export function drawFloorGuide(layer, building, level, { named = false } = {}) {
     const ring = building.polygon;
     const at = (k) => ring.map((p) => [p.lat + floorLiftDeg(building, k), p.lng]);
     const liftOf = (k) => floorLiftDeg(building, k);
+    const pane = layer._map?.getPane('floorGuide') ? 'floorGuide' : undefined;
 
     // Ghost of the whole building: roof outline and every floor above.
     for (let k = floors; k > chosen; k -= 1) {
         L.polygon(at(k), {
-            pane: undefined, color: '#2a2a33', weight: 1, opacity: 0.35, dashArray: '3, 5',
+            pane, color: '#2a2a33', weight: 1, opacity: 0.35, dashArray: '3, 5',
             fill: false, interactive: false,
         }).addTo(layer);
     }
@@ -491,11 +500,11 @@ export function drawFloorGuide(layer, building, level, { named = false } = {}) {
     if (chosen > 0) {
         for (const w of visibleWalls(ring)) {
             L.polygon([[w.a.lat, w.a.lng], [w.b.lat, w.b.lng], [w.b.lat + liftOf(chosen), w.b.lng], [w.a.lat + liftOf(chosen), w.a.lng]], {
-                stroke: true, color: '#55555f', weight: 0.8, opacity: 0.6, fillColor: '#c9c6c0', fillOpacity: 0.75, interactive: false,
+                stroke: true, pane, color: '#55555f', weight: 0.8, opacity: 0.6, fillColor: '#c9c6c0', fillOpacity: 0.75, interactive: false,
             }).addTo(layer);
         }
         for (let k = 1; k < chosen; k += 1) {
-            L.polygon(at(k), { color: '#55555f', weight: 1, opacity: 0.45, fill: false, interactive: false }).addTo(layer);
+            L.polygon(at(k), { pane, color: '#55555f', weight: 1, opacity: 0.45, fill: false, interactive: false }).addTo(layer);
         }
     }
     // Doors: on the ground floor they are gaps in the plate's edge; seen from
@@ -506,20 +515,20 @@ export function drawFloorGuide(layer, building, level, { named = false } = {}) {
         for (const d of doors) {
             if (Math.cos((d.normalDeg - 180) * Math.PI / 180) <= 0.05) continue;
             L.polygon([[d.a.lat, d.a.lng], [d.b.lat, d.b.lng], [d.b.lat + doorLift, d.b.lng], [d.a.lat + doorLift, d.a.lng]], {
-                color: '#f4f1ea', weight: 1.2, opacity: 0.9, fillColor: '#2a2420', fillOpacity: 0.92, interactive: false,
+                pane, color: '#f4f1ea', weight: 1.2, opacity: 0.9, fillColor: '#2a2420', fillOpacity: 0.92, interactive: false,
             }).addTo(layer);
         }
     }
     // The chosen floor: a highlighted plate the pin stands on.
     L.polygon(at(chosen), {
-        color: GUIDE, weight: 2.5, opacity: 1, fillColor: GUIDE, fillOpacity: 0.16, lineJoin: 'round',
+        pane, color: GUIDE, weight: 2.5, opacity: 1, fillColor: GUIDE, fillOpacity: 0.16, lineJoin: 'round',
         interactive: false, className: 'floor-guide-plate',
     }).addTo(layer);
     if (chosen === 0) {
         for (const d of doors) {
             const line = [[d.a.lat, d.a.lng], [d.b.lat, d.b.lng]];
-            L.polyline(line, { color: '#16161b', weight: 8, opacity: 0.85, lineCap: 'butt', interactive: false }).addTo(layer);
-            L.polyline(line, { color: '#ffffff', weight: 4, opacity: 1, lineCap: 'butt', interactive: false }).addTo(layer);
+            L.polyline(line, { pane, color: '#16161b', weight: 8, opacity: 0.85, lineCap: 'butt', interactive: false }).addTo(layer);
+            L.polyline(line, { pane, color: '#ffffff', weight: 4, opacity: 1, lineCap: 'butt', interactive: false }).addTo(layer);
         }
     }
     const c = interiorPoint(ring);
@@ -759,12 +768,15 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
 export function drawPathways(layer, pathways, { popup = null, skipId = null, theme = 'dark' } = {}) {
     ensureStyles();
     layer.clearLayers();
+    const lines = [];
     for (const p of pathways || []) {
         if (p.id === skipId || !Array.isArray(p.coordinates) || p.coordinates.length < 2) continue;
         const latlngs = p.coordinates.map((c) => [c.lat, c.lng]);
         // On the ground pane (under the shadows) when the map has one.
         const pane = layer._map?.getPane('campusGround') ? 'campusGround' : undefined;
-        L.polyline(latlngs, { ...pathwayStyle(p.kind, p.status, theme), pane, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer);
+        const style = pathwayStyle(p.kind, p.status, theme);
+        const line = L.polyline(latlngs, { ...style, pane, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer);
+        lines.push({ line, minPx: style.weight, widthM: pathwayWidthM(p.kind) });
         if (popup) {
             // Fat invisible hit line: a 3 px walkway is untappable on phones.
             L.polyline(latlngs, { weight: 22, opacity: 0, interactive: true, className: 'campus-hit' })
@@ -772,4 +784,15 @@ export function drawPathways(layer, pathways, { popup = null, skipId = null, the
                 .addTo(layer);
         }
     }
+    // Each line as wide as the pathway really is (the 3D strips use the same widths), never
+    // thinner than its style's weight when zoomed out. One zoom handler per layer.
+    const map = layer._map;
+    if (!map) return;
+    if (layer._fitPathWidths) map.off('zoomend', layer._fitPathWidths);
+    layer._fitPathWidths = () => {
+        const metresPerPx = (40075016.686 * Math.cos((map.getCenter().lat * Math.PI) / 180)) / 2 ** (map.getZoom() + 8);
+        for (const { line, minPx, widthM } of lines) line.setStyle({ weight: Math.max(minPx, widthM / metresPerPx) });
+    };
+    map.on('zoomend', layer._fitPathWidths);
+    layer._fitPathWidths();
 }

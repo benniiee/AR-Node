@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ActivityLog;
 use App\Models\RainReport;
 use App\Models\WeatherPrediction;
 use Illuminate\Foundation\Inspiring;
@@ -25,7 +26,7 @@ Schedule::command('weather:refresh')
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 
 // Delete prediction history and rain reports older than their KEEP_DAYS (180 days).
-Schedule::command('model:prune', ['--model' => [WeatherPrediction::class, RainReport::class]])->daily();
+Schedule::command('model:prune', ['--model' => [WeatherPrediction::class, RainReport::class, ActivityLog::class]])->daily();
 
 // Public map file (nodes, staircases, walls, buildings, pathways) on the same
 // 20-minute beat, so a phone's automatic sync always finds both files fresh.

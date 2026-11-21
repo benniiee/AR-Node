@@ -715,11 +715,13 @@ export default function AdminWeather({ fail }) {
                     </div>
                     <div className="wx-update">
                         <span className="wx-updated" role="status" aria-live="polite">
-                            {updating ? 'Updating…' : latest ? `Updated ${fmt.clock.format(Date.parse(latest.time))}` : ''}
+                            {/* The button says it is updating; this keeps the last time until the new one arrives. */}
+                            {latest ? `Updated ${fmt.clock.format(Date.parse(latest.time))}` : ''}
                         </span>
                         <Tip text="Get the latest forecast and airport report now. It also updates automatically every 10 minutes." focusable={false}>
                             <button type="button" className="ui-btn ui-btn-secondary" onClick={updateNow} disabled={updating} aria-busy={updating}>
-                                {updating ? 'Updating…' : 'Update now'}
+                                {updating && <span className="btn-spin" aria-hidden="true" />}
+                                {updating ? 'Updating' : 'Update now'}
                             </button>
                         </Tip>
                     </div>

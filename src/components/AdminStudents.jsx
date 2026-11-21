@@ -4,18 +4,12 @@ import { C, TYPE, TAP } from '../uiTokens';
 import { confirmAction } from './ConfirmDialog';
 import ScrollWindow from './ScrollWindow';
 
-// Keep in step with App\Models\User::COURSES (the server validates against it).
-export const STUDENT_COURSES = [
-    { code: 'BSIT', name: 'Bachelor of Science in Information Technology' },
-    { code: 'CSM', name: 'College of Science and Mathematics' },
-    { code: 'BSN', name: 'Bachelor of Science in Nursing' },
-];
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
 const yearLabel = (n) => `${n}${['th', 'st', 'nd', 'rd'][n] || 'th'} year`;
 // Same rule as User::STUDENT_NUMBER_PATTERN: two letters + nine digits.
 const ID_PATTERN = /^[a-z]{2}\d{9}$/;
 const DEFAULT_DOMAIN = 'wmsu.edu.ph';
-const EMPTY = { student_number: '', first_name: '', last_name: '', course: 'BSIT', year_level: 1, password: '' };
+const EMPTY = { student_number: '', first_name: '', last_name: '', course: '', year_level: 1, password: '' };
 
 const CSS = `
     .stu-page {
@@ -68,7 +62,7 @@ const CSS = `
     }
     .stu-list > .stu-row:first-child { border-top-color: transparent; }
     .stu-row:hover, .stu-row.is-editing { background: rgba(255,255,255,0.04); }
-    .stu-row.is-editing { box-shadow: inset 3px 0 0 ${C.primary}; }
+    .stu-row.is-editing { background: rgba(255,255,255,0.07); }
     .stu-avatar { grid-area: avatar; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
         background: rgba(255,255,255,0.07); color: ${C.text}; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
     .stu-text { grid-area: text; min-width: 0; }
@@ -119,10 +113,19 @@ export default function AdminStudents({ notify, fail }) {
     const [copied, setCopied] = useState(false);
     const idRef = useRef(null);
 
+    // Courses come from the Courses tab (the courses table), not a fixed list.
+    const [courses, setCourses] = useState([]);
     const load = useCallback(async () => {
-        try { setStudents(await api.getStudents()); } catch (err) { setStudents([]); fail(err.message); }
+        try {
+            const [list, courseList] = await Promise.all([api.getStudents(), api.getCourses()]);
+            setStudents(list);
+            setCourses(courseList);
+        } catch (err) { setStudents([]); fail(err.message); }
     }, [fail]);
     useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        if (form.course === '' && courses.length) setForm((f) => ({ ...f, course: courses[0].code }));
+    }, [courses, form.course]);
 
     // The email domain the server uses, read off an existing student.
     const domain = useMemo(() => {
@@ -143,7 +146,7 @@ export default function AdminStudents({ notify, fail }) {
     const reset = () => { setForm(EMPTY); setEditing(null); setTouchedId(false); setShowPw(false); };
     const startEdit = (s) => {
         setEditing(s);
-        setForm({ student_number: s.student_number || '', first_name: s.first_name || '', last_name: s.last_name || '', course: s.course || 'BSIT', year_level: s.year_level || 1, password: '' });
+        setForm({ student_number: s.student_number || '', first_name: s.first_name || '', last_name: s.last_name || '', course: s.course || courses[0]?.code || '', year_level: s.year_level || 1, password: '' });
         setTouchedId(true);
         setTimeout(() => idRef.current?.focus(), 50);
     };
@@ -215,7 +218,7 @@ export default function AdminStudents({ notify, fail }) {
     const list = students || [];
     const counts = useMemo(() => {
         const m = { all: list.length };
-        for (const c of STUDENT_COURSES) m[c.code] = list.filter((s) => s.course === c.code).length;
+        for (const c of courses) m[c.code] = list.filter((s) => s.course === c.code).length;
         return m;
     }, [list]);
     const shown = useMemo(() => {
@@ -271,7 +274,8 @@ export default function AdminStudents({ notify, fail }) {
                             <div className="ui-field">
                                 <label className="ui-label" htmlFor="stu-course">Course</label>
                                 <select id="stu-course" className="ui-select" value={form.course} onChange={set('course')}>
-                                    {STUDENT_COURSES.map((c) => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
+                                    {courses.length === 0 && <option value="">Add a course in the Courses tab first</option>}
+                                    {courses.map((c) => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
                                 </select>
                             </div>
                             <div className="ui-field">
@@ -345,11 +349,11 @@ export default function AdminStudents({ notify, fail }) {
                                 <input id="stu-search" className="ui-input" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, school ID or year" />
                             </div>
                             <div className="stu-chips" role="group" aria-label="Filter by course">
-                                {[{ code: 'all', label: 'All' }, ...STUDENT_COURSES.map((c) => ({ code: c.code, label: c.code }))].map((c) => (
+                                {[{ code: 'all', label: 'All' }, ...courses.map((c) => ({ code: c.code, label: c.code }))].map((c) => (
                                     <button
                                         key={c.code} type="button" className="stu-chip" aria-pressed={course === c.code}
                                         onClick={() => setCourse(c.code)}
-                                        title={STUDENT_COURSES.find((x) => x.code === c.code)?.name}
+                                        title={courses.find((x) => x.code === c.code)?.name}
                                     >
                                         {c.label} <b>{counts[c.code] ?? 0}</b>
                                     </button>

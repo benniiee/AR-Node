@@ -46,6 +46,10 @@ export function deckLevelLabel(deckFloor) {
 }
 
 export const statusLabel = (status) => BUILDING_STATUSES.find((s) => s.value === status)?.label || 'Existing';
+/** Real width of a pathway, metres: the 3D strips and the 2D map draw it this wide. */
+export const PATHWAY_WIDTH_M = { road: 5, walkway: 2.4, covered: 2.4 };
+export const pathwayWidthM = (kind) => PATHWAY_WIDTH_M[kind] ?? PATHWAY_WIDTH_M.walkway;
+
 export const kindLabel = (kind) => PATHWAY_KINDS.find((k) => k.value === kind)?.label || 'Walkway';
 
 /** Centre of a polygon's area (falls back to the vertex average for slivers). */

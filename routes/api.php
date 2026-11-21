@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BorderController;
 use App\Http\Controllers\Api\BridgeController;
 use App\Http\Controllers\Api\BuildingController;
 use App\Http\Controllers\Api\CampusAreaController;
+use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\MapDataController;
 use App\Http\Controllers\Api\NodeController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\Api\WeatherController;
 use App\Http\Controllers\Api\WeatherHistoryController;
 use App\Http\Controllers\Api\WeatherRefreshController;
 use App\Http\Middleware\EnsureStaff;
+use App\Http\Middleware\LogStaffActions;
 use Illuminate\Support\Facades\Route;
 
 // Public reads, throttled by the 'public-read' limiter (AppServiceProvider).
@@ -27,6 +30,9 @@ Route::get('/map-data', MapDataController::class)->middleware('throttle:public-r
 // Campus weather state for weather-aware routing. Separate from /api/map-data
 // so a 20-minute refresh never invalidates the graph cache.
 Route::get('/weather', WeatherController::class)->middleware('throttle:public-read');
+
+// What visitors (no account) do on the public map, for the activity log. Throttled per IP.
+Route::post('/activity', [ActivityLogController::class, 'store'])->middleware('throttle:activity');
 
 // Student sign-in for /map (the admin console refuses student accounts).
 // Throttled by the 'sign-in' limiter: 10 attempts a minute per IP.
@@ -44,7 +50,8 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:si
 
 // Protected: admin console endpoints, staff (admin / faculty) only. Student
 // accounts authenticate but are refused here by EnsureStaff.
-Route::middleware(['auth:sanctum', EnsureStaff::class])->group(function () {
+// LogStaffActions: every successful change made here goes to the activity log.
+Route::middleware(['auth:sanctum', EnsureStaff::class, LogStaffActions::class])->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -97,4 +104,10 @@ Route::middleware(['auth:sanctum', EnsureStaff::class])->group(function () {
     Route::get('/weather/history', WeatherHistoryController::class);
     // "Update now" on the Weather Dashboard (admin only): refresh without waiting for the schedule.
     Route::post('/weather/refresh', WeatherRefreshController::class)->middleware('throttle:weather-refresh');
+
+    // Student courses: admins manage all; department staff their own department's (enforced in controller).
+    Route::apiResource('courses', CourseController::class)->except('show');
+
+    // The activity log: admins see everyone; department staff see their courses' students (enforced in controller).
+    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
 });

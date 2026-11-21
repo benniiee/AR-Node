@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Course;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -33,9 +34,13 @@ class StudentSeeder extends Seeder
         }
 
         foreach (self::STUDENTS as $student) {
+            // The courses table starts with BSIT, CSM and BSN (create_courses_table).
+            $courseId = Course::firstOrCreate(['code' => $student['course']], ['name' => $student['course']])->id;
+            unset($student['course']);
             User::updateOrCreate(
                 ['student_number' => $student['student_number']],
                 $student + [
+                    'course_id' => $courseId,
                     'role' => 'student',
                     'name' => "{$student['first_name']} {$student['last_name']}",
                     'email' => User::studentEmail($student['student_number']),

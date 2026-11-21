@@ -32,6 +32,21 @@ export function sessionHeaders(session) {
     return session?.token ? { ...TUNNEL_HEADERS, Authorization: `Bearer ${session.token}`, Accept: 'application/json' } : TUNNEL_HEADERS;
 }
 
+/**
+ * Activity log (security): what a visitor opens on the map (map.opened, route.chosen, route.3d,
+ * route.model3d; see ActivityLog::VISITOR_ACTIONS). Fire and forget: offline or refused never
+ * gets in the way. The server ignores it for signed-in people.
+ */
+export function logVisit(action, subject = null) {
+    try {
+        fetch(`${API_BASE}/api/activity`, {
+            method: 'POST', keepalive: true,
+            headers: { ...TUNNEL_HEADERS, Accept: 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, subject: subject ? String(subject).slice(0, 120) : null }),
+        }).catch(() => {});
+    } catch { /* never breaks the map */ }
+}
+
 async function call(path, { method = 'GET', body, token } = {}) {
     let res;
     try {

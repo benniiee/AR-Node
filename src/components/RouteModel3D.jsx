@@ -7,7 +7,7 @@ import { buildingHeightM } from '../sunShadow';
 import { doorFrames, DOOR_HEIGHT_M } from '../doors';
 import { planFromLink, stairTreads, walkLine } from '../stairGeometry';
 import { makeLabel, disposeTree } from './StairPreview3D';
-import { pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
+import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
 import { convexHull, clipToConvex } from '../planarGeometry';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
@@ -126,7 +126,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         const walkMat = new THREE.MeshStandardMaterial({ color: 0x4a4b52, roughness: 1 });
         for (const pw of pathways || []) {
             const pts = (pw.coordinates || []).map((c) => xz(c.lat, c.lng));
-            const width = pw.kind === 'road' ? 5 : 2.4;
+            const width = pathwayWidthM(pw.kind);
             for (let i = 1; i < pts.length; i += 1) {
                 const a = pts[i - 1];
                 const b = pts[i];

@@ -4,6 +4,8 @@ import { api } from '../api';
 import AdminDepartments from './AdminDepartments';
 import AdminStudents from './AdminStudents';
 import AdminWeather from './AdminWeather';
+import AdminActivity from './AdminActivity';
+import AdminCourses from './AdminCourses';
 import { C, TYPE, PANEL_RADIUS, RADIUS, MAP_ZOOM_CSS, ELEVATION, PILL, TAP } from '../uiTokens';
 import { usePresence, useHold, Collapse } from '../motion';
 import { IDLE, TOOL_ADD, TOOL_MOVE, TOOL_PIN, TOOL_WALLS, TOOL_BUILDING, TOOL_PATHWAY, TOOL_BRIDGE, TOOL_AREA, TOOL_AREAS, resolveTool, resolveMode, surfaceFor } from '../toolState';
@@ -1003,7 +1005,6 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         });
         // Colours follow the base map of the current view (light / dark).
         drawPathways(pLayer, pathways, { popup: pathwayPopup, skipId: editingId('pathway'), theme: mapTheme });
-        if (brLayer) drawBridges(brLayer, bridges, { popup: bridgePopup, skipId: editingId('bridge'), theme: mapTheme });
         // Solid roofs only where shadows are drawn (Student view); Admin view
         // keeps the see-through fill so the base-map outline shows for tracing.
         // Student view: 2.5D buildings (lifted roofs, sun-shaded walls), like /map.
@@ -1014,6 +1015,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             // Buildings the previewed route goes into: see-through, door visible.
             xray: new Set((routeResult?.path || []).map((p) => p.building_id).filter((id) => id !== null && id !== undefined)),
         });
+        // After the buildings: in the shared overlay pane the last drawn is on top, and decks cross over them.
+        if (brLayer) drawBridges(brLayer, bridges, { popup: bridgePopup, skipId: editingId('bridge'), theme: mapTheme });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [buildings, pathways, bridges, showCampus, campusEdit, isCampusTool, nodes, isAdmin, mapTheme, isStudentView, sunWallsKey, routeResult, campusFilter, campusAreas]);
 
@@ -1356,7 +1359,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         window.__editNode = (id) => {
             const node = nodes.find(n => n.id === id);
             if (!node) return;
-            if (!canEditNode(node)) { onError('You can only edit nodes you placed yourself.'); return; }
+            if (!canEditNode(node)) { onError(node.building_id == null ? 'Only admins edit nodes outside buildings.' : "You can edit nodes only inside your department's buildings."); return; }
             // Exclusive modes: opening Edit closes any in-progress Add Node
             // (pending marker, placement clicks and all) or wall edit.
             cancelWallEdit();
@@ -1451,7 +1454,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             delete window.__deleteBorderGroup;
             delete window.__editWall;
         };
-    }, [loadData, onError, nodes, userLocation, borders, drawRoute, mode]);
+    // Everything the handlers read, or a click runs an old copy (it refused CCS staff their own lab before the buildings loaded).
+    }, [loadData, onError, nodes, userLocation, borders, drawRoute, mode, buildings, bridges, links, isAdmin, myDeptId, myId]);
 
     // Popup buttons on buildings and pathways (re-bound every render so they
     // always see the current lists).
@@ -2617,6 +2621,14 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
 
             {tab === 'students' && isAdmin && (
                 <AdminStudents notify={showToast} fail={onError} />
+            )}
+
+            {tab === 'courses' && (
+                <AdminCourses currentUser={currentUser} departments={departments} notify={showToast} fail={onError} />
+            )}
+
+            {tab === 'activity' && (
+                <AdminActivity isAdmin={isAdmin} fail={onError} />
             )}
 
             {tab === 'weather' && isAdmin && (

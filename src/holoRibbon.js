@@ -5,10 +5,7 @@
 // chevrons that march toward the destination, and a floating destination pin
 // with a ground ripple.
 //
-// These are world-scale meshes that give the path a 3D presence; the flat
-// screen-space markers in `routeArrows.js` handle the readable-at-any-distance
-// job. ARView draws both, so the route never disappears when the tube is too
-// thin to see and never loses its shape when the camera is right on top of it.
+// These are world-scale meshes that give the path a 3D presence in the camera view.
 //
 // Scale decisions, because the reference camera hovers 48 m up while ours sits
 // at eye height: world sizes are trimmed, and the tube start is trimmed back

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,8 @@ class StudentAuthController extends Controller
                 'login' => ['That school ID or password is not right.'],
             ]);
         }
+
+        ActivityLog::record($request, $student, 'login', 'Signed in to the campus map');
 
         return response()->json([
             'user' => self::profile($student),
@@ -103,8 +106,8 @@ class StudentAuthController extends Controller
             'first_name' => $student->first_name,
             'student_number' => $student->student_number,
             'email' => $student->email,
-            'course' => $student->course,
-            'course_name' => User::COURSES[$student->course] ?? null,
+            'course' => $student->course?->code,
+            'course_name' => $student->course?->name,
             'year_level' => $student->year_level,
             'must_change_password' => (bool) $student->must_change_password,
         ];

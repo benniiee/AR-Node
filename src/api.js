@@ -250,6 +250,16 @@ export const api = {
     getWeatherHistory: (days) =>
         request(`/weather/history?days=${encodeURIComponent(days)}`),
 
+    // Student courses (admins: all; department staff: their department's).
+    getCourses: () => request('/courses'),
+    createCourse: (data) => request('/courses', { method: 'POST', body: JSON.stringify(data) }),
+    updateCourse: (id, data) => request(`/courses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteCourse: (id) => request(`/courses/${id}`, { method: 'DELETE' }),
+
+    // Activity log, 50 a page (admins: everyone; department staff: their courses' students).
+    getActivityLogs: ({ role = '', q = '', page = 1 } = {}) =>
+        request(`/activity-logs?${new URLSearchParams({ ...(role ? { role } : {}), ...(q ? { q } : {}), page })}`),
+
     // "Update now" (admin only): fetch a fresh forecast without waiting for the 20-minute schedule.
     refreshWeather: () =>
         request('/weather/refresh', { method: 'POST' }),

@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'role', 'department_id', 'student_number', 'first_name', 'last_name', 'course', 'year_level'])]
+#[Fillable(['name', 'email', 'password', 'role', 'department_id', 'student_number', 'first_name', 'last_name', 'course_id', 'year_level'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -22,18 +22,6 @@ class User extends Authenticatable
 
     /** Staff roles: may sign in to the admin console. */
     public const STAFF_ROLES = ['admin', 'faculty'];
-
-    /**
-     * Courses offered in the student form (code => full name). The column is a
-     * plain string, so a course added here needs no migration.
-     *
-     * @var array<string, string>
-     */
-    public const COURSES = [
-        'BSIT' => 'Bachelor of Science in Information Technology',
-        'CSM' => 'College of Science and Mathematics',
-        'BSN' => 'Bachelor of Science in Nursing',
-    ];
 
     public const MAX_YEAR_LEVEL = 6;
 
@@ -67,6 +55,16 @@ class User extends Authenticatable
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
+    }
+
+    /**
+     * A student's course (null for staff).
+     *
+     * @return BelongsTo<Course, $this>
+     */
+    public function course(): BelongsTo
+    {
+        return $this->belongsTo(Course::class);
     }
 
     /**

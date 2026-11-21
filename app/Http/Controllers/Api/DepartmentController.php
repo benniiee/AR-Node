@@ -17,7 +17,7 @@ class DepartmentController extends Controller
     public function index(): JsonResponse
     {
         return response()->json(
-            Department::withCount('nodes')->orderBy('name')->get()
+            Department::withCount(['nodes', 'courses'])->orderBy('name')->get()
         );
     }
 

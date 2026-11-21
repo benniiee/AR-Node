@@ -258,7 +258,7 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                 <header className="rise" style={{ '--i': 0 }}>
                     <h1 className="ui-h1">Departments &amp; accounts</h1>
                     <p className="ui-sub">
-                        Department colours label the map; a faculty account's nodes are filed under its department.
+                        Department colours label the map; a faculty account's nodes are filed under its department. Each department's courses (Courses tab) decide which students its staff see in the Activity log.
                     </p>
                 </header>
 
@@ -322,7 +322,7 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                                         />
                                         <div className="dept-row-text">
                                             <div className="dept-name">{d.name}</div>
-                                            <div className="dept-sub ui-num">{plural(d.nodes_count ?? 0, 'node', 'nodes')}</div>
+                                            <div className="dept-sub ui-num">{plural(d.nodes_count ?? 0, 'node', 'nodes')} · {plural(d.courses_count ?? 0, 'course', 'courses')}</div>
                                         </div>
                                         <button className="ui-btn ui-btn-danger ui-btn-sm" onClick={() => deleteDepartment(d)}>
                                             Remove

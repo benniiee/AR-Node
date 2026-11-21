@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Course;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -50,7 +51,7 @@ class UserFactory extends Factory
                 'first_name' => $first,
                 'last_name' => $last,
                 'name' => "{$first} {$last}",
-                'course' => fake()->randomElement(array_keys(User::COURSES)),
+                'course_id' => Course::factory(),
                 'year_level' => fake()->numberBetween(1, 4),
             ];
         });

@@ -168,7 +168,7 @@ class StudentAccountsTest extends TestCase
         $this->seed(StudentSeeder::class);
 
         $this->assertSame(3, User::where('role', 'student')->count());
-        $this->assertEqualsCanonicalizing(['BSIT', 'CSM', 'BSN'], User::where('role', 'student')->pluck('course')->all());
-        $this->assertDatabaseHas('users', ['student_number' => 'ae202401622', 'course' => 'BSIT']);
+        $this->assertEqualsCanonicalizing(['BSIT', 'CSM', 'BSN'], User::where('role', 'student')->with('course')->get()->pluck('course.code')->all());
+        $this->assertSame('BSIT', User::where('student_number', 'ae202401622')->first()->course->code);
     }
 }

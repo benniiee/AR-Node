@@ -529,6 +529,17 @@ class WeatherTest extends TestCase
         Process::assertRan(fn ($process): bool => $process->command === ['python', 'satellite.py', 'now', '--at', '2026-11-13T10:00', '--wind-dir', '80', '--cloud']);
     }
 
+    public function test_python_gets_the_whole_environment_so_it_can_look_up_addresses_from_a_web_request(): void
+    {
+        $this->useSatelliteModel('sat_phase_water_10km');
+        Process::fake(['*satellite.py*' => Process::result(output: json_encode(['ok' => true, 'features' => ['sat_phase_water_10km' => 0.5]]))]);
+
+        app(WeatherService::class)->refresh();
+
+        // Windows needs SystemRoot (and the rest) for any network call; Symfony's default drops it under a web server.
+        Process::assertRan(fn ($process): bool => $process->environment === getenv());
+    }
+
     public function test_the_uv_index_and_its_category_are_published(): void
     {
         config(['weather.use_model' => false]);

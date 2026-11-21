@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('admin-token')->plainTextToken;
+        ActivityLog::record($request, $user, 'login', 'Signed in to the admin console');
 
         return response()->json([
             'user' => self::userPayload($user),

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Course;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ class StudentController extends Controller
     {
         abort_unless($request->user()->isAdmin(), 403);
 
-        $students = User::where('role', 'student')
+        $students = User::where('role', 'student')->with('course')
             ->orderBy('last_name')->orderBy('first_name')
             ->get();
 
@@ -50,7 +51,7 @@ class StudentController extends Controller
             'student_number' => $validated['student_number'],
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'],
-            'course' => $validated['course'],
+            'course_id' => Course::where('code', $validated['course'])->value('id'),
             'year_level' => $validated['year_level'],
         ]);
 
@@ -72,7 +73,7 @@ class StudentController extends Controller
         $validated = $request->validate([
             'first_name' => 'sometimes|required|string|max:100',
             'last_name' => 'sometimes|required|string|max:100',
-            'course' => ['sometimes', 'required', Rule::in(array_keys(User::COURSES))],
+            'course' => ['sometimes', 'required', 'string', Rule::exists('courses', 'code')],
             'year_level' => 'sometimes|required|integer|min:1|max:'.User::MAX_YEAR_LEVEL,
             'student_number' => ['sometimes', 'required', 'string', 'regex:'.User::STUDENT_NUMBER_PATTERN, Rule::unique('users', 'student_number')->ignore($student->id)],
             'password' => 'nullable|string|min:8',
@@ -85,7 +86,10 @@ class StudentController extends Controller
         }
 
         $password = $validated['password'] ?? null;
-        unset($validated['password']);
+        if (isset($validated['course'])) {
+            $validated['course_id'] = Course::where('code', $validated['course'])->value('id');
+        }
+        unset($validated['password'], $validated['course']);
         $student->fill($validated);
         $student->name = $this->fullName($student->only(['first_name', 'last_name']));
         if ($password) {
@@ -155,7 +159,8 @@ class StudentController extends Controller
         return [
             'first_name' => 'required|string|max:100',
             'last_name' => 'required|string|max:100',
-            'course' => ['required', Rule::in(array_keys(User::COURSES))],
+            // A course code (BSIT); stored as users.course_id.
+            'course' => ['required', 'string', Rule::exists('courses', 'code')],
             'year_level' => 'required|integer|min:1|max:'.User::MAX_YEAR_LEVEL,
         ];
     }
@@ -180,8 +185,8 @@ class StudentController extends Controller
             'first_name' => $s->first_name,
             'last_name' => $s->last_name,
             'name' => $s->name,
-            'course' => $s->course,
-            'course_name' => User::COURSES[$s->course] ?? null,
+            'course' => $s->course?->code,
+            'course_name' => $s->course?->name,
             'year_level' => $s->year_level,
             'must_change_password' => (bool) $s->must_change_password,
             'created_at' => $s->created_at?->toIso8601String(),

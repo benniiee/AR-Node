@@ -161,6 +161,9 @@ def main() -> None:
     ap.add_argument("--end", default=str(date.today() - timedelta(days=1)), help="last day (UTC), default = yesterday")
     ap.add_argument("--workers", type=int, default=24, help="parallel downloads (default 24, about 3 scans/s)")
     ap.add_argument("--motion", action="store_true", help="cloud motion history (data/satellite_motion.csv) instead")
+    ap.add_argument("--every", type=int, default=1,
+                    help="--motion: keep 1 scan in N, evenly by time (never by weather, so the sample says nothing "
+                         "about rain); e.g. 8 = about 18 GB instead of 140 GB for Apr 2024 on")
     ap.add_argument("--cloud", action="store_true", help="cloud-phase history (data/satellite_phase.csv, needs h5py) instead")
     a = ap.parse_args()
 
@@ -183,10 +186,14 @@ def main() -> None:
         return
     if a.motion:
         every = wanted(start, end, MOTION_MINUTES)
+        # 1 in N, shifted by one scan a day: a plain [::N] with N dividing the 48 scans a day would pick
+        # the same hours every day; this way every hour of the day is covered within N days.
+        per_day = 24 * len(MOTION_MINUTES)
+        every = [s for i, s in enumerate(every) if (i + i // per_day) % max(1, a.every) == 0]
         done = done_stamps(SAT_MOTION_CSV)
         todo = [s for s in every if s not in done]
         print(f"cloud motion ({SAT_MOTION_CSV.name}) {start} -> {end}: {len(every):,} scans, {len(every) - len(todo):,} "
-              f"already done, {len(todo):,} to go (about {len(todo) * 2.6 / 1024:.1f} GB, two strips each)", flush=True)
+              f"already done, {len(todo):,} to go (about {len(todo) * 3.1 / 1024:.1f} GB, two strips each{f", 1 in {a.every}" if a.every > 1 else ""})", flush=True)
         if todo and download(BAND, todo, SAT_MOTION_CSV, a.workers, motion=True):
             print("Some scans failed (network). Run the download again to fetch them.")
         print(f"Data: {ATTRIBUTION}")

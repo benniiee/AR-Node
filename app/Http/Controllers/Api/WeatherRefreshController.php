@@ -21,7 +21,12 @@ class WeatherRefreshController extends Controller
     {
         abort_unless($request->user()->isAdmin(), 403);
 
-        $lock = Cache::lock('weather:manual-refresh', 30);
+        // A refresh normally takes seconds, but network retries (DNS drop-outs) and the satellite
+        // read (weather.satellite_timeout) may take longer than the web server's usual 30 s limit.
+        $seconds = (int) config('weather.satellite_timeout', 120) + 60;
+        set_time_limit($seconds);
+
+        $lock = Cache::lock('weather:manual-refresh', $seconds);
         if (! $lock->get()) {
             return response()->json(['message' => 'A weather update is already running. Try again in a moment.'], 409);
         }

@@ -32,15 +32,8 @@ const SHELL_CSS = `
     .nav-link:hover > span { transform: translateX(4px); }
     .nav-link:hover { background: rgba(255, 255, 255, 0.05); color: ${C.white}; }
     .nav-link:focus-visible { outline: ${TAP.focusOutline}; outline-offset: 2px; }
-    /* Current page: filled row plus a red edge - position is encoded twice
-       (shape and colour), so it never depends on colour alone. */
-    .nav-link[aria-current="page"] { background: rgba(229, 24, 43, 0.14); color: ${C.white}; }
-    .nav-link[aria-current="page"]::before {
-        content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px;
-        border-radius: 2px; background: ${C.brand};
-        animation: navEdge 0.5s var(--ease-spring) both;
-    }
-    @keyframes navEdge { from { transform: scaleY(0); } }
+    /* Current page: a filled row and a bolder label, so it never depends on colour alone. */
+    .nav-link[aria-current="page"] { background: rgba(229, 24, 43, 0.14); color: ${C.white}; font-weight: 700; }
     .brand { animation: rise 0.8s var(--ease-out) both; }
     .brand b { display: inline-block; transition: transform 0.5s var(--ease-spring); }
     .brand:hover b { transform: translateY(-2px) rotate(-4deg); }
@@ -186,7 +179,7 @@ export default function App() {
     // anyway, so fall back to the map rather than showing a dead tab.
     const effectiveTab = (tab === 'departments' || tab === 'students' || tab === 'weather') && !isAdmin ? 'map' : tab;
 
-    const PAGE_NAMES = { weather: 'Weather Dashboard', map: 'Map', departments: 'Departments & accounts', students: 'Students' };
+    const PAGE_NAMES = { weather: 'Weather Dashboard', map: 'Map', departments: 'Departments & accounts', students: 'Students', courses: 'Courses', activity: 'Activity log' };
     const navLink = (id, label) => (
         <button
             key={id}
@@ -227,6 +220,10 @@ export default function App() {
                 {navLink('map', PAGE_NAMES.map)}
                 {isAdmin && navLink('departments', PAGE_NAMES.departments)}
                 {isAdmin && navLink('students', PAGE_NAMES.students)}
+                {/* Department staff manage their own department's courses; admins every course. */}
+                {navLink('courses', PAGE_NAMES.courses)}
+                {/* Admins see everyone; department staff see their courses' students. */}
+                {navLink('activity', PAGE_NAMES.activity)}
                 <div className="rail-spacer" />
                 <div className="who">
                     <div className="who-text" title={user.email}>

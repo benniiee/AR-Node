@@ -20,7 +20,7 @@ import ScrollWindow from './ScrollWindow';
 import SunTimeSlider from './SunTimeSlider';
 import { useSatelliteSettings, useSatelliteLayer } from '../useSatellite';
 import { sunPosition } from '../sunShadow';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS, drawSkyTint } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS, drawSkyTint, drawWalls25D } from '../campusLayers';
 import { buildingAt, nodePlaceLabel, floorCountLabel, statusLabel, kindLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, bridgeDeckHeightM, pointInPolygon } from '../campusGeometry';
 import {
     MAP_CONTROLS_CSS, ToolDock, ActionBar, Sheet, NodeForm, MenuToggle, MenuAction, StairLinks, NewStairModal,
@@ -1190,6 +1190,12 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         if (!mapInstance.current || !borderLayerRef.current) return;
         borderLayerRef.current.clearLayers();
 
+        // Student view, nothing being edited: the walls stand up like the buildings (2.5D), as on /map.
+        if (showBorders && isStudentView && tool === IDLE && !isDrawingBorder) {
+            drawWalls25D(borderLayerRef.current, borders, { theme: mapTheme, sun: sunForWalls });
+            return;
+        }
+
         // Saved walls honor the visibility toggle; the live draft below it
         // always draws, so points stay visible while creating or editing.
         if (showBorders && !(isStudentView && tool === IDLE)) {
@@ -1324,7 +1330,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 });
             });
         }
-    }, [borders, drawingBorderPoints, showBorders, editingWallId, isDrawingBorder, isStudentView, tool]);
+    }, [borders, drawingBorderPoints, showBorders, editingWallId, isDrawingBorder, isStudentView, tool, mapTheme, sunWallsKey]);
 
     // Manage pending node marker
     useEffect(() => {

@@ -24,7 +24,7 @@ import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPU
 import { headingFromOrientationEvent, headingAccuracyFromEvent, createCompassWatcher, compassLabel } from '../heading';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../povMotion';
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint, drawWalls25D } from '../campusLayers';
 import { sunPosition, roofLiftM } from '../sunShadow';
 import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements, closedMessage } from '../openingHours';
 import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
@@ -165,6 +165,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const accuracyRef = useRef(null);
     const routeLayerRef = useRef(null);
     const buildingLayerRef = useRef(null);
+    const wallLayerRef = useRef(null);
     // Buildings the route goes into, cut away at the floor being shown.
     const cutawayLayerRef = useRef(null);
     const pathwayLayerRef = useRef(null);
@@ -944,6 +945,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         pathwayLayerRef.current = L.layerGroup().addTo(map);
         // Sun shadows fall over the paths but under the buildings' roofs.
         shadowLayerRef.current = L.layerGroup().addTo(map);
+        // Walls (2.5D) under the buildings: a building in front of a wall covers it.
+        wallLayerRef.current = L.layerGroup().addTo(map);
         buildingLayerRef.current = L.layerGroup().addTo(map);
         bridgeLayerRef.current = L.layerGroup().addTo(map);
         cutawayLayerRef.current = L.layerGroup().addTo(map);
@@ -1051,6 +1054,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 </div>`;
         };
         drawPathways(pathwayLayerRef.current, pathways, { theme: GPS_FLAVOR });
+        // The drawn walls stand up like the buildings (2.5D), shaded by the sun.
+        if (wallLayerRef.current) drawWalls25D(wallLayerRef.current, borders, { theme: GPS_FLAVOR, sun: sunForWalls });
         drawBuildings(buildingLayerRef.current, buildings, { popup, theme: GPS_FLAVOR, extrude: true, sun: sunForWalls, skipIds: routeBuildingIds });
         // After the buildings, raised like them (2.5D): the deck crosses over the road between them.
         if (bridgeLayerRef.current) drawBridges(bridgeLayerRef.current, bridges, { theme: GPS_FLAVOR, extrude: true, links, nodes });
@@ -1063,7 +1068,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         map.on('popupopen', onOpen);
         return () => { map.off('popupopen', onOpen); unbind(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, bridges, pathways, nodes, links, sunWallsKey, routeBuildingKey]);
+    }, [buildings, bridges, pathways, nodes, links, borders, sunWallsKey, routeBuildingKey]);
 
     // Render node markers — destinations only, and only for the selected
     // floor. Intermediate route nodes stay hidden on the 2D screen; the path

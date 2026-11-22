@@ -899,6 +899,44 @@ export function pathWeightPx(map, widthM, minPx = 0) {
     return Math.max(minPx, widthM / metresPerPx);
 }
 
+/** How tall a campus wall or fence is drawn in 2.5D, metres. */
+export const WALL_HEIGHT_M = 2.2;
+
+/**
+ * The drawn walls (borders: [{ coordinates: [{lat, lng}] }]) in 2.5D, as the student sees the
+ * buildings: each stretch raised WALL_HEIGHT_M (north-up, like drawBuildings), its face shaded by
+ * the sun like a building's wall, a darker top edge. Far stretches first, so nearer ones cover them.
+ * Draws into `layer` (cleared first).
+ */
+export function drawWalls25D(layer, borders, { theme = 'light', sun = null } = {}) {
+    layer.clearLayers();
+    const lift = roofLiftM(WALL_HEIGHT_M) / 111320;
+    const tone = WALL[theme] || WALL.light;
+    const segs = [];
+    for (const g of borders || []) {
+        const pts = (g?.coordinates || []).filter((p) => Number.isFinite(+p.lat) && Number.isFinite(+p.lng));
+        for (let i = 1; i < pts.length; i += 1) segs.push([pts[i - 1], pts[i]]);
+    }
+    segs.sort(([a1, b1], [a2, b2]) => Math.max(+a2.lat, +b2.lat) - Math.max(+a1.lat, +b1.lat));
+    for (const [a, b] of segs) {
+        const k = Math.cos((+a.lat * Math.PI) / 180);
+        const de = (+b.lng - +a.lng) * k;
+        const dn = +b.lat - +a.lat;
+        // The face towards the viewer: of the wall's two sides, the one facing south. Its compass
+        // bearing (0 = north, clockwise) says how much sun falls on it.
+        const [ne, nn] = -de <= 0 ? [dn, -de] : [-dn, de];
+        const normalDeg = ((Math.atan2(ne, nn) * 180) / Math.PI + 360) % 360;
+        const fill = mixHex(tone.shade, tone.lit, wallLight(normalDeg, sun));
+        const up = (p) => [+p.lat + lift, +p.lng];
+        L.polygon([[+a.lat, +a.lng], [+b.lat, +b.lng], up(b), up(a)], {
+            stroke: true, color: mixHex(fill, '#000000', 0.35), weight: 0.6, opacity: 0.8,
+            fillColor: fill, fillOpacity: 0.95, interactive: false,
+        }).addTo(layer);
+        // Its top: a darker edge (a wall running north-south shows mostly as this line).
+        L.polyline([up(a), up(b)], { color: mixHex(fill, '#000000', 0.45), weight: 2.5, opacity: 0.95, lineCap: 'round', interactive: false }).addTo(layer);
+    }
+}
+
 export function drawPathways(layer, pathways, { popup = null, skipId = null, theme = 'dark' } = {}) {
     ensureStyles();
     layer.clearLayers();

@@ -37,7 +37,7 @@ import { toLocalMeters, fromLocalMeters } from './geo.js';
 import { edgeRainFactor, isRoutable, noRouteMessage } from './weatherCost.js';
 import { edgeShadeFactor } from './shadeRouting.js';
 import { floorOf, floorAria } from './floors.js';
-import { buildingAt } from './campusGeometry.js';
+import { buildingAt, pointInPolygon } from './campusGeometry.js';
 import { doorGapWalls, doorWaypoints, placedDoors, snapToOutline, DOOR_WIDTH_M, MAX_DOORS } from './doors.js';
 import {
     DEFAULT_STAIR_ANGLE, STAIR_ANGLE_MIN, STAIR_ANGLE_MAX, clampStairAngle,
@@ -623,6 +623,9 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
     const closed = new Set((options.closedBuildingIds || []).map(String));
     if (closed.size) {
         closed.delete(String(destination.building_id));
+        // A destination on a pathway inside the outline (a building with no doors or rooms yet) is that building's too.
+        const target = buildingAt(options.buildings || [], Number(destination.latitude), Number(destination.longitude));
+        if (target) closed.delete(String(target.id));
         const here = buildingAt(options.buildings || [], userLat, userLng);
         if (here) closed.delete(String(here.id));
         if (closed.size) nodes = nodes.filter((n) => n.building_id == null || !closed.has(String(n.building_id)));
@@ -704,10 +707,21 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
                 bridgeMessage = `${used.name || 'The bridge'} is closed${reason ? `: ${reason}` : ''}.`;
             }
         }
+        // Was a closed building (opening hours or an announcement) the only way through? Name it.
+        let buildingMessage = null;
+        if (!bridgeMessage && closed.size) {
+            const through = computeRoute(allNodes, destinationId, userLat, userLng, userElevation, wallBorders, { ...options, closedBuildingIds: [] });
+            const crossed = through.success
+                ? (options.buildings || []).find((b) => closed.has(String(b.id)) && through.path.some((p) => String(p.building_id) === String(b.id)
+                    || (Array.isArray(b.polygon) && b.polygon.length >= 3 && pointInPolygon(Number(p.latitude), Number(p.longitude), b.polygon))))
+                : null;
+            if (crossed) buildingMessage = `The only way there goes through ${crossed.short_name || crossed.name || 'a building'}, which is closed right now.`;
+        }
         return {
             success: false,
             closed_bridge: Boolean(bridgeMessage),
-            message: bridgeMessage || (rainNow
+            closed_building: Boolean(buildingMessage),
+            message: bridgeMessage || buildingMessage || (rainNow
                 ? closedMessage
                 : needsStairs
                     ? `No staircase connects ${floorPhrase(userFloor)} to ${floorPhrase(destFloor)} yet.`

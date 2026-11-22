@@ -26,7 +26,7 @@ import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../po
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
 import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint } from '../campusLayers';
 import { sunPosition, roofLiftM } from '../sunShadow';
-import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements } from '../openingHours';
+import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements, closedMessage } from '../openingHours';
 import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
 import { LIST_CSS, bindScrollCue } from './ScrollWindow';
 import SatelliteControl, { SATELLITE_CSS } from './SatelliteControl';
@@ -182,12 +182,6 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
     }, []);
     const sunDate = sunClock;
-    // Buildings closed right now (opening hours, campus time): routes do not pass through them. Rechecked
-    // with the sun clock (every minute); the key keeps the route from re-running when nothing changed.
-    const closedIds = useMemo(() => closedBuildingIds(buildings, sunDate, closures), [buildings, sunDate, closures]);
-    // School-level announcements going on now (whole school, a campus, every college or office): a banner.
-    const announcementList = useMemo(() => announcements(closures, sunDate), [closures, sunDate]);
-    const closedKey = closedIds.join(',');
     // Walls are re-shaded only when the sun has moved ~5 degrees (about every
     // 20 minutes live): rebuilding the buildings closes an open popup.
     const sunForWalls = useMemo(() => {
@@ -209,6 +203,12 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const [closures, setClosures] = useState([]);
     const closuresRef = useRef([]);
     closuresRef.current = closures;
+    // Buildings closed right now (opening hours, campus time): routes do not pass through them. Rechecked
+    // with the sun clock (every minute); the key keeps the route from re-running when nothing changed.
+    const closedIds = useMemo(() => closedBuildingIds(buildings, sunDate, closures), [buildings, sunDate, closures]);
+    // School-level announcements going on now (whole school, a campus, every college or office): a banner.
+    const announcementList = useMemo(() => announcements(closures, sunDate), [closures, sunDate]);
+    const closedKey = closedIds.join(',');
     const [pathways, setPathways] = useState([]);
     // Campus outlines (Campus A, Campus B, ...): the campus picker and the map labels.
     const [campusAreas, setCampusAreas] = useState([]);
@@ -355,18 +355,17 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
 
     // Why no route is drawn, when rain closed every way to the destination.
     const [noRoute, setNoRoute] = useState(null);
-    // The destination is closed now (its opening hours): the route still goes there, with when it opens.
-    // From the clock, not the routing, so it changes the minute the place opens or closes.
-    const closedNote = useMemo(() => {
-        if (!route?.success || !destId) return null;
+    // The destination is closed right now (its hours or an announcement): no route is drawn, only why
+    // and when it opens. From the clock, so the route appears the minute the place opens.
+    const destClosed = useMemo(() => {
+        if (!destId) return null;
         const buildingId = parseBuildingDestination(destId);
         const building = buildingId !== null ? buildingsById.get(buildingId) : null;
         const place = building || nodes.find((n) => String(n.id) === String(destId));
-        const state = place ? (building ? buildingStatus(building, closures, sunDate) : placeStatusOf(place, buildingsById, closures, sunDate)) : null;
-        if (!state || state.open) return null;
-        const when = state.label.startsWith('Closed · ') ? `: ${state.label.slice('Closed · '.length)}` : '';
-        return `${place.short_name || place.name || 'This place'} is closed now${when}`;
-    }, [route, destId, nodes, buildingsById, sunDate, closures]);
+        if (!place) return null;
+        const state = building ? buildingStatus(building, closures, sunDate) : placeStatusOf(place, buildingsById, closures, sunDate);
+        return closedMessage(place.short_name || place.name, state);
+    }, [destId, nodes, buildingsById, sunDate, closures]);
     // Loading, no route and the offline copy, as pill notices (one at a time,
     // most important first). Loading stays up while it lasts.
     useEffect(() => {
@@ -376,10 +375,6 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         }
         if (noRoute) {
             setNoticePill({ text: noRoute, tone: 'attention', key: `noroute:${Date.now()}` });
-            return;
-        }
-        if (closedNote) {
-            setNoticePill({ text: closedNote, tone: 'attention', key: `closed:${closedNote}` });
             return;
         }
         if (offlineCopy) {
@@ -393,7 +388,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         }
         setNoticePill(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loading, error, noRoute, closedNote, offlineCopy?.savedAt]);
+    }, [loading, error, noRoute, offlineCopy?.savedAt]);
 
     // The destination picker is a custom menu rather than a native <select>
     // so its open/close and option-entry motion stay consistent across mobile
@@ -1189,6 +1184,13 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             routeLayerRef.current?.clearLayers();
             return;
         }
+        // Closed right now: no route, just why and when it opens (it reappears once open).
+        if (destClosed) {
+            setRoute(null);
+            setNoRoute(destClosed);
+            routeLayerRef.current?.clearLayers();
+            return;
+        }
         try {
             // Rain changes the COST of exposed edges (and closes them entirely
             // while it is actually falling), so a flip in the weather state
@@ -1366,7 +1368,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // `weather.rain_multiplier` / `weather.raining_now` rather than the
         // whole object: a poll rebuilds it every 5 minutes, and the route
         // only cares about the two values that change routing.
-    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey]);
+    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey, destClosed]);
 
     // A destination on another floor is a normal case now (the route climbs
     // the linked stairs), so it is only dropped when the node itself is gone.

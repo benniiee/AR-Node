@@ -54,6 +54,16 @@ class Department extends Model
     }
 
     /**
+     * Buildings this department owns (its staff manage their rooms, doors and hours).
+     *
+     * @return HasMany<Building, $this>
+     */
+    public function buildings(): HasMany
+    {
+        return $this->hasMany(Building::class);
+    }
+
+    /**
      * Nodes wearing this department's map label colour.
      */
     public function nodes(): HasMany

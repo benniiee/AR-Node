@@ -13,7 +13,11 @@ import { C, RADIUS, TAP } from '../uiTokens';
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export default function StairModal({ title, subtitle, onClose, children, footer, closeLabel = 'Close staircase editor' }) {
+/**
+ * `workspace`: instead of a dialog over the whole screen, fill the page's working area (the admin
+ * console's `.main`, beside the side menu): a full-size editor that replaces the map while open.
+ */
+export default function StairModal({ title, subtitle, onClose, children, footer, closeLabel = 'Close staircase editor', workspace = false }) {
     const dialogRef = useRef(null);
     const titleId = useId();
 
@@ -49,7 +53,7 @@ export default function StairModal({ title, subtitle, onClose, children, footer,
 
     return createPortal(
         <div
-            className="stair-modal-backdrop"
+            className={`stair-modal-backdrop${workspace ? ' is-workspace' : ''}`}
             onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
             onClick={(e) => e.stopPropagation()}
         >
@@ -74,7 +78,8 @@ export default function StairModal({ title, subtitle, onClose, children, footer,
                 {footer && <footer className="stair-modal-foot">{footer}</footer>}
             </div>
         </div>,
-        document.body,
+        // A workspace fills the admin console's working area (beside its side menu); elsewhere the page.
+        (workspace && document.querySelector('.main')) || document.body,
     );
 }
 
@@ -105,8 +110,12 @@ const STAIR_MODAL_CSS = `
     .stair-modal-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 18px; overscroll-behavior: contain; }
     .stair-modal-foot { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding: 12px 18px;
         border-top: 1px solid ${C.hairline}; background: rgba(255,255,255,0.02); }
+    /* Workspace: fills the working area (no backdrop, no floating card). */
+    .stair-modal-backdrop.is-workspace { position: absolute; z-index: 2000; padding: 0; background: ${C.page};
+        backdrop-filter: none; -webkit-backdrop-filter: none; align-items: stretch; animation: fadeIn 0.2s ease both; }
+    .is-workspace .stair-modal { width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
     @media (max-width: 760px) {
-        .stair-modal-backdrop { padding: 0; align-items: flex-end; }
+        .stair-modal-backdrop:not(.is-workspace) { padding: 0; align-items: flex-end; }
         .stair-modal { width: 100%; max-height: 96vh; border-radius: ${RADIUS + 8}px ${RADIUS + 8}px 0 0; }
         .stair-modal-foot .ui-btn { flex: 1 1 0; }
     }

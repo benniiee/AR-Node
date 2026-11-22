@@ -2,25 +2,42 @@
 
 namespace Database\Seeders;
 
+use App\Models\Building;
 use App\Models\Department;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
 /**
- * Two sample department staff (faculty) accounts for demos: one for CCS and
- * one for CSM. The departments are reused by name when they already exist
- * (otherwise created), so the staff can edit whichever buildings the admin
- * assigned to them. Re-running never duplicates them (keyed on the email).
- * All use the password "password": change or remove them before deployment.
+ * Demo staff accounts, one per department or office, each owning its building(s), for
+ * presentations. Departments are reused by name (otherwise created with the kind and colour
+ * below); a listed building is handed to its department only while nobody owns it, so a real
+ * assignment is never undone. Re-running never duplicates anything (keyed on name / email) and
+ * resets every demo account, the admin included, to the password "password": change or remove
+ * them before deployment.
  */
 class DemoStaffSeeder extends Seeder
 {
+    /** The seeded admin (DatabaseSeeder), reset to the demo password too. */
+    public const ADMIN_EMAIL = 'admin@campus.test';
+
     /**
-     * @var list<array{email: string, name: string, department: string, color: string}>
+     * kind: 'college' (its buildings are school buildings) or 'office' (office buildings).
+     * buildings: building names this department owns.
+     *
+     * @var list<array{email: string, name: string, department: string, kind: string, color: string, buildings: list<string>}>
      */
     public const STAFF = [
-        ['email' => 'ccs.staff@campus.test', 'name' => 'CCS Staff', 'department' => 'CCS', 'color' => '#2563eb'],
-        ['email' => 'csm.staff@campus.test', 'name' => 'CSM Staff', 'department' => 'CSM', 'color' => '#16a34a'],
+        ['email' => 'ccs.staff@campus.test', 'name' => 'CCS Staff', 'department' => 'CCS', 'kind' => 'college', 'color' => '#2563eb', 'buildings' => ['College of Computing Studies']],
+        ['email' => 'csm.staff@campus.test', 'name' => 'CSM Staff', 'department' => 'CSM', 'kind' => 'college', 'color' => '#16a34a', 'buildings' => ['College of Science and Mathematics']],
+        ['email' => 'ccje@campus.test', 'name' => 'CCJE Staff', 'department' => 'CCJE', 'kind' => 'college', 'color' => '#7c3aed', 'buildings' => ['College of Criminology Justice Education']],
+        ['email' => 'nursing@campus.test', 'name' => 'Nursing Staff', 'department' => 'Nursing', 'kind' => 'college', 'color' => '#db2777', 'buildings' => ['College of Nursing']],
+        ['email' => 'cte@campus.test', 'name' => 'CTE Staff', 'department' => 'CTE', 'kind' => 'college', 'color' => '#0891b2', 'buildings' => ['College of Teachers Education']],
+        ['email' => 'ils@campus.test', 'name' => 'ILS Staff', 'department' => 'ILS', 'kind' => 'college', 'color' => '#ea580c', 'buildings' => ['ILS']],
+        ['email' => 'msa@campus.test', 'name' => 'MSA Staff', 'department' => 'MSA', 'kind' => 'college', 'color' => '#65a30d', 'buildings' => ['MSA']],
+        ['email' => 'cais@campus.test', 'name' => 'CAIS Staff', 'department' => 'CAIS', 'kind' => 'college', 'color' => '#0d9488', 'buildings' => ['CAIS']],
+        ['email' => 'canteen@campus.test', 'name' => 'Canteen Staff', 'department' => 'Canteen', 'kind' => 'office', 'color' => '#ca8a04', 'buildings' => ['Canteen']],
+        ['email' => 'cashier@campus.test', 'name' => 'Cashier Staff', 'department' => 'Cashier', 'kind' => 'office', 'color' => '#9333ea', 'buildings' => ['Cashier']],
+        ['email' => 'misto@campus.test', 'name' => 'Misto Staff', 'department' => 'Misto', 'kind' => 'office', 'color' => '#b45309', 'buildings' => ['Misto']],
     ];
 
     public function run(): void
@@ -36,14 +53,22 @@ class DemoStaffSeeder extends Seeder
         foreach (self::STAFF as $staff) {
             $department = Department::firstOrCreate(
                 ['name' => $staff['department']],
-                ['color' => $staff['color']],
+                ['kind' => $staff['kind'], 'color' => $staff['color']],
             );
 
-            $user = User::firstOrCreate(
-                ['email' => $staff['email']],
-                ['name' => $staff['name'], 'password' => 'password'],
-            );
-            $user->forceFill(['role' => 'faculty', 'department_id' => $department->id])->save();
+            // Its buildings, only while nobody owns them; the label follows the department's kind.
+            foreach (Building::whereIn('name', $staff['buildings'])->whereNull('department_id')->get() as $building) {
+                $building->update([
+                    'department_id' => $department->id,
+                    'category' => $department->isOffice() ? 'office' : 'school',
+                ]);
+            }
+
+            $user = User::firstOrCreate(['email' => $staff['email']], ['name' => $staff['name'], 'password' => 'password']);
+            // No forced password change on a demo account.
+            $user->forceFill(['role' => 'faculty', 'department_id' => $department->id, 'password' => 'password', 'must_change_password' => false])->save();
         }
+
+        User::where('email', self::ADMIN_EMAIL)->first()?->forceFill(['password' => 'password', 'must_change_password' => false])->save();
     }
 }

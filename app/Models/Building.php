@@ -20,6 +20,9 @@ class Building extends Model
 
     public const SOURCES = ['osm', 'custom'];
 
+    /** A school building (classes: colleges, the high school) or an office building (cashier, registrar, canteen). */
+    public const CATEGORIES = ['school', 'office'];
+
     public const MAX_FLOORS = 50;
 
     /** Height limits (metres) for the optional measured height. */
@@ -37,6 +40,8 @@ class Building extends Model
         // Optional measured height (m); null = estimated from floors on the maps.
         'height_m',
         'status',
+        // 'school' or 'office': follows the owning department's kind; an admin labels unowned ones.
+        'category',
         'campus',
         'polygon',
         // Doors: points on the outline; routes enter and leave through them.
@@ -57,6 +62,7 @@ class Building extends Model
     protected $attributes = [
         'floors' => 1,
         'status' => 'existing',
+        'category' => 'school',
         'campus' => 'A',
         'source' => 'custom',
     ];

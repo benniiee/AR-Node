@@ -66,7 +66,7 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
     }, [nodes, ownBuildings, isAdmin]);
 
     const SCOPES = isAdmin
-        ? [['school', 'Whole school'], ['college', 'All colleges (classes suspended)'], ['office', 'All offices'], ['department', 'One department or office'], ['building', 'One building'], ['place', 'One room or office']]
+        ? [['whole', 'Whole school'], ['school', 'All school buildings (classes suspended)'], ['office', 'All office buildings'], ['department', 'One department or office'], ['building', 'One building'], ['place', 'One room or office']]
         : [['department', `Our department${currentUser?.department?.name ? ` (${currentUser.department.name})` : ''}`], ['building', 'One of our buildings'], ['place', 'One room or office in them']];
 
     const [kind, setKind] = useState('closed');
@@ -92,7 +92,7 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
         api.getWeather().then((w) => { if (alive) setHeat(Number(w?.heat_index_c)); }).catch(() => {});
         return () => { alive = false; };
     }, [isAdmin]);
-    const suspendedNow = (closures || []).some((c) => c.department_kind === 'college' && c.kind !== 'open'
+    const suspendedNow = (closures || []).some((c) => c.building_category === 'school' && c.kind !== 'open'
         && new Date(c.starts_at) <= new Date() && new Date() < new Date(c.ends_at));
     const showHeat = isAdmin && Number.isFinite(heat) && heat >= HEAT_SUSPEND_C && !suspendedNow;
 
@@ -104,7 +104,7 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
     };
     const fillHeat = () => {
         setKind('closed');
-        setScope('college');
+        setScope('school');
         setCampus('');
         setReason('Classes suspended: high heat index');
         preset('rest');
@@ -118,7 +118,7 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
         if (end <= new Date()) { fail('That time is already over.'); return; }
         if (kind === 'closed' && !reason.trim()) { fail('Say why it is closed: students see the reason.'); return; }
         const target = {
-            school: {}, college: { department_kind: 'college' }, office: { department_kind: 'office' },
+            whole: {}, school: { building_category: 'school' }, office: { building_category: 'office' },
             department: { department_id: isAdmin ? Number(departmentId) || null : ownDept },
             building: { building_id: Number(buildingId) || null },
             place: { node_id: Number(nodeId) || null },
@@ -131,7 +131,7 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
         try {
             await api.createClosure({
                 kind, reason: reason.trim() || null, ...target,
-                ...(isAdmin && ['school', 'college', 'office'].includes(scope) && campus ? { campus } : {}),
+                ...(isAdmin && ['whole', 'school', 'office'].includes(scope) && campus ? { campus } : {}),
                 starts_at: start.toISOString(), ends_at: end.toISOString(),
             });
             setReason('');
@@ -158,8 +158,8 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
         if (c.node_id) return c.node?.name || 'A room';
         if (c.building_id) return c.building?.short_name || c.building?.name || 'A building';
         if (c.department_id) return c.department?.name || 'A department';
-        if (c.department_kind === 'college') return `All colleges${campusTag}`;
-        if (c.department_kind === 'office') return `All offices${campusTag}`;
+        if (c.building_category === 'school') return `All school buildings${campusTag}`;
+        if (c.building_category === 'office') return `All office buildings${campusTag}`;
         return c.campus ? `Campus ${c.campus}` : 'Whole school';
     }
     const when = (c) => {
@@ -178,7 +178,7 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
                     <h1 className="ui-h1">Announcements</h1>
                     <p className="ui-sub">
                         {isAdmin
-                            ? 'Close the whole school, every college or office, or one department, building or room for a while, with a reason students see. Routes do not pass through closed buildings. Each ends on its own.'
+                            ? 'Close the whole school, every school or office building, or one department, building or room for a while, with a reason students see. Routes do not pass through closed buildings. Each ends on its own.'
                             : 'Close your department, one of its buildings or a room for a while (maintenance, an event), with a reason students see, or open on a day you are usually closed. Each ends on its own.'}
                     </p>
                 </header>
@@ -186,7 +186,7 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
                 {showHeat && (
                     <section className="ui-card ann-heat rise" style={{ '--i': 1 }} aria-labelledby="ann-heat-title">
                         <h2 className="ui-card-title" id="ann-heat-title" style={{ marginTop: 0 }}>Heat index {Math.round(heat)}°C right now</h2>
-                        <p>That is in the Danger range. Suspending classes is your call: if you do, post it here and every college closes on the map, while offices stay open.</p>
+                        <p>That is in the Danger range. Suspending classes is your call: if you do, post it here and every school building closes on the map, while office buildings stay open.</p>
                         <button type="button" className="ui-btn ui-btn-secondary" onClick={fillHeat}>Fill in a class suspension</button>
                     </section>
                 )}
@@ -203,9 +203,9 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
                                     <select id="ann-scope" className="ui-select" value={scope} onChange={(e) => setScope(e.target.value)}>
                                         {SCOPES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                                     </select>
-                                    {scope === 'college' && <span className="ui-hint">Every college building and room closes; offices (registrar, cashier, canteen) stay open.</span>}
+                                    {scope === 'school' && <span className="ui-hint">Every school building and its rooms close; office buildings (cashier, registrar, canteen) stay open.</span>}
                                 </div>
-                                {isAdmin && ['school', 'college', 'office'].includes(scope) && (
+                                {isAdmin && ['whole', 'school', 'office'].includes(scope) && (
                                     <div className="ui-field">
                                         <label className="ui-label" htmlFor="ann-campus">Campus</label>
                                         <select id="ann-campus" className="ui-select" value={campus} onChange={(e) => setCampus(e.target.value)}>

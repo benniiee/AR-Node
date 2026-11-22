@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     campusClock, formatTime, hoursOf, openState, summarizeHours, closedBuildingIds, weeklyHours,
-    placeStatus, buildingTarget, placeTarget, covers, buildingStatus, placeStatusOf, nextOpening, announcements, formatWhen,
+    placeStatus, buildingTarget, placeTarget, covers, buildingStatus, placeStatusOf, nextOpening, announcements, formatWhen, closedMessage,
 } from './openingHours.js';
 
 // Campus time is UTC+8: 2026-11-23 is a Monday.
@@ -85,8 +85,8 @@ test('a closed building is walked around, unless it is where you are going', asy
 // ── Closures ──
 const CCS = { id: 1, name: 'CCS', kind: 'college' };
 const CASH = { id: 2, name: 'Cashier office', kind: 'office' };
-const ccsHall = { id: 10, campus: 'B', department: CCS, opening_hours: CANTEEN };
-const adminHall = { id: 11, campus: 'A', department: CASH, opening_hours: CANTEEN };
+const ccsHall = { id: 10, campus: 'B', category: 'school', department: CCS, opening_hours: CANTEEN };
+const adminHall = { id: 11, campus: 'A', category: 'office', department: CASH, opening_hours: CANTEEN };
 const byId = new Map([[10, ccsHall], [11, adminHall]]);
 const cashier = { id: 100, building_id: 11, campus: 'A', department: CASH, opening_hours: CASHIER };
 const lab = { id: 101, building_id: 10, campus: 'B', department: CCS };
@@ -96,18 +96,18 @@ const MON_10 = at('2026-11-23T10:00:00');
 test('a closure covers what its fields name, all of them', () => {
     const lab_ = placeTarget(lab, byId);
     assert.ok(covers(closure({}), lab_), 'whole school');
-    assert.ok(covers(closure({ department_kind: 'college' }), lab_), 'every college');
-    assert.ok(!covers(closure({ department_kind: 'office' }), lab_));
-    assert.ok(covers(closure({ campus: 'B', department_kind: 'college' }), lab_));
-    assert.ok(!covers(closure({ campus: 'A', department_kind: 'college' }), lab_));
+    assert.ok(covers(closure({ building_category: 'school' }), lab_), 'every school building');
+    assert.ok(!covers(closure({ building_category: 'office' }), lab_));
+    assert.ok(covers(closure({ campus: 'B', building_category: 'school' }), lab_));
+    assert.ok(!covers(closure({ campus: 'A', building_category: 'school' }), lab_));
     assert.ok(covers(closure({ building_id: 10 }), lab_), 'its building closes its rooms');
     assert.ok(covers(closure({ department_id: 1 }), lab_));
     assert.ok(!covers(closure({ node_id: 100 }), lab_), 'another room');
     assert.ok(!covers(closure({ node_id: 100 }), buildingTarget(adminHall)), 'a room never closes its building');
 });
 
-test('classes suspended: colleges close, offices stay open', () => {
-    const heat = [closure({ department_kind: 'college', reason: 'Classes suspended: high heat index', ends_at: at('2026-11-23T17:00:00').toISOString() })];
+test('classes suspended: school buildings close, office buildings stay open', () => {
+    const heat = [closure({ building_category: 'school', reason: 'Classes suspended: high heat index', ends_at: at('2026-11-23T17:00:00').toISOString() })];
     const s = buildingStatus(ccsHall, heat, MON_10);
     assert.equal(s.open, false);
     assert.equal(s.label, 'Closed · Classes suspended: high heat index · opens tomorrow 8 am', 'reopens with its weekly hours, not at 5 pm');
@@ -115,7 +115,7 @@ test('classes suspended: colleges close, offices stay open', () => {
     assert.equal(buildingStatus(adminHall, heat, MON_10).open, true);
     assert.equal(placeStatusOf(cashier, byId, heat, MON_10).open, true);
     assert.deepEqual(closedBuildingIds([ccsHall, adminHall], MON_10, heat), [10]);
-    assert.deepEqual(announcements(heat, MON_10).map((a) => a.text), ['Classes suspended: high heat index · All colleges · until 5 pm']);
+    assert.deepEqual(announcements(heat, MON_10).map((a) => a.text), ['Classes suspended: high heat index · All school buildings · until 5 pm']);
     // Not yet started / already over: no effect.
     assert.equal(buildingStatus(ccsHall, heat, at('2026-11-23T18:00:00')).open, false, 'after hours anyway');
     assert.equal(buildingStatus(ccsHall, heat, at('2026-11-24T10:00:00')).open, true, 'next day: over');
@@ -141,4 +141,37 @@ test('next opening and when-words', () => {
     assert.equal(formatWhen(at('2026-11-27T08:00:00'), MON_10), 'Fri 8 am');
     assert.equal(formatWhen(at('2026-12-03T08:00:00'), MON_10), 'Dec 3');
     assert.equal(placeStatus(null, [], buildingTarget({ id: 9 }), MON_10), null, 'no hours, nothing covering: no status');
+});
+
+test('a closed building with no doors is still reachable, and a blocked way is named', async () => {
+    const { computeRoute, pathwayWaypoints } = await import('./pathfinding.js');
+    const { fromLocalMeters } = await import('./geo.js');
+    const ll = (e, n) => { const p = fromLocalMeters(6.913, 122.061, e, n); return { lat: p.latitude, lng: p.longitude }; };
+    // A walkway running into a closed hall with no doors or rooms (routes to it end on the walkway inside).
+    const hall = { id: 7, status: 'existing', name: 'Misto', polygon: [ll(-10, 20), ll(10, 20), ll(10, 40), ll(-10, 40)], opening_hours: CANTEEN };
+    const walk = { id: 1, kind: 'walkway', status: 'existing', coordinates: [ll(0, 0), ll(0, 30)] };
+    const inside = pathwayWaypoints([walk]).at(-1);
+    const start = ll(0, -2);
+    // One real node, far away on another floor (no detour through it): the router needs a non-empty map.
+    const far = (() => { const p = ll(500, 500); return [{ id: 99, type: 'route', latitude: p.lat, longitude: p.lng, floor_level: 5, elevation: 16, path_type: 'inside', building_id: null }]; })();
+    const sunday = closedBuildingIds([hall], at('2026-11-29T10:00:00'));
+    const opts = { buildings: [hall], pathways: [walk], closedBuildingIds: sunday };
+    const r = computeRoute(far, inside.id, start.lat, start.lng, 0, [], opts);
+    assert.equal(r.success, true, 'going to the closed hall itself');
+
+    // Somewhere beyond it, reachable only through it: the message names the hall.
+    const through = { id: 2, kind: 'walkway', status: 'existing', coordinates: [ll(0, 0), ll(0, 60)] };
+    const beyond = pathwayWaypoints([through]).at(-1);
+    const blocked = computeRoute(far, beyond.id, start.lat, start.lng, 0, [], { buildings: [hall], pathways: [through], closedBuildingIds: sunday });
+    assert.equal(blocked.success, false);
+    assert.equal(blocked.closed_building, true);
+    assert.equal(blocked.message, 'The only way there goes through Misto, which is closed right now.');
+});
+
+test('the sentence for a closed destination (no route is drawn to it)', () => {
+    assert.equal(closedMessage('Misto', openState(CANTEEN, at('2026-11-29T10:00:00'))), 'Misto is closed now. It opens tomorrow 8 am.');
+    const heat = [closure({ building_category: 'school', reason: 'Classes suspended: high heat index', ends_at: at('2026-11-23T17:00:00').toISOString() })];
+    assert.equal(closedMessage('CCS', buildingStatus(ccsHall, heat, MON_10)), 'CCS is closed now: Classes suspended: high heat index. It opens tomorrow 8 am.');
+    assert.equal(closedMessage('Canteen', openState(CANTEEN, MON_10)), null, 'open: no message, the route is drawn');
+    assert.equal(closedMessage('Hall', null), null, 'no hours: always open');
 });

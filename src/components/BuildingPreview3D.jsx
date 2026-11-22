@@ -4,6 +4,8 @@ import { C, RADIUS } from '../uiTokens';
 import { toLocalMeters, fromLocalMeters } from '../geo';
 import { doorFrames, placedDoors, DOOR_HEIGHT_M } from '../doors';
 import { makeLabel, disposeTree } from './StairPreview3D';
+import { buildingHeightM } from '../sunShadow';
+import { pathwayWidthM } from '../campusGeometry';
 
 // ── 3D building preview (Edit building → Doors) ─────────────────────
 // The building as a small orbitable model: its walls at their real height,
@@ -24,8 +26,59 @@ const GHOST_BLOCKED = 0xffb02e;
 const reduceMotion = () => typeof window !== 'undefined'
     && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** Fill `group` with the building. Returns the orbit target and radius. */
-function buildScene(group, { polygon, doors, floors, heightM, highlight }) {
+/** How far around the building its surroundings are drawn, metres (at least). */
+const CONTEXT_M = 70;
+const CONTEXT_BLOCK = 0x8f8b85;
+const CONTEXT_PATH = 0x3a3b42;
+
+/**
+ * The surroundings, for a sense of where the building stands: other buildings as see-through blocks
+ * at their real height with their names, and the roads and walkways at their real width. Never
+ * walls to pick (no userData.wall). Everything within `reach` metres of `ref`.
+ */
+function addContext(group, { buildings = [], pathways = [] }, local, reach) {
+    const near = (p) => Math.hypot(p.e, p.n) <= reach;
+    const blockMat = new THREE.MeshStandardMaterial({ color: CONTEXT_BLOCK, roughness: 0.95, transparent: true, opacity: 0.55, depthWrite: false });
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x6b6b72, transparent: true, opacity: 0.6 });
+    for (const b of buildings) {
+        if (!b || b.status === 'planned' || !Array.isArray(b.polygon) || b.polygon.length < 3) continue;
+        const ring = b.polygon.map(local);
+        const c = { e: ring.reduce((t, p) => t + p.e, 0) / ring.length, n: ring.reduce((t, p) => t + p.n, 0) / ring.length };
+        if (!near(c)) continue;
+        const h = buildingHeightM(b);
+        const geo = new THREE.ExtrudeGeometry(new THREE.Shape(ring.map((p) => new THREE.Vector2(p.e, p.n))), { depth: h, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        group.add(new THREE.Mesh(geo, blockMat));
+        group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edgeMat));
+        const tag = makeLabel(b.short_name || b.name || 'Building', { bg: '#26262c', scale: 1.8 });
+        tag.position.set(c.e, h + 1.4, -c.n);
+        group.add(tag);
+    }
+    const pathMat = new THREE.MeshStandardMaterial({ color: CONTEXT_PATH, roughness: 1 });
+    for (const pw of pathways) {
+        if (!pw || pw.status === 'planned' || !Array.isArray(pw.coordinates)) continue;
+        const pts = pw.coordinates.map(local);
+        if (!pts.some(near)) continue;
+        const w = pathwayWidthM(pw.kind, pw.width_m);
+        const disc = new THREE.CylinderGeometry(w / 2, w / 2, 0.02, 24);
+        pts.forEach((p, i) => {
+            const joint = new THREE.Mesh(disc, pathMat);
+            joint.position.set(p.e, 0.004, -p.n);
+            group.add(joint);
+            if (i === 0) return;
+            const a = pts[i - 1];
+            const len = Math.hypot(p.e - a.e, p.n - a.n);
+            if (len < 0.1) return;
+            const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, len), pathMat);
+            strip.position.set((a.e + p.e) / 2, 0.004, -(a.n + p.n) / 2);
+            strip.rotation.y = Math.atan2(p.e - a.e, -(p.n - a.n));
+            group.add(strip);
+        });
+    }
+}
+
+/** Fill `group` with the building (and its surroundings). Returns the orbit target and radius. */
+function buildScene(group, { polygon, doors, floors, heightM, highlight, context = null }) {
     const ring = (polygon || []).filter((p) => Number.isFinite(+p.lat) && Number.isFinite(+p.lng));
     if (ring.length < 3) return { target: new THREE.Vector3(), radius: 10, ref: null };
     const ref = { lat: ring.reduce((s, p) => s + +p.lat, 0) / ring.length, lng: ring.reduce((s, p) => s + +p.lng, 0) / ring.length };
@@ -36,9 +89,10 @@ function buildScene(group, { polygon, doors, floors, heightM, highlight }) {
     let radius = 4;
     for (const p of pts) radius = Math.max(radius, Math.hypot(p.e, p.n));
 
-    // Ground.
+    // Ground: wide enough for the surroundings when they are drawn.
+    const reach = context ? Math.max(CONTEXT_M, radius * 4) : radius * 1.6;
     const ground = new THREE.Mesh(
-        new THREE.CircleGeometry(radius * 1.6, 48),
+        new THREE.CircleGeometry(context ? reach * 1.08 : reach, 64),
         new THREE.MeshStandardMaterial({ color: 0x23232a, roughness: 1 }),
     );
     ground.rotation.x = -Math.PI / 2;
@@ -144,8 +198,11 @@ function buildScene(group, { polygon, doors, floors, heightM, highlight }) {
         group.add(label);
     });
 
-    const north = makeLabel('N', { scale: 1.4 });
-    north.position.set(0, 0.3, -(radius * 1.35));
+    if (context) addContext(group, context, local, reach);
+
+    // North, at the edge of the ground: which way the building faces.
+    const north = makeLabel('N', { scale: context ? 2.2 : 1.4 });
+    north.position.set(0, 0.3, -(context ? reach : radius * 1.35));
     group.add(north);
 
     return { target: new THREE.Vector3(0, H * 0.4, 0), radius: Math.max(radius, H), ref, doorH };
@@ -186,12 +243,14 @@ export default function BuildingPreview3D({
     // Moving a door: its index (the ghost then skips it when checking for
     // overlaps); onDoorPick(k): a door in the view was tapped.
     movingDoor = null, onDoorPick = null,
+    // { buildings, pathways } around it, drawn for a sense of place (never picked as walls).
+    context = null,
 }) {
     const hostRef = useRef(null);
     const stateRef = useRef(null);
     const pickRef = useRef({ placing, onWallPick, newDoorWidth, movingDoor, onDoorPick });
     pickRef.current = { placing, onWallPick, newDoorWidth, movingDoor, onDoorPick };
-    const key = JSON.stringify([polygon, doors, floors, heightM, highlight]);
+    const key = JSON.stringify([polygon, doors, floors, heightM, highlight, context ? [context.buildings?.length, context.pathways?.length] : null]);
 
     useEffect(() => {
         const host = hostRef.current;
@@ -379,7 +438,7 @@ export default function BuildingPreview3D({
         if (!s) return;
         disposeTree(s.group);
         s.group.clear();
-        const { target, radius, ref, doorH } = buildScene(s.group, { polygon, doors, floors, heightM, highlight });
+        const { target, radius, ref, doorH } = buildScene(s.group, { polygon, doors, floors, heightM, highlight, context });
         s.target.copy(target);
         s.ref = ref;
         s.polygon = polygon;

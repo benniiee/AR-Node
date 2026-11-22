@@ -24,7 +24,7 @@ class Closure extends Model
         'kind',
         'reason',
         'campus',
-        'department_kind',
+        'building_category',
         'department_id',
         'building_id',
         'node_id',

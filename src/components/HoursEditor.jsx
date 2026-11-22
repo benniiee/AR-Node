@@ -21,6 +21,11 @@ const HOURS_CSS = `
     .hours-times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .hours-presets { display: flex; flex-wrap: wrap; gap: 6px; }
     .hours-summary { margin: 0; font-size: ${TYPE.desc}; color: ${C.text}; font-weight: 600; }
+    .hours-toggle { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+    .hours-toggle input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: ${C.accent}; }
+    .hours-toggle-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .hours-toggle-title { font-size: ${TYPE.sub}; font-weight: 600; color: ${C.white}; }
+    .hours-toggle-hint { font-size: ${TYPE.desc}; color: ${C.muted}; line-height: 1.4; }
 `;
 
 /**
@@ -48,7 +53,7 @@ function readForm(hours) {
  */
 export default function HoursEditor({
     value, onChange, idPrefix = 'hours', disabled = false,
-    offHint = 'Off: always open. On: students see when it is open, and routes do not pass through it while it is closed.',
+    offHint = 'Leave off if it is always open.',
 }) {
     const form = useMemo(() => readForm(value), [value]);
     const enabled = value != null;
@@ -59,14 +64,18 @@ export default function HoursEditor({
     return (
         <div className="hours">
             <style>{HOURS_CSS}</style>
-            <label className="mt-check">
+            <label className="hours-toggle">
                 <input
                     type="checkbox" checked={enabled} disabled={disabled}
                     onChange={(e) => (e.target.checked ? emit(form) : onChange(null))}
                 />
-                <span>
-                    Has opening hours
-                    <small>{offHint}</small>
+                <span className="hours-toggle-text">
+                    <span className="hours-toggle-title">Set opening hours</span>
+                    <span className="hours-toggle-hint">
+                        {enabled
+                            ? 'Students see when it is open. While closed, it gets no route and routes go around it.'
+                            : offHint}
+                    </span>
                 </span>
             </label>
             {enabled && (
@@ -79,7 +88,7 @@ export default function HoursEditor({
                     <div className="hours-presets" role="group" aria-label="Quick hours">
                         {PRESETS.map((p) => (
                             <button
-                                key={p.label} type="button" className="ui-btn ui-btn-secondary" disabled={disabled}
+                                key={p.label} type="button" className="ui-btn ui-btn-secondary ui-btn-sm" disabled={disabled}
                                 onClick={() => emit({ days: p.days, opens: '08:00', closes: '17:00', lunch: null })}
                             >
                                 {p.label}
@@ -108,12 +117,12 @@ export default function HoursEditor({
                                 onChange={(e) => e.target.value && set({ closes: e.target.value })} />
                         </div>
                     </div>
-                    <label className="mt-check">
+                    <label className="hours-toggle">
                         <input
                             type="checkbox" checked={Boolean(form.lunch)} disabled={disabled}
                             onChange={(e) => set({ lunch: e.target.checked ? ['12:00', '13:00'] : null })}
                         />
-                        <span>Closed for lunch</span>
+                        <span className="hours-toggle-text"><span className="hours-toggle-title">Closed for lunch</span></span>
                     </label>
                     {form.lunch && (
                         <div className="hours-times">

@@ -108,6 +108,10 @@ const clampInt = (v, lo, hi, fallback) => {
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
 };
 
+/** How close (screen pixels) a pathway point must be dropped to join another pathway's point / line. */
+const SNAP_POINT_PX = 14;
+const SNAP_LINE_PX = 10;
+
 export default function CampusEditor({
     map, mode, record, buildings, pathways, departments, onSaved, onClose, onError,
     onManageNodes = null, onConnectBridge = null, theme = 'light', nodes = [], startStep = null,
@@ -146,6 +150,37 @@ export default function CampusEditor({
     // A path does not fork: tapping the map with a MIDDLE point selected starts a branch instead, drawn
     // here and saved as its own walkway with the pathway. `branchAnchor`: the branch being drawn on.
     const [branches, setBranches] = useState([]);
+    // Joining another pathway: a point dropped within SNAP_POINT_PX of one of its points lands exactly
+    // on it, or within SNAP_LINE_PX of its line, on the line (a point wins over a line). Routes then
+    // run from one pathway onto the other there. Pathways only; outlines never snap.
+    const snapToOtherPaths = (at) => {
+        if (isOutline || !map) return { at, to: null };
+        const here = map.latLngToContainerPoint([at.lat, at.lng]);
+        let best = null;
+        for (const pw of pathways || []) {
+            if (pw.id === record?.id || !Array.isArray(pw.coordinates) || pw.coordinates.length < 2) continue;
+            const px = pw.coordinates.map((c) => map.latLngToContainerPoint([c.lat, c.lng]));
+            px.forEach((q, i) => {
+                const d = here.distanceTo(q);
+                if (d <= SNAP_POINT_PX && (!best || best.line || d < best.d)) best = { d, line: false, at: { lat: +pw.coordinates[i].lat, lng: +pw.coordinates[i].lng }, pw };
+            });
+            for (let i = 1; i < px.length; i += 1) {
+                const a = px[i - 1];
+                const b = px[i];
+                const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+                if (len2 < 1) continue;
+                const t = Math.max(0, Math.min(1, ((here.x - a.x) * (b.x - a.x) + (here.y - a.y) * (b.y - a.y)) / len2));
+                const foot = L.point(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
+                const d = here.distanceTo(foot);
+                if (d <= SNAP_LINE_PX && (!best || (best.line && d < best.d))) {
+                    const ll = map.containerPointToLatLng(foot);
+                    best = { d, line: true, at: { lat: ll.lat, lng: ll.lng }, pw };
+                }
+            }
+        }
+        return best ? { at: best.at, to: best.pw } : { at, to: null };
+    };
+    const joinedNote = (pw) => `Joined to ${pw.name || 'the other pathway'}: routes go from one onto the other here.`;
     const [branchAnchor, setBranchAnchor] = useState(null);
     const historyRef = useRef([]);
     // A short note for the drawing bar (e.g. why a point cannot be extended).
@@ -170,6 +205,10 @@ export default function CampusEditor({
     // Opening hours, like doors, are the owning department's (or office's) to set; an admin sets them
     // only for a building that belongs to no one (same rule as the server).
     const [hours, setHours] = useState(() => record?.opening_hours ?? null);
+    // School or office building: follows the chosen department's kind; an admin labels unowned ones.
+    const [category, setCategory] = useState(record?.category || 'school');
+    const ownerKind = departmentId !== '' ? departments.find((d) => String(d.id) === String(departmentId))?.kind : null;
+    const shownCategory = ownerKind ? (ownerKind === 'office' ? 'office' : 'school') : category;
     const canEditHours = isBuilding && (manageDoors || (canChangeDepartment && !record?.department_id && departmentId === ''));
     // An admin filing an existing building under another department.
     const departmentChanged = Boolean(isBuilding && record && canChangeDepartment
@@ -446,12 +485,14 @@ export default function CampusEditor({
             vm.on('dragend', (e) => {
                 stamp();
                 const ll = e.target.getLatLng();
-                setPoints((prev) => prev.map((q, i) => (i === k ? { lat: ll.lat, lng: ll.lng } : q)));
+                const snapped = snapToOtherPaths({ lat: ll.lat, lng: ll.lng });
+                if (snapped.to) setDrawNote(joinedNote(snapped.to));
+                setPoints((prev) => prev.map((q, i) => (i === k ? snapped.at : q)));
             });
         });
         return fitBand ? () => map.off('zoomend', fitBand) : undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors, widthM, branches, branchAnchor]);
+    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors, widthM, branches, branchAnchor, pathways]);
 
     // Put a door where the outline was tapped (map or 3D view).
     const addDoorAt = (lat, lng) => {
@@ -526,9 +567,10 @@ export default function CampusEditor({
         if (!map || step !== 'shape') return undefined;
         const onClick = (e) => {
             if (Date.now() - vertexPressAt.current < 350) return;
-            const at = { lat: e.latlng.lat, lng: e.latlng.lng };
+            const snapped = snapToOtherPaths({ lat: e.latlng.lat, lng: e.latlng.lng });
+            const at = snapped.at;
             historyRef.current.push({ points, anchor, branches, branchAnchor });
-            setDrawNote(null);
+            setDrawNote(snapped.to ? joinedNote(snapped.to) : null);
             // Carrying on a branch, or starting one from a middle point of a path: joined only to that point.
             if (!isOutline && branchAnchor !== null && branches[branchAnchor]) {
                 setBranches(branches.map((b, i) => (i === branchAnchor ? [...b, at] : b)));
@@ -548,7 +590,7 @@ export default function CampusEditor({
         };
         map.on('click', onClick);
         return () => map.off('click', onClick);
-    }, [map, step, ref, points, anchor, isOutline, branches, branchAnchor]);
+    }, [map, step, ref, points, anchor, isOutline, branches, branchAnchor, pathways]);
 
     // Undo: back one addition (corner + which one was selected).
     const undo = () => {
@@ -604,6 +646,7 @@ export default function CampusEditor({
                     osm_ref: ref,
                     ...(canChangeDepartment ? { department_id: departmentId === '' ? null : Number(departmentId) } : {}),
                     ...(canEditHours ? { opening_hours: hours } : {}),
+                    ...(canChangeDepartment && departmentId === '' ? { category } : {}),
                     // Rooms filed here follow a moved building: the server moves
                     // them with it in one transaction (whoever placed each room).
                     ...(record && moved && nodesInside.length ? { move_nodes_by: shift } : {}),
@@ -684,7 +727,7 @@ export default function CampusEditor({
                 : anchor !== null
                 ? `The green ${part} is selected: tap the map to add a ${part} joined only to it, and keep tapping to carry on from there. Tap it again to let go.`
                 : ready
-                ? `Tap a ${part} to add new ones after it, drag one to reshape, or drag the centre handle to move the whole ${noun}. Then press Next.`
+                ? `Tap a ${part} to add new ones after it, drag one to reshape, or drag the centre handle to move the whole ${noun}.${isOutline ? '' : ' To join another pathway, tap its point (or right on its line), or drag an end onto it.'} Then press Next.`
                 : `Tap to add the next ${isOutline ? 'corner' : 'point'} (${points.length} of at least ${minPoints}).`);
         } else if (record) {
             hint = `Tap the map to draw the new ${isOutline ? 'outline' : 'line'}.`;
@@ -720,6 +763,8 @@ export default function CampusEditor({
             subtitle={name.trim() || shortName.trim() || (isBridge ? 'Bridge' : 'Building')}
             onClose={closeDoors}
             closeLabel={`Close ${doorWord} editor`}
+            // Full size in place of the map: room for the 3D view, with the campus around the building.
+            workspace
             footer={<button type="button" className="ui-btn ui-btn-primary" onClick={closeDoors}>Done</button>}
         >
             <div className="cf-doors-modal">
@@ -736,6 +781,8 @@ export default function CampusEditor({
                     movingDoor={movingDoor}
                     onDoorPick={(k) => toggleMove(k)}
                     height="var(--cf-doors-h)"
+                    // The campus around it (other buildings, roads and walkways), to tell which side is which.
+                    context={{ buildings: (buildings || []).filter((b) => !(isBuilding && b.id === record?.id)), pathways }}
                 />
                 <div className="cf-doors-side">
                     <div className="cf-width-row">
@@ -944,6 +991,21 @@ export default function CampusEditor({
                                 </label>
                             )}
                         </div>
+                        <div className="ui-field">
+                            <label className="ui-label" htmlFor="cf-category">Building type</label>
+                            <select
+                                id="cf-category" className="ui-select" value={shownCategory} onChange={(e) => setCategory(e.target.value)}
+                                disabled={!canChangeDepartment || departmentId !== ''} aria-describedby="cf-category-hint"
+                            >
+                                <option value="school">School building (classes)</option>
+                                <option value="office">Office building (cashier, registrar, canteen)</option>
+                            </select>
+                            <span className="ui-hint" id="cf-category-hint">
+                                {departmentId !== ''
+                                    ? `Set by its department: ${ownerKind === 'office' ? 'an office' : 'a college'}.`
+                                    : 'Announcements can close every school building (classes suspended) or every office building at once.'}
+                            </span>
+                        </div>
                         {points.length >= 3 && (
                             <section className="mt-pathnodes" aria-labelledby="cf-doors-title">
                                 <span className="ui-label" id="cf-doors-title">Doors</span>
@@ -1103,6 +1165,8 @@ export default function CampusEditor({
 
 export const CAMPUS_EDITOR_CSS = `
     .cf-doors-modal { --cf-doors-h: min(62vh, 560px); display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 16px; align-items: start; }
+    /* In place of the map: the 3D view takes the height of the working area. */
+    .is-workspace .cf-doors-modal { --cf-doors-h: max(360px, calc(100dvh - 190px)); grid-template-columns: minmax(0, 2.4fr) minmax(280px, 1fr); }
     .cf-doors-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .cf-doors-side .cf-doors { max-height: calc(var(--cf-doors-h) - 110px); overflow-y: auto; overscroll-behavior: contain; }
     .cf-width-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -1124,7 +1188,7 @@ export const CAMPUS_EDITOR_CSS = `
     .cf-door-slide .cf-width-btn { font-size: 22px; }
     .cf-doors-empty { margin: 0; padding: 14px 12px; border: 1px dashed rgba(255,255,255,0.14); border-radius: 12px; font-size: 13px; line-height: 1.45; color: rgba(255,255,255,0.62); }
     @media (max-width: 760px) {
-        .cf-doors-modal { --cf-doors-h: 46vh; grid-template-columns: 1fr; }
+        .cf-doors-modal, .is-workspace .cf-doors-modal { --cf-doors-h: 52vh; grid-template-columns: 1fr; }
         .cf-doors-side .cf-doors { max-height: none; }
     }
     .cf-doors { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

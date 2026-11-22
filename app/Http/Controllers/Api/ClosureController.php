@@ -43,7 +43,7 @@ class ClosureController extends Controller
             'kind' => ['sometimes', Rule::in(Closure::KINDS)],
             'reason' => ['required_unless:kind,open', 'nullable', 'string', 'max:160'],
             'campus' => ['sometimes', 'nullable', 'in:A,B'],
-            'department_kind' => ['sometimes', 'nullable', Rule::in(Department::KINDS)],
+            'building_category' => ['sometimes', 'nullable', Rule::in(Building::CATEGORIES)],
             'department_id' => ['sometimes', 'nullable', 'integer', 'exists:departments,id'],
             'building_id' => ['sometimes', 'nullable', 'integer', 'exists:buildings,id'],
             'node_id' => ['sometimes', 'nullable', 'integer', 'exists:nodes,id'],
@@ -87,8 +87,8 @@ class ClosureController extends Controller
         }
         abort_unless($user->department_id !== null, 403, 'Ask an admin to assign you a department first.');
         abort_if(
-            $closure->campus !== null || $closure->department_kind !== null || $closure->isSchoolLevel(), 403,
-            'Only an admin can close the whole school, a campus, or every college or office.',
+            $closure->campus !== null || $closure->building_category !== null || $closure->isSchoolLevel(), 403,
+            'Only an admin can close the whole school, a campus, or every school or office building.',
         );
         abort_unless($this->withinDepartment($user, $closure), 403, 'You can only close your own department, its buildings and places.');
     }
@@ -97,7 +97,7 @@ class ClosureController extends Controller
     {
         return $user->isAdmin()
             || ($user->department_id !== null && ! $closure->isSchoolLevel()
-                && $closure->campus === null && $closure->department_kind === null
+                && $closure->campus === null && $closure->building_category === null
                 && $this->withinDepartment($user, $closure));
     }
 

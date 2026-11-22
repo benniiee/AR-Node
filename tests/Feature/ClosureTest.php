@@ -35,14 +35,43 @@ class ClosureTest extends TestCase
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
 
-        $this->postJson('/api/closures', ['department_kind' => 'college', 'reason' => 'Classes suspended: high heat index'] + $this->today())
+        $this->postJson('/api/closures', ['building_category' => 'school', 'reason' => 'Classes suspended: high heat index'] + $this->today())
             ->assertCreated()
-            ->assertJsonPath('department_kind', 'college')
+            ->assertJsonPath('building_category', 'school')
             ->assertJsonPath('can_manage', true);
 
         $this->getJson('/api/map-data')
-            ->assertJsonPath('closures.0.department_kind', 'college')
+            ->assertJsonPath('closures.0.building_category', 'school')
             ->assertJsonPath('closures.0.reason', 'Classes suspended: high heat index');
+    }
+
+    public function test_a_building_is_a_school_or_office_building_by_its_owner_or_the_admin(): void
+    {
+        $office = Department::factory()->office()->create();
+        $college = Department::factory()->create();
+        $unowned = Building::factory()->create(['department_id' => null]);
+        $owned = Building::factory()->create(['department_id' => $college->id]);
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        // Nobody owns it: the admin labels it.
+        $this->putJson("/api/buildings/{$unowned->id}", ['category' => 'office'])->assertOk()->assertJsonPath('category', 'office');
+        $this->putJson("/api/buildings/{$unowned->id}", ['category' => 'gym'])->assertUnprocessable()->assertInvalid('category');
+        // Owned: it follows the department, whatever is sent.
+        $this->putJson("/api/buildings/{$owned->id}", ['category' => 'office'])->assertOk()->assertJsonPath('category', 'school');
+        $this->putJson("/api/buildings/{$owned->id}", ['department_id' => $office->id])->assertOk()->assertJsonPath('category', 'office');
+        // A department turning into an office relabels its buildings.
+        $other = Building::factory()->create(['department_id' => $college->id, 'category' => 'school']);
+        $this->putJson("/api/departments/{$college->id}", ['kind' => 'office'])->assertOk();
+        $this->assertSame('office', $other->fresh()->category);
+    }
+
+    public function test_staff_cannot_relabel_a_building(): void
+    {
+        $department = Department::factory()->create();
+        $building = Building::factory()->create(['department_id' => $department->id, 'category' => 'school']);
+        Sanctum::actingAs($this->staff($department));
+
+        $this->putJson("/api/buildings/{$building->id}", ['category' => 'office'])->assertForbidden();
     }
 
     public function test_the_map_feed_says_which_buildings_are_colleges_and_has_a_real_version(): void
@@ -53,6 +82,7 @@ class ClosureTest extends TestCase
 
         $map = $this->getJson('/api/map-data')
             ->assertJsonPath('buildings.0.department.kind', 'college')
+            ->assertJsonPath('buildings.0.category', 'school')
             ->assertJsonPath('buildings.1.department.kind', 'office');
         // The version is when the map last changed (it used to read 0 for every map).
         $this->assertGreaterThan(0, $map->json('version'));
@@ -74,7 +104,7 @@ class ClosureTest extends TestCase
         // The whole school, a campus, or every college: an admin's call.
         $close([])->assertForbidden();
         $close(['campus' => 'A'])->assertForbidden();
-        $close(['department_kind' => 'college'])->assertForbidden();
+        $close(['building_category' => 'school'])->assertForbidden();
     }
 
     public function test_staff_close_a_place_in_their_building(): void
@@ -116,7 +146,7 @@ class ClosureTest extends TestCase
     {
         $department = Department::factory()->create();
         $theirs = Closure::factory()->create(['department_id' => $department->id]);
-        $schoolWide = Closure::factory()->create(['department_kind' => 'college']);
+        $schoolWide = Closure::factory()->create(['building_category' => 'school']);
         Sanctum::actingAs($this->staff($department));
 
         $this->getJson('/api/closures')

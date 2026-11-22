@@ -20,7 +20,7 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Manage every wall, and the staircases of bridges (Connect to ground). Staircases inside buildings are the department staff's.
 - Manage departments: create, rename, recolour, delete, and set each one's type: a **college** (has courses and students) or an **office** (registrar, cashier, canteen and the like: staff only, no courses). A college becomes an office only once its courses are moved or removed.
 - Set **opening hours** only on buildings that belong to no department or office yet; otherwise its staff set them.
-- Post **announcements** (Announcements tab): close the whole school, one campus, **every college** (classes suspended, while offices stay open), every office, one department or office, one building or one room, from a start to an end time, with a reason students see. Each ends on its own; **End now** ends it early. When the heat index is in the Danger range (41°C or more), the tab offers to fill in a class suspension; posting it is always the admin's call.
+- Post **announcements** (Announcements tab): close the whole school, one campus, **every school building** (classes suspended, while office buildings stay open), every office building, one department or office, one building or one room, from a start to an end time, with a reason students see. Each ends on its own; **End now** ends it early. When the heat index is in the Danger range (41°C or more), the tab offers to fill in a class suspension; posting it is always the admin's call.
 - Manage every student course in the **Courses** tab (code, full name and the department it belongs to). A department's courses decide which students its staff see in the Activity log.
 - Manage staff accounts: create admins and faculty, assign departments, change roles, remove accounts. Nobody can remove or demote themselves, and at least one admin always remains.
 - Manage student accounts: add, edit, reset a password (gives a one-time temporary password), remove.
@@ -45,7 +45,7 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - See the full campus map: buildings, offices, rooms and floors.
 - Search for a destination and get walking directions, worked out on the phone, including stairs between floors and building doors.
 - Directions go around walls and buildings, prefer sheltered paths when rain is likely, and avoid exposed paths while it rains or in heat mode.
-- See whether a place is open: the destination list and a building's popup say "Open · closes 5 pm" or "Closed · opens Mon 8 am" (campus time), or the reason when it is closed by an announcement ("Closed · System maintenance · opens 3 pm"). A route still goes to a closed place, with a notice saying when it opens, but never cuts through a closed building on the way.
+- See whether a place is open: the destination list and a building's popup say "Open · closes 5 pm" or "Closed · opens Mon 8 am" (campus time), or the reason when it is closed by an announcement ("Closed · System maintenance · opens 3 pm"). A closed place gets no route, only why and when it opens ("Misto is closed now. It opens tomorrow 8 am."); the route appears once it opens. Routes never cut through a closed building on the way.
 - School-wide announcements (classes suspended, a campus closed) show as a banner at the top of the map, for visitors too.
 - See the weather in one pill at the bottom of the map (what routing is doing right now); tap it for the details: chance of rain in the next 20 minutes and within the next hour, the heat index now and 1 to 3 hours ahead, and the UV index (sunburn risk). When no route is possible, the message says whether rain or heat closed the open-air paths.
 - Tap **"It's raining here"** (in the weather pill's details) when rain starts. When two or more students report rain within 15 minutes, everyone's routes switch to covered paths straight away, before any forecast or airport report notices.
@@ -103,14 +103,14 @@ php artisan schedule:work   # weather every 10 minutes, map every 20 (keep it ru
 
 The trained models (`ml/model.json`, `ml/model_h60.json`, `ml/heat_model.json`), their parity files and the evaluation reports (`ml/reports/metrics*.json`, `results*.csv`, `calibration*.png`, `heat_metrics.json`) **are** in the repository, so the app works without retraining.
 - Vite forwards `/api`, `/sanctum` and `/university.pmtiles` to port 8005; keep the ports in `package.json` in step.
-- **Demo accounts** (password `password`, never in production): admin `admin@campus.test`; staff `ccs.staff@campus.test` and `csm.staff@campus.test`; students `ae202401622`, `ae202502307`, `ae202300418`. Development builds show one-tap demo buttons; production builds only with `VITE_DEMO_ACCOUNTS=true`.
+- **Demo accounts** (password `password`, never in production): admin `admin@campus.test`; staff, one per department or office, each owning its building: `ccs.staff@campus.test`, `csm.staff@campus.test`, `ccje@campus.test`, `nursing@campus.test`, `cte@campus.test`, `ils@campus.test`, `msa@campus.test`, `cais@campus.test`, and the offices `canteen@campus.test`, `cashier@campus.test`, `misto@campus.test` (`php artisan db:seed --class=DemoStaffSeeder` resets them all to the demo password); students `ae202401622`, `ae202502307`, `ae202300418`. Development builds show one-tap demo buttons; production builds only with `VITE_DEMO_ACCOUNTS=true`.
 - **Testing on a phone** through an ngrok tunnel: put the tunnel host in `VITE_ALLOWED_HOSTS` and set `VITE_TUNNEL=ngrok` (skips ngrok's warning page). The app must be opened online once on each phone before it works offline.
 
 ### Tests
 
 ```bash
-php artisan test --compact                  # 282 PHP tests
-node --test src/*.test.mjs tests/*.test.mjs # 141 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, opening hours and closures, rain, heat, UV)
+php artisan test --compact                  # 285 PHP tests
+node --test src/*.test.mjs tests/*.test.mjs # 143 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, opening hours and closures, rain, heat, UV)
 python ml/test_satellite.py                 # satellite, cloud-motion and cloud-phase self-check (no network)
 vendor/bin/pint --format agent              # format PHP after changes
 ```
@@ -260,12 +260,12 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
 | `nodes` | Rooms, offices and route nodes: position, floor, `inside`/`outside`, building, department, who placed it, and a place's own `opening_hours` (none = its building's). |
 | `node_links` | Staircases between two nodes on different floors (slope, direction, flights, landing). |
 | `borders` | Walls: points sharing a `group_id`; routes never cross them. |
-| `buildings` | Outline, floors, height, status, doors, department, optional weekly `opening_hours` (`{"mon": [["08:00", "17:00"]], ..., "sun": []}`; none = always open). |
+| `buildings` | Outline, floors, height, status, `category` (`school`: classes, or `office`: cashier, registrar, canteen; follows the owning department's kind, an admin labels unowned ones), doors, department, optional weekly `opening_hours` (`{"mon": [["08:00", "17:00"]], ..., "sun": []}`; none = always open). |
 | `bridges` | Connectors people walk through (footbridges): outline, `kind`, deck floor and height, roofed, status, `closed` and `closed_reason` (an admin closure). Public in the map feed, like buildings. |
 | `pathways` | Roads and walkways, each a route along its line (no stored route nodes), with an optional real `width_m`. |
 | `campus_areas` | Named campus outlines. |
 | `departments` | Name, label colour and `kind`: `college` (courses, students) or `office` (registrar, cashier, canteen; staff only). |
-| `closures` | Announcements: `closed` or a special `open`ing, `starts_at` to `ends_at`, a `reason`, and a scope from the filled columns (all empty = the whole school): `campus`, `department_kind`, `department_id`, `building_id`, `node_id`. Current and upcoming ones travel in the map feed (a room's only to signed-in users). |
+| `closures` | Announcements: `closed` or a special `open`ing, `starts_at` to `ends_at`, a `reason`, and a scope from the filled columns (all empty = the whole school): `campus`, `building_category` (every school or every office building), `department_id`, `building_id`, `node_id`. Current and upcoming ones travel in the map feed (a room's only to signed-in users). |
 | `courses` | Student courses: unique `code` (BSIT), full name, owning `department_id` (indexed foreign key; a removed department leaves its courses unassigned). Students point at one with `users.course_id` (indexed foreign key; a course with students cannot be deleted). The API still sends and accepts the course code. |
 | `weather_predictions` | Every 10-minute prediction and what the airport saw (kept 180 days). |
 | `rain_reports` | "It's raining here" taps: who and when (kept 180 days). |

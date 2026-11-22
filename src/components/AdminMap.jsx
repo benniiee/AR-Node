@@ -1035,7 +1035,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     L.circleMarker([c.lat, c.lng], {
                         radius: from ? 7 : 5, color: '#1f2937', weight: 2, fillColor: from ? '#22c55e' : '#ffffff', fillOpacity: 1,
                         bubblingMouseEvents: false, className: 'campus-hit',
-                    }).on('click', () => window.__pathPoint?.(pw.id, idx)).addTo(pLayer);
+                    }).on('click', () => {
+                        // Editing a pathway: a tap on another pathway's point goes to the editor (it joins there).
+                        if (isCampusTool && campusEdit?.mode === 'pathway') mapInstance.current?.fire('click', { latlng: L.latLng(c.lat, c.lng) });
+                        else window.__pathPoint?.(pw.id, idx);
+                    }).addTo(pLayer);
                 });
             }
         }
@@ -3354,8 +3358,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                                     <HoursEditor
                                         value={editHours} onChange={setEditHours} idPrefix="edit-hours"
                                         offHint={inherited
-                                            ? `Off: same as ${building.short_name || building.name} (${inherited}). On: its own hours, e.g. a cashier with a lunch break.`
-                                            : 'Off: always open. On: students see when it is open.'}
+                                            ? `Leave off to follow ${building.short_name || building.name} (${inherited}). Turn on for its own hours, like a cashier with a lunch break.`
+                                            : 'Leave off if it is always open.'}
                                     />
                                 </section>
                             );

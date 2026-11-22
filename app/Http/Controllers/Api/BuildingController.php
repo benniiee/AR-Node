@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Building;
+use App\Models\Department;
 use App\Models\User;
 use App\Services\BuildingDoors;
 use App\Services\GeoPoints;
@@ -45,6 +46,7 @@ class BuildingController extends Controller
         );
 
         $building = new Building($validated);
+        $this->followOwner($building);
         $building->created_by = $request->user()->id;
         $building->save();
 
@@ -82,6 +84,10 @@ class BuildingController extends Controller
 
         // Doors belong to the building's department: its staff manage them, never an admin (a whole-
         // building move still carries the doors along, see below). No department yet: assign one first.
+        // School / office label: the admin's (it follows the owning department when there is one).
+        if (! $user->isAdmin() && $request->has('category') && $request->input('category') !== $building->category) {
+            abort(403, 'Only an admin can change whether a building is a school or an office building.');
+        }
         if ($user->isAdmin() && $request->has('doors')) {
             abort(403, 'Doors are managed by the staff of the department that owns this building.');
         }
@@ -104,6 +110,7 @@ class BuildingController extends Controller
         unset($validated['move_nodes_by'], $validated['transfer_nodes']);
 
         $building->fill($validated);
+        $this->followOwner($building);
 
         // A whole-building move carries its doors along when the client did
         // not send them already moved.
@@ -167,6 +174,17 @@ class BuildingController extends Controller
     }
 
     /**
+     * An owned building is labelled by its department: a college's are school buildings, an office's
+     * are office buildings. Only an unowned building keeps the label an admin gave it.
+     */
+    private function followOwner(Building $building): void
+    {
+        if ($building->department_id !== null) {
+            $building->category = Department::whereKey($building->department_id)->value('kind') === 'office' ? 'office' : 'school';
+        }
+    }
+
+    /**
      * Admins edit every building; staff edit their own department's buildings.
      */
     private function canEdit(User $user, Building $building): bool
@@ -227,6 +245,7 @@ class BuildingController extends Controller
             'floors' => 'sometimes|integer|min:1|max:'.Building::MAX_FLOORS,
             'height_m' => 'sometimes|nullable|numeric|min:'.Building::MIN_HEIGHT_M.'|max:'.Building::MAX_HEIGHT_M,
             'status' => ['sometimes', Rule::in(Building::STATUSES)],
+            'category' => ['sometimes', Rule::in(Building::CATEGORIES)],
             'campus' => 'sometimes|in:A,B',
             'polygon' => "{$required}|array|min:3|max:500",
             'polygon.*.lat' => 'required|numeric|between:-90,90',

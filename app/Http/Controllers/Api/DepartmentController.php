@@ -65,6 +65,13 @@ class DepartmentController extends Controller
         );
 
         $department->update($validated);
+        // Its buildings follow: a college's are school buildings, an office's office buildings.
+        // One by one, so the map snapshot refreshes (model events).
+        if ($department->wasChanged('kind')) {
+            foreach ($department->buildings()->get() as $building) {
+                $building->update(['category' => $department->isOffice() ? 'office' : 'school']);
+            }
+        }
 
         return response()->json($department);
     }

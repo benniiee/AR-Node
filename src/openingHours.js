@@ -46,9 +46,9 @@ export function hoursOf(place, buildingsById) {
 
 /**
  * Open or closed at `date`, with the words to show. Null when there are no set hours.
- * @returns {{ open: boolean, label: string, short: string } | null}
+ * @returns {{ open: boolean, label: string, short: string, opens?: string } | null}
  *   label: "Open · closes 5 pm", "Closed · opens 1 pm", "Closed · opens Mon 8 am", "Closed"
- *   short: "Open" / "Closed" (badge)
+ *   short: "Open" / "Closed" (badge); opens: when it opens next ("1 pm", "Mon 8 am"), when closed
  */
 export function openState(hours, date = new Date()) {
     const h = valid(hours);
@@ -62,13 +62,13 @@ export function openState(hours, date = new Date()) {
 
     // The next opening: later today, then the following days (a week round).
     const later = ranges(day).find(([o]) => o > minutes);
-    if (later) return { open: false, short: 'Closed', label: `Closed · opens ${formatTime(later[2])}` };
+    if (later) return { open: false, short: 'Closed', opens: formatTime(later[2]), label: `Closed · opens ${formatTime(later[2])}` };
     for (let k = 1; k <= 7; k += 1) {
         const d = DAYS[(today + k) % 7];
         const [first] = ranges(d);
         if (first) {
-            const when = k === 1 ? 'tomorrow' : DAY_NAMES[d];
-            return { open: false, short: 'Closed', label: `Closed · opens ${when} ${formatTime(first[2])}` };
+            const when = `${k === 1 ? 'tomorrow' : DAY_NAMES[d]} ${formatTime(first[2])}`;
+            return { open: false, short: 'Closed', opens: when, label: `Closed · opens ${when}` };
         }
     }
     return { open: false, short: 'Closed', label: 'Closed' };
@@ -109,8 +109,8 @@ export function weeklyHours(days, open, close, lunch = null) {
 
 // ── Closures and special openings (announcements) ────────────────────
 // A closure (or special opening) covers what its filled fields match, all of them: node_id, else
-// building_id (the building and every room in it), department_id, department_kind (every college or
-// every office), campus. None filled: the whole school. Precedence: a closure beats a special opening,
+// building_id (the building and every room in it), department_id, building_category (every school
+// building, i.e. classes, or every office building), campus. None filled: the whole school. Precedence: a closure beats a special opening,
 // which beats the weekly hours.
 
 const DAY_MS = 86400000;
@@ -135,7 +135,8 @@ export function buildingTarget(b) {
     return {
         nodeId: null, buildingId: b?.id ?? null, campus: b?.campus ?? null,
         departmentIds: [dept?.id ?? b?.department_id].filter((v) => v != null),
-        departmentKinds: [dept?.kind].filter(Boolean),
+        // School or office building (the server keeps it in step with the owning department).
+        category: b ? (b.category || 'school') : null,
     };
 }
 
@@ -146,7 +147,8 @@ export function placeTarget(n, buildingsById) {
     return {
         nodeId: n?.id ?? null, buildingId: n?.building_id ?? null, campus: n?.campus ?? bt.campus,
         departmentIds: [...new Set([n?.department?.id ?? n?.department_id, ...bt.departmentIds].filter((v) => v != null))],
-        departmentKinds: [...new Set([n?.department?.kind, ...bt.departmentKinds].filter(Boolean))],
+        // A place is in a school or office building; one outside any building is neither.
+        category: bt.category,
     };
 }
 
@@ -156,7 +158,7 @@ export function covers(c, t) {
     if (c.node_id != null && c.node_id !== t.nodeId) return false;
     if (c.building_id != null && c.building_id !== t.buildingId) return false;
     if (c.department_id != null && !t.departmentIds.includes(c.department_id)) return false;
-    if (c.department_kind && !t.departmentKinds.includes(c.department_kind)) return false;
+    if (c.building_category && c.building_category !== t.category) return false;
     if (c.campus && c.campus !== t.campus) return false;
     return true;
 }
@@ -191,9 +193,10 @@ export function placeStatus(hours, closures, target, date = new Date()) {
     if (closed) {
         const reopens = nextOpening(hours, new Date(closed.ends_at));
         const reason = String(closed.reason || '').trim();
+        const opens = reopens ? formatWhen(reopens, date) : null;
         return {
-            open: false, short: 'Closed', reason,
-            label: `Closed${reason ? ` · ${reason}` : ''}${reopens ? ` · opens ${formatWhen(reopens, date)}` : ''}`,
+            open: false, short: 'Closed', reason, opens,
+            label: `Closed${reason ? ` · ${reason}` : ''}${opens ? ` · opens ${opens}` : ''}`,
         };
     }
     const special = here.find((c) => c.kind === 'open');
@@ -220,9 +223,19 @@ export function announcements(closures, date = new Date()) {
     return (closures || [])
         .filter((c) => c.kind !== 'open' && activeAt(c, date) && c.department_id == null && c.building_id == null && c.node_id == null)
         .map((c) => {
-            const who = c.department_kind === 'college' ? 'All colleges' : c.department_kind === 'office' ? 'All offices' : 'Whole school';
+            const who = c.building_category === 'school' ? 'All school buildings' : c.building_category === 'office' ? 'All office buildings' : 'Whole school';
             const where = c.campus ? `${who === 'Whole school' ? 'Campus' : `${who}, Campus`} ${c.campus}` : who;
             const reason = String(c.reason || '').trim() || 'Closed';
             return { id: c.id, text: `${reason} · ${where} · until ${formatWhen(c.ends_at, date)}` };
         });
+}
+
+/**
+ * The sentence for a destination that is closed right now (no route is drawn to it):
+ * "Misto is closed now. It opens tomorrow 8 am." / "CCS is closed now: Classes suspended. It opens Mon 8 am."
+ */
+export function closedMessage(name, status) {
+    if (!status || status.open) return null;
+    const reason = String(status.reason || '').trim();
+    return `${name || 'This place'} is closed now${reason ? `: ${reason}` : ''}.${status.opens ? ` It opens ${status.opens}.` : ''}`;
 }

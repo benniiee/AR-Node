@@ -15,6 +15,15 @@ const DEMO_ACCOUNTS = !SHOW_DEMO ? [] : [
     { email: 'admin@campus.test', tag: 'Admin', name: 'Campus admin' },
     { email: 'ccs.staff@campus.test', tag: 'CCS', name: 'CCS department staff' },
     { email: 'csm.staff@campus.test', tag: 'CSM', name: 'CSM department staff' },
+    { email: 'ccje@campus.test', tag: 'CCJE', name: 'CCJE department staff' },
+    { email: 'nursing@campus.test', tag: 'BSN', name: 'Nursing department staff' },
+    { email: 'cte@campus.test', tag: 'CTE', name: 'CTE department staff' },
+    { email: 'ils@campus.test', tag: 'ILS', name: 'ILS (high school) staff' },
+    { email: 'msa@campus.test', tag: 'MSA', name: 'MSA staff' },
+    { email: 'cais@campus.test', tag: 'CAIS', name: 'CAIS staff' },
+    { email: 'canteen@campus.test', tag: 'Office', name: 'Canteen staff' },
+    { email: 'cashier@campus.test', tag: 'Office', name: 'Cashier staff' },
+    { email: 'misto@campus.test', tag: 'Office', name: 'Misto staff' },
 ];
 
 // The route the art panel draws, and the one its walker follows: up through the campus, then round to
@@ -179,7 +188,8 @@ const LOGIN_CSS = `
     .login-demo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .login-demo-title { margin: 0; font-size: ${TYPE.desc}; font-weight: 700; color: ${C.text}; }
     .login-demo-note { font-size: ${TYPE.desc}; color: ${C.muted}; }
-    .login-demo-list { display: grid; gap: 8px; margin-top: 10px; }
+    /* One per department and office: about five rows show, the rest scroll. */
+    .login-demo-list { display: grid; gap: 8px; margin-top: 10px; max-height: 296px; overflow-y: auto; padding-right: 4px; overscroll-behavior: contain; }
     .login-demo-btn {
         display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 16px; text-align: left;
         border-radius: ${PILL}px; border: 1px solid ${C.border}; background: transparent; color: ${C.white}; font: inherit; cursor: pointer;

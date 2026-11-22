@@ -21,6 +21,8 @@ class Node extends Model
         'department_id',
         // Building the node is inside (null = outdoors / not filed).
         'building_id',
+        // A place's own weekly hours (App\Services\OpeningHours); null = its building's.
+        'opening_hours',
         // NOTE: created_by is deliberately NOT fillable — the controller sets
         // it server-side from the authenticated user on create, and nothing
         // may change it afterwards.
@@ -35,6 +37,7 @@ class Node extends Model
     ];
 
     protected $casts = [
+        'opening_hours' => 'array',
         'latitude' => 'float',
         'longitude' => 'float',
         'elevation' => 'float',

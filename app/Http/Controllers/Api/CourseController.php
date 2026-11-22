@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Course;
+use App\Models\Department;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,7 @@ class CourseController extends Controller
         if (! $user->isAdmin()) {
             $validated['department_id'] = $user->department_id;
         }
+        $this->assertCollege($validated['department_id'] ?? null);
 
         return response()->json(Course::create($validated)->load('department:id,name,color')->loadCount('students'), 201);
     }
@@ -45,6 +47,9 @@ class CourseController extends Controller
         $validated = $this->validated($request, $course);
         if (! $request->user()->isAdmin()) {
             unset($validated['department_id']);
+        }
+        if (array_key_exists('department_id', $validated)) {
+            $this->assertCollege($validated['department_id']);
         }
         $course->update($validated);
 
@@ -68,6 +73,15 @@ class CourseController extends Controller
     }
 
     /** @return array{code?: string, name?: string, department_id?: int|null} */
+    /** Courses belong to colleges: an office (registrar, cashier...) has none. */
+    private function assertCollege(?int $departmentId): void
+    {
+        abort_if(
+            $departmentId !== null && Department::whereKey($departmentId)->where('kind', 'office')->exists(), 422,
+            'Offices have no courses: add courses to a college.',
+        );
+    }
+
     private function validated(Request $request, ?Course $course = null): array
     {
         if ($request->has('code')) {

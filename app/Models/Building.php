@@ -41,6 +41,8 @@ class Building extends Model
         'polygon',
         // Doors: points on the outline; routes enter and leave through them.
         'doors',
+        // Weekly hours (App\Services\OpeningHours); null = no set hours.
+        'opening_hours',
         'source',
         'osm_ref',
         'department_id',
@@ -69,6 +71,7 @@ class Building extends Model
             'height_m' => 'float',
             'polygon' => 'array',
             'doors' => 'array',
+            'opening_hours' => 'array',
         ];
     }
 

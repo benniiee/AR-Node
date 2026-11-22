@@ -18,7 +18,8 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Manage roads and walkways (bottom bar → **Add path**): draw, edit (name, type, real width in metres) and reshape them. A pathway is a route by itself: routes follow its line, so it needs no route nodes, and a covered walkway counts as sheltered in rain. **Clear route nodes along it** (in its Edit panel) removes the old route-node dots within a few metres of it, never staircase ends, nodes in buildings or on bridges, or rooms. The 2D map and the 3D views draw each one at its real width (blank = 5 m for a road, 2.4 m for a walkway).
 - Manage nodes **only on bridges** (deck nodes and the stair feet under them). Rooms, offices and routes inside buildings, and their doors, belong to each building's department staff; outdoors, routes follow roads and walkways.
 - Manage every wall, and the staircases of bridges (Connect to ground). Staircases inside buildings are the department staff's.
-- Manage departments: create, rename, recolour, delete.
+- Manage departments: create, rename, recolour, delete, and set each one's type: a **college** (has courses and students) or an **office** (registrar, cashier, canteen and the like: staff only, no courses). A college becomes an office only once its courses are moved or removed.
+- Set **opening hours** only on buildings that belong to no department or office yet; otherwise its staff set them.
 - Manage every student course in the **Courses** tab (code, full name and the department it belongs to). A department's courses decide which students its staff see in the Activity log.
 - Manage staff accounts: create admins and faculty, assign departments, change roles, remove accounts. Nobody can remove or demote themselves, and at least one admin always remains.
 - Manage student accounts: add, edit, reset a password (gives a one-time temporary password), remove.
@@ -29,6 +30,7 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Add, edit, move and remove nodes (rooms, offices, route nodes) only inside their own department's buildings and on those buildings' floors, including nodes other people placed there. Admins do not edit these.
 - Cannot add or edit nodes outside buildings or on bridges: admins manage the outdoor network (roads, walkways, bridges).
 - Edit their own department's buildings: move, reshape, rename, change floors and height, and manage their **doors** (only department staff do; a building with no department gets none until an admin assigns one). They cannot add, remove or reassign buildings.
+- Set their buildings' **opening hours** (the building's Edit panel: open days, opening and closing time, an optional lunch break, or a preset such as Mon–Sat 8–5), and a room's own hours where it differs from its building (a cashier with a lunch break), in the room's Edit panel. Office staff (registrar, cashier, canteen) work the same way as college staff, without courses.
 - Draw walls, and edit or remove only the walls they drew.
 - Add staircases between their own nodes, or from one of their nodes to an outdoor node.
 - Swap two offices in their buildings: they trade names and departments and keep their spots.
@@ -41,6 +43,7 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - See the full campus map: buildings, offices, rooms and floors.
 - Search for a destination and get walking directions, worked out on the phone, including stairs between floors and building doors.
 - Directions go around walls and buildings, prefer sheltered paths when rain is likely, and avoid exposed paths while it rains or in heat mode.
+- See whether a place is open: the destination list and a building's popup say "Open · closes 5 pm" or "Closed · opens Mon 8 am" (campus time). A route still goes to a closed place, with a notice saying when it opens, but never cuts through a closed building on the way.
 - See the weather in one pill at the bottom of the map (what routing is doing right now); tap it for the details: chance of rain in the next 20 minutes and within the next hour, the heat index now and 1 to 3 hours ahead, and the UV index (sunburn risk). When no route is possible, the message says whether rain or heat closed the open-air paths.
 - Tap **"It's raining here"** (in the weather pill's details) when rain starts. When two or more students report rain within 15 minutes, everyone's routes switch to covered paths straight away, before any forecast or airport report notices.
 - Follow the route on the 2D map, in 3D, or in AR (camera view). Tap **Voice** on the direction card to hear each new direction spoken, just the direction ("Turn right.", "You have arrived at …"), so it stays short while walking. It uses the phone's own voices, so it also works offline.
@@ -103,8 +106,8 @@ The trained models (`ml/model.json`, `ml/model_h60.json`, `ml/heat_model.json`),
 ### Tests
 
 ```bash
-php artisan test --compact                  # 269 PHP tests
-node --test src/*.test.mjs tests/*.test.mjs # 130 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, rain, heat, UV)
+php artisan test --compact                  # 275 PHP tests
+node --test src/*.test.mjs tests/*.test.mjs # 137 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, opening hours, rain, heat, UV)
 python ml/test_satellite.py                 # satellite, cloud-motion and cloud-phase self-check (no network)
 vendor/bin/pint --format agent              # format PHP after changes
 ```
@@ -251,14 +254,14 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
 | Table | Holds |
 |---|---|
 | `users` | Admins, faculty (with a department) and students (school ID, course, year level). |
-| `nodes` | Rooms, offices and route nodes: position, floor, `inside`/`outside`, building, department, who placed it. |
+| `nodes` | Rooms, offices and route nodes: position, floor, `inside`/`outside`, building, department, who placed it, and a place's own `opening_hours` (none = its building's). |
 | `node_links` | Staircases between two nodes on different floors (slope, direction, flights, landing). |
 | `borders` | Walls: points sharing a `group_id`; routes never cross them. |
-| `buildings` | Outline, floors, height, status, doors, department. |
+| `buildings` | Outline, floors, height, status, doors, department, optional weekly `opening_hours` (`{"mon": [["08:00", "17:00"]], ..., "sun": []}`; none = always open). |
 | `bridges` | Connectors people walk through (footbridges): outline, `kind`, deck floor and height, roofed, status, `closed` and `closed_reason` (an admin closure). Public in the map feed, like buildings. |
 | `pathways` | Roads and walkways, each a route along its line (no stored route nodes), with an optional real `width_m`. |
 | `campus_areas` | Named campus outlines. |
-| `departments` | Name and label colour. |
+| `departments` | Name, label colour and `kind`: `college` (courses, students) or `office` (registrar, cashier, canteen; staff only). |
 | `courses` | Student courses: unique `code` (BSIT), full name, owning `department_id` (indexed foreign key; a removed department leaves its courses unassigned). Students point at one with `users.course_id` (indexed foreign key; a course with students cannot be deleted). The API still sends and accepts the course code. |
 | `weather_predictions` | Every 10-minute prediction and what the airport saw (kept 180 days). |
 | `rain_reports` | "It's raining here" taps: who and when (kept 180 days). |
@@ -279,6 +282,7 @@ Foreign keys and the wall `group_id` are indexed. The public static file `/stora
 - Walking links use a Gabriel graph on each floor: two nodes are linked if no other reachable node sits between them and the line crosses no wall. Staircases are the only links between floors.
 - Labelled buildings (not "planned") are obstacles; with doors, routes enter only through them.
 - A closed bridge's deck nodes (and so both its staircases) are left out of routing.
+- A building closed right now (its `opening_hours`, campus time UTC+8, `src/openingHours.js`) is a solid wall with its doors shut and its rooms left out, except the building the route goes to and the one you are standing in.
 - Bridges with entrances are walls on the deck's floor only, with a gap at each entrance. A raised deck passes over the drawn walls under it (a road edge or fence), so they never cut the deck in half; on the ground those walls still block.
 - The student 2D map draws a bridge's part of the route on the ground-floor view: up the stairs' walking line, along the deck and down again. A route that leaves the floor being shown is never joined straight across the gap.
 - Dijkstra picks the cheapest walk. In rain mode an open-air link costs more (`src/weatherCost.js`); on hot days or under a high UV index, sunny links cost more than shaded ones (`src/shadeRouting.js`). Distances and walking times shown to students stay real.

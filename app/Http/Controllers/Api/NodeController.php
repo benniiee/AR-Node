@@ -8,6 +8,7 @@ use App\Models\Building;
 use App\Models\Node;
 use App\Models\User;
 use App\Services\GeoPoints;
+use App\Services\OpeningHours;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -79,7 +80,11 @@ class NodeController extends Controller
             'campus' => 'sometimes|in:A,B',
             'department_id' => 'sometimes|nullable|exists:departments,id',
             'building_id' => 'sometimes|nullable|exists:buildings,id',
+            ...OpeningHours::rules(),
         ]);
+        if (array_key_exists('opening_hours', $validated)) {
+            $validated['opening_hours'] = OpeningHours::normalize($validated['opening_hours']);
+        }
 
         if ($user->isAdmin()) {
             // Admins look after the outdoor network: roads and walkways (pathways) and bridges. Their
@@ -156,7 +161,11 @@ class NodeController extends Controller
             'campus' => 'sometimes|in:A,B',
             'department_id' => 'sometimes|nullable|exists:departments,id',
             'building_id' => 'sometimes|nullable|exists:buildings,id',
+            ...OpeningHours::rules(),
         ]);
+        if (array_key_exists('opening_hours', $validated)) {
+            $validated['opening_hours'] = OpeningHours::normalize($validated['opening_hours']);
+        }
 
         // Staff moving or re-filing a node must keep it inside one of their
         // department's buildings (admins move nodes anywhere).

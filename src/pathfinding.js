@@ -37,6 +37,7 @@ import { toLocalMeters, fromLocalMeters } from './geo.js';
 import { edgeRainFactor, isRoutable, noRouteMessage } from './weatherCost.js';
 import { edgeShadeFactor } from './shadeRouting.js';
 import { floorOf, floorAria } from './floors.js';
+import { buildingAt } from './campusGeometry.js';
 import { doorGapWalls, doorWaypoints, placedDoors, snapToOutline, DOOR_WIDTH_M, MAX_DOORS } from './doors.js';
 import {
     DEFAULT_STAIR_ANGLE, STAIR_ANGLE_MIN, STAIR_ANGLE_MAX, clampStairAngle,
@@ -615,6 +616,22 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
     const destination = nodes.find((n) => String(n.id) === String(destinationId));
     if (!destination) {
         return { success: false, message: 'Destination node not found.' };
+    }
+    // options.closedBuildingIds: buildings closed right now (openingHours.js): their doors are shut, so
+    // routes do not pass through them. Except the one the route goes to (you may still go and wait) and
+    // the one you stand in (you can always get out).
+    const closed = new Set((options.closedBuildingIds || []).map(String));
+    if (closed.size) {
+        closed.delete(String(destination.building_id));
+        const here = buildingAt(options.buildings || [], userLat, userLng);
+        if (here) closed.delete(String(here.id));
+        if (closed.size) nodes = nodes.filter((n) => n.building_id == null || !closed.has(String(n.building_id)));
+        // Shut doors: the whole outline is a wall (a straight line through two lined-up door gaps no longer passes).
+        for (const b of options.buildings || []) {
+            if (closed.has(String(b?.id)) && Array.isArray(b.polygon) && b.polygon.length >= 3) {
+                borders.push({ coordinates: [...b.polygon, b.polygon[0]] });
+            }
+        }
     }
 
     const rainMultiplier = Number.isFinite(Number(options.rainMultiplier)) ? Number(options.rainMultiplier) : 1;

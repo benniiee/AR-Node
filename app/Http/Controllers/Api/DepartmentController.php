@@ -30,6 +30,7 @@ class DepartmentController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:departments,name',
+            'kind' => ['sometimes', Rule::in(Department::KINDS)],
             'color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
@@ -53,8 +54,15 @@ class DepartmentController extends Controller
 
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('departments', 'name')->ignore($department->id)],
+            'kind' => ['sometimes', Rule::in(Department::KINDS)],
             'color' => ['sometimes', 'required', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
+
+        // An office has no courses: a college becomes one only once its courses are moved or removed.
+        abort_if(
+            ($validated['kind'] ?? null) === 'office' && $department->courses()->exists(), 422,
+            "Move or remove this department's courses before making it an office.",
+        );
 
         $department->update($validated);
 

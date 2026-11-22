@@ -10,6 +10,8 @@ import { snapToOutline, placedDoors, doorFrames, doorWidth, DOOR_SNAP_M, DOOR_WI
 import { lazyPreview } from './Lazy3D';
 import { addJoined } from '../shapeDraft';
 import StairModal from './StairModal';
+import HoursEditor, { hoursProblem } from './HoursEditor';
+import { summarizeHours } from '../openingHours';
 import { confirmAction } from './ConfirmDialog';
 import { suggestEntrances } from '../pathfinding';
 
@@ -165,6 +167,10 @@ export default function CampusEditor({
     // Doors belong to the building's department: its staff manage them, never an admin (BuildingController).
     const ownerName = record?.department?.name || departments.find((d) => String(d.id) === String(record?.department_id))?.name || 'its department';
     const manageDoors = !canChangeDepartment;
+    // Opening hours, like doors, are the owning department's (or office's) to set; an admin sets them
+    // only for a building that belongs to no one (same rule as the server).
+    const [hours, setHours] = useState(() => record?.opening_hours ?? null);
+    const canEditHours = isBuilding && (manageDoors || (canChangeDepartment && !record?.department_id && departmentId === ''));
     // An admin filing an existing building under another department.
     const departmentChanged = Boolean(isBuilding && record && canChangeDepartment
         && String(departmentId) !== String(record.department_id ?? ''));
@@ -555,6 +561,7 @@ export default function CampusEditor({
     const save = async () => {
         if (isOutline && !name.trim()) { onError(`A ${noun} needs a name`); return; }
         if (points.length < minPoints) { onError(`A ${noun} needs at least ${minPoints} points`); return; }
+        if (canEditHours && hoursProblem(hours)) { onError(hoursProblem(hours)); return; }
         if (isBridge && closed && !closedReason.trim()) { onError('Add the reason students will see while the bridge is closed'); return; }
         setSaving(true);
         try {
@@ -596,6 +603,7 @@ export default function CampusEditor({
                     source,
                     osm_ref: ref,
                     ...(canChangeDepartment ? { department_id: departmentId === '' ? null : Number(departmentId) } : {}),
+                    ...(canEditHours ? { opening_hours: hours } : {}),
                     // Rooms filed here follow a moved building: the server moves
                     // them with it in one transaction (whoever placed each room).
                     ...(record && moved && nodesInside.length ? { move_nodes_by: shift } : {}),
@@ -958,6 +966,17 @@ export default function CampusEditor({
                         The {nodesInside.length} {nodesInside.length === 1 ? 'room' : 'rooms'} inside move with the building and keep their spots in it.
                     </p>
                 )}
+                        <section className="mt-pathnodes" aria-labelledby="cf-hours-title">
+                            <span className="ui-label" id="cf-hours-title">Opening hours</span>
+                            {canEditHours ? (
+                                <HoursEditor value={hours} onChange={setHours} idPrefix="cf-hours" disabled={saving} />
+                            ) : (
+                                <p className="ui-hint" style={{ margin: 0 }}>
+                                    {hours ? summarizeHours(hours) : 'No set hours (always open).'}
+                                    {' '}Set by {ownerName} staff.
+                                </p>
+                            )}
+                        </section>
                 {record && onManageNodes && (
                             <section className="mt-pathnodes" aria-labelledby="cf-nodes-title">
                                 <span className="ui-label" id="cf-nodes-title">Nodes</span>

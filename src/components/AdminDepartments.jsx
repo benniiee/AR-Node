@@ -51,6 +51,7 @@ const DEPT_CSS = `
     .swatch:hover { transform: scale(1.08); }
     .dept-count { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,0.07); text-align: center; }
     .dept-row-text { flex: 1; min-width: 0; }
+    .dept-kind { flex: none; width: auto; min-height: 36px; padding-top: 0; padding-bottom: 0; font-size: ${TYPE.desc}; }
     .dept-name { min-width: 0; font-size: ${TYPE.sub}; font-weight: 600; color: ${C.white}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dept-sub { min-width: 0; font-size: ${TYPE.desc}; color: ${C.muted}; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -138,6 +139,8 @@ const DEPT_CSS = `
 export default function AdminDepartments({ departments, users, currentUser, onChanged, notify, fail }) {
     const [deptName, setDeptName] = useState('');
     const [deptColor, setDeptColor] = useState(FALLBACK_COLOR);
+    // A college has courses and students; an office (registrar, cashier, canteen) has staff only.
+    const [deptKind, setDeptKind] = useState('college');
     const [savingDept, setSavingDept] = useState(false);
     const [showUserForm, setShowUserForm] = useState(false);
     const [userName, setUserName] = useState('');
@@ -175,11 +178,19 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
         if (deptNameTaken) { fail(`${deptName.trim()} already exists`); return; }
         setSavingDept(true);
         try {
-            await api.createDepartment({ name: deptName.trim(), color: deptColor });
+            await api.createDepartment({ name: deptName.trim(), kind: deptKind, color: deptColor });
             setDeptName('');
             await refresh();
             notify('Department added');
         } catch (err) { fail(err.message); } finally { setSavingDept(false); }
+    };
+
+    const setDepartmentKind = async (d, kind) => {
+        try {
+            await api.updateDepartment(d.id, { kind });
+            await refresh();
+            notify(kind === 'office' ? `${d.name} is now an office` : `${d.name} is now a college`);
+        } catch (err) { fail(err.message); await refresh(); }
     };
 
     const recolorDepartment = (id, color) => {
@@ -286,6 +297,13 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                                 {deptNameTaken && <span className="ui-field-error" id="dept-name-error">That department already exists.</span>}
                             </div>
                             <div className="ui-field">
+                                <label className="ui-label" htmlFor="dept-kind">Type</label>
+                                <select id="dept-kind" className="ui-select" value={deptKind} onChange={(e) => setDeptKind(e.target.value)}>
+                                    <option value="college">College (courses)</option>
+                                    <option value="office">Office (no courses)</option>
+                                </select>
+                            </div>
+                            <div className="ui-field">
                                 <label className="ui-label" htmlFor="dept-color">Colour</label>
                                 <input
                                     id="dept-color"
@@ -322,8 +340,18 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                                         />
                                         <div className="dept-row-text">
                                             <div className="dept-name">{d.name}</div>
-                                            <div className="dept-sub ui-num">{plural(d.nodes_count ?? 0, 'node', 'nodes')} · {plural(d.courses_count ?? 0, 'course', 'courses')}</div>
+                                            <div className="dept-sub ui-num">
+                                                {plural(d.nodes_count ?? 0, 'node', 'nodes')}
+                                                {d.kind === 'office' ? ' · office' : ` · ${plural(d.courses_count ?? 0, 'course', 'courses')}`}
+                                            </div>
                                         </div>
+                                        <select
+                                            className="ui-select dept-kind" aria-label={`Type of ${d.name}`}
+                                            value={d.kind || 'college'} onChange={(e) => setDepartmentKind(d, e.target.value)}
+                                        >
+                                            <option value="college">College</option>
+                                            <option value="office">Office</option>
+                                        </select>
                                         <button className="ui-btn ui-btn-danger ui-btn-sm" onClick={() => deleteDepartment(d)}>
                                             Remove
                                         </button>

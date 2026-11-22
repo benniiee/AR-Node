@@ -54,6 +54,8 @@ export default function AdminCourses({ currentUser, departments, notify, fail })
     const codeTaken = (courses || []).some((c) => c.code === code && c.id !== editing?.id);
     const valid = CODE_PATTERN.test(code) && !codeTaken && form.name.trim();
     const noDepartment = !isAdmin && !currentUser?.department;
+    // Office staff (registrar, cashier...): an office has no courses.
+    const isOffice = !isAdmin && currentUser?.department?.kind === 'office';
 
     const reset = () => { setForm(EMPTY); setEditing(null); };
     const edit = (c) => { setEditing(c); setForm({ code: c.code, name: c.name, department_id: c.department_id ?? '' }); };
@@ -107,6 +109,8 @@ export default function AdminCourses({ currentUser, departments, notify, fail })
                         <h2 className="ui-card-title" id="crs-form-title" style={{ marginTop: 0 }}>{editing ? `Edit ${editing.code}` : 'Add a course'}</h2>
                         {noDepartment ? (
                             <p className="crs-empty">Ask an admin to assign you a department first.</p>
+                        ) : isOffice ? (
+                            <p className="crs-empty">{currentUser.department.name} is an office, so it has no courses. Courses belong to colleges.</p>
                         ) : (
                             <form className="crs-form" onSubmit={save}>
                                 <div className="ui-field">
@@ -129,7 +133,8 @@ export default function AdminCourses({ currentUser, departments, notify, fail })
                                         <label className="ui-label" htmlFor="crs-dept">Department</label>
                                         <select id="crs-dept" className="ui-select" value={form.department_id} onChange={set('department_id')}>
                                             <option value="">No department</option>
-                                            {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                            {/* Courses belong to colleges: offices have none. */}
+                                            {(departments || []).filter((d) => d.kind !== 'office').map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                                         </select>
                                     </div>
                                 )}

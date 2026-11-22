@@ -26,6 +26,8 @@ import {
 } from './MapControls';
 import { floorOf, floorTag, floorAria } from '../floors';
 import { computeRoute } from '../pathfinding';
+import HoursEditor, { hoursProblem } from './HoursEditor';
+import { summarizeHours, closedBuildingIds } from '../openingHours';
 import { toLocalMeters, fromLocalMeters } from '../geo';
 import { planFromLink, fitYaw, footprint, centreline, stairRise, normalizeFlights, meanAngle, shapeLabel } from '../stairGeometry';
 import { createDestinationPinIcon } from '../mapIcons';
@@ -346,6 +348,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // Edit node state
     const [editingNode, setEditingNode] = useState(null);
     const [editName, setEditName] = useState('');
+    // A place's own opening hours (null: it follows its building's).
+    const [editHours, setEditHours] = useState(null);
     const [editType, setEditType] = useState('route');
     const [editElevation, setEditElevation] = useState('0');
     const [editFloor, setEditFloor] = useState('0');
@@ -555,7 +559,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             userLocation.longitude,
             0,
             borders,
-            { buildings, bridges, links, pathways },
+            // Closed buildings (opening hours, now) are walked around, as on /map.
+            { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings) },
         );
         setRouteResult(result);
         drawRoute(result);
@@ -1398,6 +1403,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             }
             setEditingNode(node);
             setEditName(node.name || '');
+            setEditHours(node.opening_hours ?? null);
             setEditType(node.type);
             setEditElevation(String(node.elevation));
             setEditFloor(String(node.floor_level));
@@ -1426,7 +1432,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setRouteResult(null);
 
             try {
-                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links, pathways });
+                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings) });
                 setRouteResult(result);
                 drawRoute(result);
             } catch (err) {
@@ -1822,6 +1828,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             onError('Name is required for locations');
             return;
         }
+        if (editType === 'location' && hoursProblem(editHours)) {
+            onError(hoursProblem(editHours));
+            return;
+        }
         try {
             await api.updateNode(editingNode.id, {
                 name: editName.trim() || null,
@@ -1832,6 +1842,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 campus: editCampus,
                 building_id: editBuilding === '' ? null : Number(editBuilding),
                 ...(isAdmin ? { department_id: editDept === '' ? null : Number(editDept) } : {}),
+                // Only a place (location) has hours; a route node never does.
+                opening_hours: editType === 'location' ? editHours : null,
             });
             setEditingNode(null);
             setIsSettingPosition(false);
@@ -3320,6 +3332,21 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                             buildings={ownBuildings} buildingId={editBuilding} setBuildingId={setEditBuilding} allowOutdoors={isAdmin}
                             departments={isAdmin ? departments : null} departmentId={editDept} setDepartmentId={setEditDept}
                         />
+                        {editType === 'location' && (() => {
+                            const building = editBuilding !== '' ? buildings.find((b) => String(b.id) === String(editBuilding)) : null;
+                            const inherited = building?.opening_hours ? summarizeHours(building.opening_hours) : null;
+                            return (
+                                <section className="mt-stairs" aria-labelledby="edit-hours-title">
+                                    <h3 className="mt-stairs-title" id="edit-hours-title">Opening hours</h3>
+                                    <HoursEditor
+                                        value={editHours} onChange={setEditHours} idPrefix="edit-hours"
+                                        offHint={inherited
+                                            ? `Off: same as ${building.short_name || building.name} (${inherited}). On: its own hours, e.g. a cashier with a lunch break.`
+                                            : 'Off: always open. On: students see when it is open.'}
+                                    />
+                                </section>
+                            );
+                        })()}
                         {!isAdmin && editingNode.type === 'location' && (
                             <section className="mt-stairs" aria-label="Swap offices">
                                 <h3 className="mt-stairs-title">Office moved?</h3>

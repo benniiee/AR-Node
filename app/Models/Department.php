@@ -12,10 +12,28 @@ class Department extends Model
     /** @use HasFactory<DepartmentFactory> */
     use HasFactory;
 
+    /** A college has courses and students; an office (registrar, cashier, canteen...) has staff only. */
+    public const KINDS = ['college', 'office'];
+
     protected $fillable = [
         'name',
+        'kind',
         'color',
     ];
+
+    /**
+     * Mirrors the column default so a freshly created model reports it.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'kind' => 'college',
+    ];
+
+    public function isOffice(): bool
+    {
+        return $this->kind === 'office';
+    }
 
     /**
      * Student courses this department owns: its staff add and edit them and see their students' activity.

@@ -105,6 +105,8 @@ class MapSnapshot
                 'path_type' => $n->path_type,
                 'campus' => $n->campus,
                 'building_id' => $n->building_id,
+                // The place's own hours (null: its building's, if any).
+                'opening_hours' => $n->opening_hours,
                 // Department label colour. Creator names stay off the public
                 // feed - the admin panel reads those from GET /api/nodes.
                 'department' => $n->department ? [
@@ -139,6 +141,7 @@ class MapSnapshot
                 'campus' => $b->campus,
                 'polygon' => $b->polygon,
                 'doors' => $b->doors ?? [],
+                'opening_hours' => $b->opening_hours,
                 // Outline + label dot use the department colour, like nodes.
                 'department' => $b->department ? [
                     'id' => $b->department->id,

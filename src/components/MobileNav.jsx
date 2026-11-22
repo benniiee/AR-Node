@@ -26,6 +26,7 @@ import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../po
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
 import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint } from '../campusLayers';
 import { sunPosition, roofLiftM } from '../sunShadow';
+import { closedBuildingIds, hoursOf, openState, summarizeHours } from '../openingHours';
 import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
 import { LIST_CSS, bindScrollCue } from './ScrollWindow';
 import SatelliteControl, { SATELLITE_CSS } from './SatelliteControl';
@@ -181,6 +182,10 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
     }, []);
     const sunDate = sunClock;
+    // Buildings closed right now (opening hours, campus time): routes do not pass through them. Rechecked
+    // with the sun clock (every minute); the key keeps the route from re-running when nothing changed.
+    const closedIds = useMemo(() => closedBuildingIds(buildings, sunDate), [buildings, sunDate]);
+    const closedKey = closedIds.join(',');
     // Walls are re-shaded only when the sun has moved ~5 degrees (about every
     // 20 minutes live): rebuilding the buildings closes an open popup.
     const sunForWalls = useMemo(() => {
@@ -344,6 +349,18 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
 
     // Why no route is drawn, when rain closed every way to the destination.
     const [noRoute, setNoRoute] = useState(null);
+    // The destination is closed now (its opening hours): the route still goes there, with when it opens.
+    // From the clock, not the routing, so it changes the minute the place opens or closes.
+    const closedNote = useMemo(() => {
+        if (!route?.success || !destId) return null;
+        const buildingId = parseBuildingDestination(destId);
+        const building = buildingId !== null ? buildingsById.get(buildingId) : null;
+        const place = building || nodes.find((n) => String(n.id) === String(destId));
+        const state = place ? openState(building ? building.opening_hours : hoursOf(place, buildingsById), sunDate) : null;
+        if (!state || state.open) return null;
+        const when = state.label.startsWith('Closed · ') ? `: ${state.label.slice('Closed · '.length)}` : '';
+        return `${place.short_name || place.name || 'This place'} is closed now${when}`;
+    }, [route, destId, nodes, buildingsById, sunDate]);
     // Loading, no route and the offline copy, as pill notices (one at a time,
     // most important first). Loading stays up while it lasts.
     useEffect(() => {
@@ -353,6 +370,10 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         }
         if (noRoute) {
             setNoticePill({ text: noRoute, tone: 'attention', key: `noroute:${Date.now()}` });
+            return;
+        }
+        if (closedNote) {
+            setNoticePill({ text: closedNote, tone: 'attention', key: `closed:${closedNote}` });
             return;
         }
         if (offlineCopy) {
@@ -366,7 +387,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         }
         setNoticePill(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loading, error, noRoute, offlineCopy?.savedAt]);
+    }, [loading, error, noRoute, closedNote, offlineCopy?.savedAt]);
 
     // The destination picker is a custom menu rather than a native <select>
     // so its open/close and option-entry motion stay consistent across mobile
@@ -989,6 +1010,16 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // Tapping a building lists what is inside it, each one a tap away
         // from being the destination (window.__mnavGoTo, bound below).
         const popup = (b) => {
+            // Opening hours (read when the popup opens): open now or when it opens, and the week.
+            const hoursNow = openState(b.opening_hours, new Date());
+            // A room with hours of its own (a cashier inside the building): its state on its row.
+            const roomHours = (n) => {
+                const own = n.opening_hours ? openState(n.opening_hours, new Date()) : null;
+                return own ? ` · <span class="${own.open ? '' : 'bp-closed'}">${escapeHtml(own.label)}</span>` : '';
+            };
+            const hoursLine = hoursNow
+                ? `<small class="${hoursNow.open ? '' : 'bp-closed'}">${escapeHtml(hoursNow.label)}</small><small>${escapeHtml(summarizeHours(b.opening_hours))}</small>`
+                : '';
             if (isVisitor) {
                 return `
                     <div class="bp">
@@ -1001,14 +1032,14 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             const rows = inside.length
                 ? inside.map((n) => `
                     <li class="bp-row">
-                        <span class="bp-text"><b>${escapeHtml(n.name || 'Location')}</b><small>${escapeHtml(floorAria(floorOf(n)))}</small></span>
+                        <span class="bp-text"><b>${escapeHtml(n.name || 'Location')}</b><small>${escapeHtml(floorAria(floorOf(n)))}${roomHours(n)}</small></span>
                         <button class="bp-go" onclick="window.__mnavGoTo(${Number(n.id)})" aria-label="Go to ${escapeHtml(n.name || 'this location')}">Go</button>
                     </li>`).join('')
                 : '<li class="bp-empty">No rooms listed yet.</li>';
             return `
                 <div class="bp">
                     <div class="bp-head bp-head-go">
-                        <span class="bp-text"><b>${escapeHtml(b.name)}</b><small>${escapeHtml(floorCountLabel(b))}${inside.length ? `, ${inside.length} ${inside.length === 1 ? 'place' : 'places'}` : ''}</small></span>
+                        <span class="bp-text"><b>${escapeHtml(b.name)}</b><small>${escapeHtml(floorCountLabel(b))}${inside.length ? `, ${inside.length} ${inside.length === 1 ? 'place' : 'places'}` : ''}</small>${hoursLine}</span>
                         <button class="bp-go" onclick="window.__mnavGoTo('b:${Number(b.id)}')" aria-label="Go to ${escapeHtml(b.name)}">Go to building</button>
                     </div>
                     <ul class="bp-list sw ui-stagger" aria-label="Places in ${escapeHtml(b.name)}" style="--sw-desktop-rows:4;--sw-phone-rows:3;--sw-desktop-row-h:45px;--sw-phone-row-h:45px">${rows}</ul>
@@ -1168,6 +1199,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 bridges,
                 // Every road and walkway is a route along its line.
                 pathways,
+                // Closed buildings (opening hours) are walked around, not through.
+                closedBuildingIds: closedIds,
             });
             // A whole building: the shortest way to one of its doors (or its
             // ground floor when it has none yet).
@@ -1323,7 +1356,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // `weather.rain_multiplier` / `weather.raining_now` rather than the
         // whole object: a poll rebuilds it every 5 minutes, and the route
         // only cares about the two values that change routing.
-    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade]);
+    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey]);
 
     // A destination on another floor is a normal case now (the route climbs
     // the linked stairs), so it is only dropped when the node itself is gone.
@@ -1876,6 +1909,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 .bp-head-go .bp-text b { font-size: ${TYPE.lead}; color: ${C.white}; }
                 .bp-head b { font-size: ${TYPE.lead}; color: ${C.white}; }
                 .bp-head small, .bp-text small { font-size: ${TYPE.desc}; color: ${C.muted}; }
+                .bp-text small.bp-closed, .bp-text .bp-closed { color: ${C.warning}; }
                 .bp-list { list-style: none; margin: 6px 0 0; padding: 0 4px 0 0; }
                 ${LIST_CSS}
                 ${INTERACTION_CSS}
@@ -2021,6 +2055,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 .mnav-destination-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: ${C.muted}; background: rgba(255, 255, 255, 0.045); font-size: ${TYPE.desc}; font-weight: 700; font-variant-numeric: tabular-nums; transition: color 160ms ease, background-color 160ms ease; }
                 .mnav-destination-option[aria-selected="true"] .mnav-destination-index { color: ${C.brandAccent}; background: rgba(255, 85, 102, 0.15); }
                 .mnav-destination-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+                .mnav-destination-closed { color: ${C.warning}; }
                 .mnav-destination-meta { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; color: ${C.muted}; font-size: ${TYPE.desc}; font-weight: 600; line-height: 1.2; white-space: nowrap; text-overflow: ellipsis; }
                 /* Campus tag: neutral (red means "problem" here, so no red / amber tags). */
                 .leaflet-tooltip.campus-area-label {
@@ -2298,6 +2333,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                             const buildingLabel = d.is_building
                                 ? `Building${buildingsById.get(d.building_id) ? `, ${floorCountLabel(buildingsById.get(d.building_id))}` : ''}`
                                 : buildingLabelOf(d);
+                            // Opening hours, when the place (or its building) has them: open now, or when it opens.
+                            const hours = openState(d.is_building ? buildingsById.get(d.building_id)?.opening_hours : hoursOf(d, buildingsById), sunDate);
                             return (
                                 <button
                                     key={d.id}
@@ -2332,7 +2369,13 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                                     <span className="mnav-destination-text">
                                         <span className="mnav-destination-option-name">{d.name || `Location ${d.id}`}</span>
                                         {/* The building it is in; nothing for a stand-alone destination. */}
-                                        {buildingLabel && <span className="mnav-destination-meta">{buildingLabel}</span>}
+                                        {(buildingLabel || hours) && (
+                                            <span className="mnav-destination-meta">
+                                                {buildingLabel}
+                                                {buildingLabel && hours && <span aria-hidden="true">·</span>}
+                                                {hours && <span className={hours.open ? undefined : 'mnav-destination-closed'}>{hours.label}</span>}
+                                            </span>
+                                        )}
                                     </span>
                                     <svg className="mnav-destination-check" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                         <path d="m5 12.5 4.3 4.3L19 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />

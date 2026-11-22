@@ -77,7 +77,7 @@ class AuthController extends Controller
      */
     private static function userPayload(User $user): array
     {
-        $user->loadMissing('department:id,name,color');
+        $user->loadMissing('department:id,name,kind,color');
 
         return [
             'id' => $user->id,

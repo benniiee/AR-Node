@@ -7,6 +7,7 @@ use App\Models\Building;
 use App\Models\User;
 use App\Services\BuildingDoors;
 use App\Services\GeoPoints;
+use App\Services\OpeningHours;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,8 @@ use Illuminate\Validation\ValidationException;
 
 class BuildingController extends Controller
 {
+    private const HOURS_BELONG_TO_DEPARTMENT = 'Opening hours are set by the staff of the department or office that owns this building.';
+
     /**
      * List every building with its node count (any logged-in user: the admin
      * map labels buildings and the node form files nodes under them).
@@ -35,6 +38,11 @@ class BuildingController extends Controller
         abort_unless($request->user()->isAdmin(), 403);
 
         $validated = $this->validated($request, creating: true);
+        // Hours, like doors, are the owning department's to set: an admin sets them only while it has none.
+        abort_if(
+            ($validated['opening_hours'] ?? null) !== null && ($validated['department_id'] ?? null) !== null, 403,
+            self::HOURS_BELONG_TO_DEPARTMENT,
+        );
 
         $building = new Building($validated);
         $building->created_by = $request->user()->id;
@@ -76,6 +84,10 @@ class BuildingController extends Controller
         // building move still carries the doors along, see below). No department yet: assign one first.
         if ($user->isAdmin() && $request->has('doors')) {
             abort(403, 'Doors are managed by the staff of the department that owns this building.');
+        }
+        // Opening hours: the owning department's staff set them; an admin only for a building with none.
+        if ($user->isAdmin() && $request->has('opening_hours') && $building->department_id !== null) {
+            abort(403, self::HOURS_BELONG_TO_DEPARTMENT);
         }
 
         $validated = $this->validated($request, creating: false);
@@ -195,6 +207,9 @@ class BuildingController extends Controller
         if (array_key_exists('doors', $validated)) {
             $validated['doors'] = $validated['doors'] ? BuildingDoors::normalize($validated['doors']) : null;
         }
+        if (array_key_exists('opening_hours', $validated)) {
+            $validated['opening_hours'] = OpeningHours::normalize($validated['opening_hours']);
+        }
 
         return $validated;
     }
@@ -223,6 +238,7 @@ class BuildingController extends Controller
             'source' => ['sometimes', Rule::in(Building::SOURCES)],
             'osm_ref' => 'sometimes|nullable|string|max:64',
             'department_id' => 'sometimes|nullable|exists:departments,id',
+            ...OpeningHours::rules(),
         ];
     }
 

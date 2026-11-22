@@ -22,4 +22,10 @@ class DepartmentFactory extends Factory
             'color' => fake()->hexColor(),
         ];
     }
+
+    /** An office (registrar, cashier, canteen...): staff only, no courses. */
+    public function office(): static
+    {
+        return $this->state(fn (): array => ['kind' => 'office']);
+    }
 }

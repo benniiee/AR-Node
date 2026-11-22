@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     campusClock, formatTime, hoursOf, openState, summarizeHours, closedBuildingIds, weeklyHours,
+    placeStatus, buildingTarget, placeTarget, covers, buildingStatus, placeStatusOf, nextOpening, announcements, formatWhen,
 } from './openingHours.js';
 
 // Campus time is UTC+8: 2026-11-23 is a Monday.
@@ -79,4 +80,65 @@ test('a closed building is walked around, unless it is where you are going', asy
     assert.ok(closed.path.some((p) => p.id === 2), 'round the east side');
     // Going to the closed hall itself still routes there (you may wait for it to open).
     assert.equal(route(5, '2026-11-23T19:00:00').success, true);
+});
+
+// ── Closures ──
+const CCS = { id: 1, name: 'CCS', kind: 'college' };
+const CASH = { id: 2, name: 'Cashier office', kind: 'office' };
+const ccsHall = { id: 10, campus: 'B', department: CCS, opening_hours: CANTEEN };
+const adminHall = { id: 11, campus: 'A', department: CASH, opening_hours: CANTEEN };
+const byId = new Map([[10, ccsHall], [11, adminHall]]);
+const cashier = { id: 100, building_id: 11, campus: 'A', department: CASH, opening_hours: CASHIER };
+const lab = { id: 101, building_id: 10, campus: 'B', department: CCS };
+const closure = (over) => ({ id: 1, kind: 'closed', reason: 'Maintenance', starts_at: at('2026-11-23T00:00:00').toISOString(), ends_at: at('2026-11-24T00:00:00').toISOString(), ...over });
+const MON_10 = at('2026-11-23T10:00:00');
+
+test('a closure covers what its fields name, all of them', () => {
+    const lab_ = placeTarget(lab, byId);
+    assert.ok(covers(closure({}), lab_), 'whole school');
+    assert.ok(covers(closure({ department_kind: 'college' }), lab_), 'every college');
+    assert.ok(!covers(closure({ department_kind: 'office' }), lab_));
+    assert.ok(covers(closure({ campus: 'B', department_kind: 'college' }), lab_));
+    assert.ok(!covers(closure({ campus: 'A', department_kind: 'college' }), lab_));
+    assert.ok(covers(closure({ building_id: 10 }), lab_), 'its building closes its rooms');
+    assert.ok(covers(closure({ department_id: 1 }), lab_));
+    assert.ok(!covers(closure({ node_id: 100 }), lab_), 'another room');
+    assert.ok(!covers(closure({ node_id: 100 }), buildingTarget(adminHall)), 'a room never closes its building');
+});
+
+test('classes suspended: colleges close, offices stay open', () => {
+    const heat = [closure({ department_kind: 'college', reason: 'Classes suspended: high heat index', ends_at: at('2026-11-23T17:00:00').toISOString() })];
+    const s = buildingStatus(ccsHall, heat, MON_10);
+    assert.equal(s.open, false);
+    assert.equal(s.label, 'Closed · Classes suspended: high heat index · opens tomorrow 8 am', 'reopens with its weekly hours, not at 5 pm');
+    assert.equal(placeStatusOf(lab, byId, heat, MON_10).open, false, 'its rooms too');
+    assert.equal(buildingStatus(adminHall, heat, MON_10).open, true);
+    assert.equal(placeStatusOf(cashier, byId, heat, MON_10).open, true);
+    assert.deepEqual(closedBuildingIds([ccsHall, adminHall], MON_10, heat), [10]);
+    assert.deepEqual(announcements(heat, MON_10).map((a) => a.text), ['Classes suspended: high heat index · All colleges · until 5 pm']);
+    // Not yet started / already over: no effect.
+    assert.equal(buildingStatus(ccsHall, heat, at('2026-11-23T18:00:00')).open, false, 'after hours anyway');
+    assert.equal(buildingStatus(ccsHall, heat, at('2026-11-24T10:00:00')).open, true, 'next day: over');
+});
+
+test('a room closed for an afternoon, and a special opening', () => {
+    const maint = [closure({ node_id: 100, reason: 'System maintenance', starts_at: at('2026-11-23T13:00:00').toISOString(), ends_at: at('2026-11-23T15:00:00').toISOString() })];
+    assert.equal(placeStatusOf(cashier, byId, maint, MON_10).open, true, 'before it');
+    assert.equal(placeStatusOf(cashier, byId, maint, at('2026-11-23T14:00:00')).label, 'Closed · System maintenance · opens 3 pm');
+    assert.equal(buildingStatus(adminHall, maint, at('2026-11-23T14:00:00')).open, true, 'the building stays open');
+
+    const sunday = [closure({ kind: 'open', reason: null, node_id: 100, starts_at: at('2026-11-29T08:00:00').toISOString(), ends_at: at('2026-11-29T12:00:00').toISOString() })];
+    assert.equal(placeStatusOf(cashier, byId, sunday, at('2026-11-29T09:00:00')).label, 'Open · special hours until 12 pm');
+    // A wider closure still wins over a special opening.
+    assert.equal(placeStatusOf(cashier, byId, [...sunday, closure({ starts_at: at('2026-11-29T00:00:00').toISOString(), ends_at: at('2026-11-30T00:00:00').toISOString(), reason: 'Typhoon' })], at('2026-11-29T09:00:00')).open, false);
+});
+
+test('next opening and when-words', () => {
+    assert.equal(nextOpening(CANTEEN, at('2026-11-23T10:00:00')).toISOString(), at('2026-11-23T10:00:00').toISOString(), 'open now');
+    assert.equal(nextOpening(CANTEEN, at('2026-11-28T18:00:00')).toISOString(), at('2026-11-30T08:00:00').toISOString(), 'Sat evening -> Mon');
+    assert.equal(formatWhen(at('2026-11-23T17:00:00'), MON_10), '5 pm');
+    assert.equal(formatWhen(at('2026-11-24T08:00:00'), MON_10), 'tomorrow 8 am');
+    assert.equal(formatWhen(at('2026-11-27T08:00:00'), MON_10), 'Fri 8 am');
+    assert.equal(formatWhen(at('2026-12-03T08:00:00'), MON_10), 'Dec 3');
+    assert.equal(placeStatus(null, [], buildingTarget({ id: 9 }), MON_10), null, 'no hours, nothing covering: no status');
 });

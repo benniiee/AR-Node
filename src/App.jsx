@@ -179,7 +179,7 @@ export default function App() {
     // anyway, so fall back to the map rather than showing a dead tab.
     const effectiveTab = (tab === 'departments' || tab === 'students' || tab === 'weather') && !isAdmin ? 'map' : tab;
 
-    const PAGE_NAMES = { weather: 'Weather Dashboard', map: 'Map', departments: 'Departments & accounts', students: 'Students', courses: 'Courses', activity: 'Activity log' };
+    const PAGE_NAMES = { weather: 'Weather Dashboard', map: 'Map', departments: 'Departments & accounts', students: 'Students', courses: 'Courses', announcements: 'Announcements', activity: 'Activity log' };
     const navLink = (id, label) => (
         <button
             key={id}
@@ -222,6 +222,8 @@ export default function App() {
                 {isAdmin && navLink('students', PAGE_NAMES.students)}
                 {/* Department staff manage their own department's courses; admins every course. */}
                 {navLink('courses', PAGE_NAMES.courses)}
+                {/* Closures and special openings: admins any scope, staff their own department. */}
+                {navLink('announcements', PAGE_NAMES.announcements)}
                 {/* Admins see everyone; department staff see their courses' students. */}
                 {navLink('activity', PAGE_NAMES.activity)}
                 <div className="rail-spacer" />

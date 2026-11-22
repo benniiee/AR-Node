@@ -6,6 +6,7 @@ use App\Models\Border;
 use App\Models\Bridge;
 use App\Models\Building;
 use App\Models\CampusArea;
+use App\Models\Closure;
 use App\Models\Node;
 use App\Models\NodeLink;
 use App\Models\Pathway;
@@ -32,7 +33,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Keep storage/app/public/data/map.json in step with the database. The rewrite runs
         // after the admin's response is sent and is skipped when nothing really changed.
-        foreach ([Node::class, Border::class, NodeLink::class, Building::class, Pathway::class, CampusArea::class, Bridge::class] as $model) {
+        foreach ([Node::class, Border::class, NodeLink::class, Building::class, Pathway::class, CampusArea::class, Bridge::class, Closure::class] as $model) {
             $model::saved(fn () => MapSnapshot::refreshAfterResponse());
             $model::deleted(fn () => MapSnapshot::refreshAfterResponse());
         }

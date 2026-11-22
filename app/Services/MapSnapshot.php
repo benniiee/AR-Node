@@ -6,6 +6,7 @@ use App\Models\Border;
 use App\Models\Bridge;
 use App\Models\Building;
 use App\Models\CampusArea;
+use App\Models\Closure;
 use App\Models\Node;
 use App\Models\NodeLink;
 use App\Models\Pathway;
@@ -64,6 +65,8 @@ class MapSnapshot
             // Campus outlines and names are public, like the buildings; so are bridges (structures, not rooms).
             'campus_areas' => $full['campus_areas'],
             'bridges' => $full['bridges'],
+            // School, campus, department and building announcements are public like the buildings; a room's are not.
+            'closures' => array_values(array_filter($full['closures'], fn (array $c): bool => $c['node_id'] === null)),
             'audience' => 'visitor',
         ];
     }
@@ -73,27 +76,25 @@ class MapSnapshot
      */
     private static function fullPayload(): array
     {
-        $nodes = Node::with('department:id,name,color')->get();
+        $nodes = Node::with('department:id,name,kind,color')->get();
         $borders = Border::all();
         $links = NodeLink::orderBy('id')->get();
-        $buildings = Building::with('department:id,name,color')->orderBy('id')->get();
+        $buildings = Building::with('department:id,name,kind,color')->orderBy('id')->get();
+        // Closures and special openings now or in the next 60 days: the phone applies them, offline too.
+        $closures = Closure::current()->where('starts_at', '<', now()->addDays(60))->orderBy('starts_at')->get();
         $pathways = Pathway::orderBy('id')->get();
         $areas = CampusArea::orderBy('name')->get();
         $bridges = Bridge::orderBy('id')->get();
 
         // A staircase edit changes routing, so it must bump the version too;
         // building labels and pathways change what the map shows.
-        $version = max(
-            Node::max('updated_at')?->timestamp ?? 0,
-            Border::max('updated_at')?->timestamp ?? 0,
-            NodeLink::max('updated_at')?->timestamp ?? 0,
-            Building::max('updated_at')?->timestamp ?? 0,
-            Pathway::max('updated_at')?->timestamp ?? 0,
-            CampusArea::max('updated_at')?->timestamp ?? 0,
-            Bridge::max('updated_at')?->timestamp ?? 0
-        );
+        // max() returns the raw column value (a string), not a date: read it as a timestamp.
+        $latest = fn (string $model): int => ($at = $model::max('updated_at')) ? (int) strtotime((string) $at) : 0;
+        $version = max(array_map($latest, [
+            Node::class, Border::class, NodeLink::class, Building::class, Pathway::class, CampusArea::class, Bridge::class, Closure::class,
+        ]));
 
-        return self::shape(
+        return [...self::shape(
             $nodes->map(fn ($n) => [
                 'id' => $n->id,
                 'name' => $n->name,
@@ -112,6 +113,7 @@ class MapSnapshot
                 'department' => $n->department ? [
                     'id' => $n->department->id,
                     'name' => $n->department->name,
+                    'kind' => $n->department->kind,
                     'color' => $n->department->color,
                 ] : null,
             ])->all(),
@@ -146,6 +148,7 @@ class MapSnapshot
                 'department' => $b->department ? [
                     'id' => $b->department->id,
                     'name' => $b->department->name,
+                    'kind' => $b->department->kind,
                     'color' => $b->department->color,
                 ] : null,
             ])->all(),
@@ -178,7 +181,18 @@ class MapSnapshot
                 'closed' => $b->closed,
                 'closed_reason' => $b->closed_reason,
             ])->all(),
-        );
+        ), 'closures' => $closures->map(fn (Closure $c) => [
+            'id' => $c->id,
+            'kind' => $c->kind,
+            'reason' => $c->reason,
+            'campus' => $c->campus,
+            'department_kind' => $c->department_kind,
+            'department_id' => $c->department_id,
+            'building_id' => $c->building_id,
+            'node_id' => $c->node_id,
+            'starts_at' => $c->starts_at->toIso8601String(),
+            'ends_at' => $c->ends_at->toIso8601String(),
+        ])->all()];
     }
 
     /**
@@ -228,6 +242,7 @@ class MapSnapshot
             $payload['buildings'] ?? [], $payload['pathways'] ?? [], $payload['campus_areas'] ?? [], $payload['audience'] ?? null,
             // Only when there are bridges, so an unchanged map keeps its old hash (phones do not re-download it).
             ...(($payload['bridges'] ?? []) === [] ? [] : [$payload['bridges']]),
+            ...(($payload['closures'] ?? []) === [] ? [] : [$payload['closures']]),
         ])), 0, 16);
 
         return [

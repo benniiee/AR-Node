@@ -206,7 +206,7 @@ export function describeAge(savedAt, nowMs = Date.now()) {
 export function mapSignature(map) {
     if (!map || typeof map !== 'object') return '';
     const count = (k) => (Array.isArray(map[k]) ? map[k].length : 0);
-    return [map.hash ?? '', map.version ?? '', count('nodes'), count('links'), count('borders'), count('buildings'), count('pathways')].join(':');
+    return [map.hash ?? '', map.version ?? '', count('nodes'), count('links'), count('borders'), count('buildings'), count('pathways'), count('closures')].join(':');
 }
 
 /**

@@ -26,7 +26,7 @@ import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../po
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
 import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint } from '../campusLayers';
 import { sunPosition, roofLiftM } from '../sunShadow';
-import { closedBuildingIds, hoursOf, openState, summarizeHours } from '../openingHours';
+import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements } from '../openingHours';
 import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
 import { LIST_CSS, bindScrollCue } from './ScrollWindow';
 import SatelliteControl, { SATELLITE_CSS } from './SatelliteControl';
@@ -184,7 +184,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const sunDate = sunClock;
     // Buildings closed right now (opening hours, campus time): routes do not pass through them. Rechecked
     // with the sun clock (every minute); the key keeps the route from re-running when nothing changed.
-    const closedIds = useMemo(() => closedBuildingIds(buildings, sunDate), [buildings, sunDate]);
+    const closedIds = useMemo(() => closedBuildingIds(buildings, sunDate, closures), [buildings, sunDate, closures]);
+    // School-level announcements going on now (whole school, a campus, every college or office): a banner.
+    const announcementList = useMemo(() => announcements(closures, sunDate), [closures, sunDate]);
     const closedKey = closedIds.join(',');
     // Walls are re-shaded only when the sun has moved ~5 degrees (about every
     // 20 minutes live): rebuilding the buildings closes an open popup.
@@ -203,6 +205,10 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // Display only: routing still runs on nodes.
     const [buildings, setBuildings] = useState([]);
     const [bridges, setBridges] = useState([]);
+    // Closures and special openings (announcements), from the map feed: applied on top of opening hours.
+    const [closures, setClosures] = useState([]);
+    const closuresRef = useRef([]);
+    closuresRef.current = closures;
     const [pathways, setPathways] = useState([]);
     // Campus outlines (Campus A, Campus B, ...): the campus picker and the map labels.
     const [campusAreas, setCampusAreas] = useState([]);
@@ -356,11 +362,11 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         const buildingId = parseBuildingDestination(destId);
         const building = buildingId !== null ? buildingsById.get(buildingId) : null;
         const place = building || nodes.find((n) => String(n.id) === String(destId));
-        const state = place ? openState(building ? building.opening_hours : hoursOf(place, buildingsById), sunDate) : null;
+        const state = place ? (building ? buildingStatus(building, closures, sunDate) : placeStatusOf(place, buildingsById, closures, sunDate)) : null;
         if (!state || state.open) return null;
         const when = state.label.startsWith('Closed · ') ? `: ${state.label.slice('Closed · '.length)}` : '';
         return `${place.short_name || place.name || 'This place'} is closed now${when}`;
-    }, [route, destId, nodes, buildingsById, sunDate]);
+    }, [route, destId, nodes, buildingsById, sunDate, closures]);
     // Loading, no route and the offline copy, as pill notices (one at a time,
     // most important first). Loading stays up while it lasts.
     useEffect(() => {
@@ -435,6 +441,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 setLinks(data.links || []);
                 setBuildings(data.buildings || []);
                 setBridges(data.bridges || []);
+                setClosures(data.closures || []);
                 setPathways(data.pathways || []);
                 setCampusAreas(data.campus_areas || []);
                 setOfflineCopy(source === 'offline' ? { savedAt } : null);
@@ -464,6 +471,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         setLinks(map.links || []);
         setBuildings(map.buildings || []);
         setBridges(map.bridges || []);
+        setClosures(map.closures || []);
         setPathways(map.pathways || []);
         setCampusAreas(map.campus_areas || []);
         setOfflineCopy(null);
@@ -1011,14 +1019,16 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // from being the destination (window.__mnavGoTo, bound below).
         const popup = (b) => {
             // Opening hours (read when the popup opens): open now or when it opens, and the week.
-            const hoursNow = openState(b.opening_hours, new Date());
+            const hoursNow = buildingStatus(b, closuresRef.current, new Date());
             // A room with hours of its own (a cashier inside the building): its state on its row.
             const roomHours = (n) => {
-                const own = n.opening_hours ? openState(n.opening_hours, new Date()) : null;
+                const own = placeStatusOf(n, buildingsById, closuresRef.current, new Date());
+                // Only when it differs from the building's line above (its own hours, or a closure of its own).
+                if (own && hoursNow && own.label === hoursNow.label) return '';
                 return own ? ` · <span class="${own.open ? '' : 'bp-closed'}">${escapeHtml(own.label)}</span>` : '';
             };
             const hoursLine = hoursNow
-                ? `<small class="${hoursNow.open ? '' : 'bp-closed'}">${escapeHtml(hoursNow.label)}</small><small>${escapeHtml(summarizeHours(b.opening_hours))}</small>`
+                ? `<small class="${hoursNow.open ? '' : 'bp-closed'}">${escapeHtml(hoursNow.label)}</small>${b.opening_hours ? `<small>${escapeHtml(summarizeHours(b.opening_hours))}</small>` : ''}`
                 : '';
             if (isVisitor) {
                 return `
@@ -1760,6 +1770,17 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 /* Header and footer are floating glass cards, not full-bleed
                    bars — the same panel shape the 3D screen uses, so both
                    screens read as one HUD. */
+                .mnav-announce {
+                    position: relative; z-index: 1099; flex: 0 0 auto;
+                    margin: 8px max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left));
+                    padding: 8px 12px; border-radius: ${PANEL_RADIUS}px;
+                    background: ${C.glass}; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+                    border: 1px solid rgba(251, 191, 36, 0.45); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+                    animation: mnavNoticeIn 0.3s var(--e-out) both;
+                }
+                .mnav-announce p { margin: 0; display: flex; align-items: flex-start; gap: 8px; color: ${C.white}; font-size: ${TYPE.desc}; font-weight: 600; line-height: 1.35; }
+                .mnav-announce p + p { margin-top: 6px; }
+                .mnav-announce svg { flex: none; margin-top: 1px; color: ${C.warning}; }
                 .mnav-header {
                     position: relative; z-index: 1100;
                     display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 0;
@@ -2334,7 +2355,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                                 ? `Building${buildingsById.get(d.building_id) ? `, ${floorCountLabel(buildingsById.get(d.building_id))}` : ''}`
                                 : buildingLabelOf(d);
                             // Opening hours, when the place (or its building) has them: open now, or when it opens.
-                            const hours = openState(d.is_building ? buildingsById.get(d.building_id)?.opening_hours : hoursOf(d, buildingsById), sunDate);
+                            const hours = d.is_building
+                                ? buildingStatus(buildingsById.get(d.building_id), closures, sunDate)
+                                : placeStatusOf(d, buildingsById, closures, sunDate);
                             return (
                                 <button
                                     key={d.id}
@@ -2421,6 +2444,19 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 </button>
                 <AppMenu session={session} sync={sync} showInstall={showInstall} onSignOut={onSignOut} />
             </div>
+            )}
+            {/* School-level announcements (classes suspended, campus closed): everyone sees them, visitors too. */}
+            {announcementList.length > 0 && (
+                <div className="mnav-announce" role="status">
+                    {announcementList.map((a) => (
+                        <p key={a.id}>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+                                <path d="M4 10v4h3l6 4V6L7 10H4zM16.5 9a4 4 0 0 1 0 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <span>{a.text}</span>
+                        </p>
+                    ))}
+                </div>
             )}
 
 

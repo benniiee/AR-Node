@@ -254,6 +254,13 @@ export const api = {
     updateCourse: (id, data) => request(`/courses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteCourse: (id) => request(`/courses/${id}`, { method: 'DELETE' }),
 
+    // Closures and special openings (announcements): admins any scope, staff their own department.
+    getClosures: () => request('/closures'),
+    // Campus weather now (public): the Announcements page offers a class suspension on a dangerous heat index.
+    getWeather: () => request('/weather'),
+    createClosure: (data) => request('/closures', { method: 'POST', body: JSON.stringify(data) }),
+    deleteClosure: (id) => request(`/closures/${id}`, { method: 'DELETE' }),
+
     // Activity log, 50 a page (admins: everyone; department staff: their courses' students).
     getActivityLogs: ({ role = '', q = '', page = 1 } = {}) =>
         request(`/activity-logs?${new URLSearchParams({ ...(role ? { role } : {}), ...(q ? { q } : {}), page })}`),

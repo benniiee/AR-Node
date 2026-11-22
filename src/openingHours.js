@@ -97,12 +97,132 @@ export function summarizeHours(hours) {
  * Ids of the buildings closed at `date` (they have hours and none is open now). Routes do not pass
  * through them; the destination's own building and the one you stand in stay open to routing.
  */
-export function closedBuildingIds(buildings, date = new Date()) {
-    return (buildings || []).filter((b) => openState(b?.opening_hours, date)?.open === false).map((b) => b.id);
+export function closedBuildingIds(buildings, date = new Date(), closures = []) {
+    return (buildings || []).filter((b) => buildingStatus(b, closures, date)?.open === false).map((b) => b.id);
 }
 
 /** Hours from a simple weekly form: the same range (or two, around a break) on each chosen day. */
 export function weeklyHours(days, open, close, lunch = null) {
     const ranges = lunch ? [[open, lunch[0]], [lunch[1], close]] : [[open, close]];
     return Object.fromEntries(DAYS.map((d) => [d, days.includes(d) ? ranges.map((r) => [...r]) : []]));
+}
+
+// ── Closures and special openings (announcements) ────────────────────
+// A closure (or special opening) covers what its filled fields match, all of them: node_id, else
+// building_id (the building and every room in it), department_id, department_kind (every college or
+// every office), campus. None filled: the whole school. Precedence: a closure beats a special opening,
+// which beats the weekly hours.
+
+const DAY_MS = 86400000;
+const campusDayNumber = (date) => Math.floor((date.getTime() + CAMPUS_OFFSET_MIN * 60000) / DAY_MS);
+
+/** "3 pm" today, "tomorrow 8 am", "Fri 8 am" this week, else "Dec 3". */
+export function formatWhen(when, date = new Date()) {
+    const at = new Date(when);
+    const { day, minutes } = campusClock(at);
+    const hhmm = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    const days = campusDayNumber(at) - campusDayNumber(date);
+    if (days <= 0) return formatTime(hhmm);
+    if (days === 1) return `tomorrow ${formatTime(hhmm)}`;
+    if (days < 7) return `${DAY_NAMES[day]} ${formatTime(hhmm)}`;
+    const local = new Date(at.getTime() + CAMPUS_OFFSET_MIN * 60000);
+    return `${local.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${local.getUTCDate()}`;
+}
+
+/** What closures can match for a building. */
+export function buildingTarget(b) {
+    const dept = b?.department;
+    return {
+        nodeId: null, buildingId: b?.id ?? null, campus: b?.campus ?? null,
+        departmentIds: [dept?.id ?? b?.department_id].filter((v) => v != null),
+        departmentKinds: [dept?.kind].filter(Boolean),
+    };
+}
+
+/** What closures can match for a place: itself, its building, its own and its building's department. */
+export function placeTarget(n, buildingsById) {
+    const b = n?.building_id != null ? buildingsById?.get?.(n.building_id) : null;
+    const bt = buildingTarget(b);
+    return {
+        nodeId: n?.id ?? null, buildingId: n?.building_id ?? null, campus: n?.campus ?? bt.campus,
+        departmentIds: [...new Set([n?.department?.id ?? n?.department_id, ...bt.departmentIds].filter((v) => v != null))],
+        departmentKinds: [...new Set([n?.department?.kind, ...bt.departmentKinds].filter(Boolean))],
+    };
+}
+
+/** Does closure `c` cover `t` (from buildingTarget / placeTarget)? */
+export function covers(c, t) {
+    if (!c || !t) return false;
+    if (c.node_id != null && c.node_id !== t.nodeId) return false;
+    if (c.building_id != null && c.building_id !== t.buildingId) return false;
+    if (c.department_id != null && !t.departmentIds.includes(c.department_id)) return false;
+    if (c.department_kind && !t.departmentKinds.includes(c.department_kind)) return false;
+    if (c.campus && c.campus !== t.campus) return false;
+    return true;
+}
+
+const activeAt = (c, date) => new Date(c.starts_at) <= date && date < new Date(c.ends_at);
+
+/** The first moment at or after `from` that the weekly hours are open (null hours: `from` itself). */
+export function nextOpening(hours, from) {
+    const h = valid(hours);
+    if (!h) return from;
+    const { day, minutes } = campusClock(from);
+    const today = DAYS.indexOf(day);
+    for (let k = 0; k <= 7; k += 1) {
+        const d = DAYS[(today + k) % 7];
+        for (const [o, c] of (Array.isArray(h[d]) ? h[d] : [])) {
+            const open = toMinutes(o);
+            const close = toMinutes(c);
+            if (k === 0 && minutes >= open && minutes < close) return from;
+            if (k > 0 || open > minutes) return new Date(from.getTime() + ((k * 1440 + open) - minutes) * 60000);
+        }
+    }
+    return null;
+}
+
+/**
+ * Open or closed at `date` with closures applied (same shape as openState, plus `reason` when a
+ * closure is why). Null when there are no hours and nothing covers it.
+ */
+export function placeStatus(hours, closures, target, date = new Date()) {
+    const here = (closures || []).filter((c) => activeAt(c, date) && covers(c, target));
+    const closed = here.filter((c) => c.kind !== 'open').sort((a, b) => new Date(b.ends_at) - new Date(a.ends_at))[0];
+    if (closed) {
+        const reopens = nextOpening(hours, new Date(closed.ends_at));
+        const reason = String(closed.reason || '').trim();
+        return {
+            open: false, short: 'Closed', reason,
+            label: `Closed${reason ? ` · ${reason}` : ''}${reopens ? ` · opens ${formatWhen(reopens, date)}` : ''}`,
+        };
+    }
+    const special = here.find((c) => c.kind === 'open');
+    if (special) return { open: true, short: 'Open', label: `Open · special hours until ${formatWhen(special.ends_at, date)}` };
+    return openState(hours, date);
+}
+
+/** A building's status (its hours and what covers it). */
+export function buildingStatus(b, closures, date = new Date()) {
+    return placeStatus(b?.opening_hours, closures, buildingTarget(b), date);
+}
+
+/** A place's status (its own hours or its building's, and what covers it or its building). */
+export function placeStatusOf(n, buildingsById, closures, date = new Date()) {
+    return placeStatus(hoursOf(n, buildingsById), closures, placeTarget(n, buildingsById), date);
+}
+
+/**
+ * School-level announcements going on now (no department, building or place: the whole school, a
+ * campus, every college or every office), for the banner on the map.
+ * @returns {Array<{ id: *, text: string }>}
+ */
+export function announcements(closures, date = new Date()) {
+    return (closures || [])
+        .filter((c) => c.kind !== 'open' && activeAt(c, date) && c.department_id == null && c.building_id == null && c.node_id == null)
+        .map((c) => {
+            const who = c.department_kind === 'college' ? 'All colleges' : c.department_kind === 'office' ? 'All offices' : 'Whole school';
+            const where = c.campus ? `${who === 'Whole school' ? 'Campus' : `${who}, Campus`} ${c.campus}` : who;
+            const reason = String(c.reason || '').trim() || 'Closed';
+            return { id: c.id, text: `${reason} · ${where} · until ${formatWhen(c.ends_at, date)}` };
+        });
 }

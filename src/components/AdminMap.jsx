@@ -6,6 +6,7 @@ import AdminStudents from './AdminStudents';
 import AdminWeather from './AdminWeather';
 import AdminActivity from './AdminActivity';
 import AdminCourses from './AdminCourses';
+import AdminAnnouncements from './AdminAnnouncements';
 import { C, TYPE, PANEL_RADIUS, RADIUS, MAP_ZOOM_CSS, ELEVATION, PILL, TAP } from '../uiTokens';
 import { usePresence, useHold, Collapse } from '../motion';
 import { IDLE, TOOL_ADD, TOOL_MOVE, TOOL_PIN, TOOL_WALLS, TOOL_BUILDING, TOOL_PATHWAY, TOOL_BRIDGE, TOOL_AREA, TOOL_AREAS, resolveTool, resolveMode, surfaceFor } from '../toolState';
@@ -291,6 +292,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const [buildings, setBuildings] = useState([]);
     const [pathways, setPathways] = useState([]);
     const [bridges, setBridges] = useState([]);
+    // Closures and special openings: the Announcements page and the route preview (closed buildings).
+    const [closures, setClosures] = useState([]);
     const [showCampus, setShowCampus] = useState(true);
     const [campusOpen, setCampusOpen] = useState(false);
     // Campus areas (named outlines) and the "show one campus" filter.
@@ -560,11 +563,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             0,
             borders,
             // Closed buildings (opening hours, now) are walked around, as on /map.
-            { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings) },
+            { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings, new Date(), closures) },
         );
         setRouteResult(result);
         drawRoute(result);
-    }, [userLocation, selectedDestination, nodes, borders, drawRoute, buildings, bridges, links, pathways]);
+    }, [userLocation, selectedDestination, nodes, borders, drawRoute, buildings, bridges, links, pathways, closures]);
     const loadData = useCallback(async () => {
         try {
             const nodesData = await api.getNodes();
@@ -597,6 +600,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             try {
                 setCampusAreas(await api.getCampusAreas());
             } catch { setCampusAreas([]); /* older backend without campus areas */ }
+            try {
+                setClosures(await api.getClosures());
+            } catch { setClosures([]); }
             // Faculty get a 403 here - they still see every node and colour,
             // they just can't manage the roster.
             try {
@@ -1432,7 +1438,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setRouteResult(null);
 
             try {
-                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings) });
+                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings, new Date(), closures) });
                 setRouteResult(result);
                 drawRoute(result);
             } catch (err) {
@@ -2721,6 +2727,13 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 <AdminCourses currentUser={currentUser} departments={departments} notify={showToast} fail={onError} />
             )}
 
+            {tab === 'announcements' && (
+                <AdminAnnouncements
+                    currentUser={currentUser} departments={departments} buildings={buildings} nodes={nodes} closures={closures}
+                    onChanged={async () => { try { setClosures(await api.getClosures()); } catch { /* the list stays as it was */ } }}
+                    notify={showToast} fail={onError}
+                />
+            )}
             {tab === 'activity' && (
                 <AdminActivity isAdmin={isAdmin} fail={onError} />
             )}

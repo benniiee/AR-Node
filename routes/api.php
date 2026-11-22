@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BorderController;
 use App\Http\Controllers\Api\BridgeController;
 use App\Http\Controllers\Api\BuildingController;
 use App\Http\Controllers\Api\CampusAreaController;
+use App\Http\Controllers\Api\ClosureController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\MapDataController;
@@ -111,4 +112,7 @@ Route::middleware(['auth:sanctum', EnsureStaff::class, LogStaffActions::class])-
 
     // The activity log: admins see everyone; department staff see their courses' students (enforced in controller).
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+
+    // Closures and special openings (announcements): admins any scope, staff their own department (enforced in controller).
+    Route::apiResource('closures', ClosureController::class)->only(['index', 'store', 'destroy']);
 });

@@ -68,7 +68,9 @@ test('on a hot day the route takes the shaded way over the shorter sunny one', (
     const ids = (r) => r.path.map((p) => p.id).filter((x) => x !== null && x !== undefined);
 
     const normal = computeRoute(nodes, 9, start.latitude, start.longitude, 0, wall);
-    assert.ok(ids(normal).includes(2) && !ids(normal).includes(4), `expected the sunny east side, got ${ids(normal)}`);
+    // The east side: straight up beside the wall (round its north end) or by node 2, never the west.
+    const east = (r) => !ids(r).includes(4) && r.path.some((p) => p.type !== 'user' && p.longitude > LNG);
+    assert.ok(east(normal), `expected the sunny east side, got ${ids(normal)}`);
 
     const hot = computeRoute(nodes, 9, start.latitude, start.longitude, 0, wall, { shade: { map: shadedWest, penalty: 1.6 } });
     assert.ok(ids(hot).includes(4) && !ids(hot).includes(2), `expected the shaded west side, got ${ids(hot)}`);

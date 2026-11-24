@@ -166,6 +166,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const routeLayerRef = useRef(null);
     const buildingLayerRef = useRef(null);
     const wallLayerRef = useRef(null);
+    const wallFrontLayerRef = useRef(null);
     // Buildings the route goes into, cut away at the floor being shown.
     const cutawayLayerRef = useRef(null);
     const pathwayLayerRef = useRef(null);
@@ -948,6 +949,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // Walls (2.5D) under the buildings: a building in front of a wall covers it.
         wallLayerRef.current = L.layerGroup().addTo(map);
         buildingLayerRef.current = L.layerGroup().addTo(map);
+        // Walls in front of the buildings (south of them, nearer the viewer) draw over them.
+        wallFrontLayerRef.current = L.layerGroup().addTo(map);
         bridgeLayerRef.current = L.layerGroup().addTo(map);
         cutawayLayerRef.current = L.layerGroup().addTo(map);
         bindLabelZoom(map);
@@ -1055,7 +1058,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         };
         drawPathways(pathwayLayerRef.current, pathways, { theme: GPS_FLAVOR });
         // The drawn walls stand up like the buildings (2.5D), shaded by the sun.
-        if (wallLayerRef.current) drawWalls25D(wallLayerRef.current, borders, { theme: GPS_FLAVOR, sun: sunForWalls });
+        if (wallLayerRef.current) {
+            drawWalls25D(wallLayerRef.current, borders, { theme: GPS_FLAVOR, sun: sunForWalls, buildings, frontLayer: wallFrontLayerRef.current });
+        }
         drawBuildings(buildingLayerRef.current, buildings, { popup, theme: GPS_FLAVOR, extrude: true, sun: sunForWalls, skipIds: routeBuildingIds });
         // After the buildings, raised like them (2.5D): the deck crosses over the road between them.
         if (bridgeLayerRef.current) drawBridges(bridgeLayerRef.current, bridges, { theme: GPS_FLAVOR, extrude: true, links, nodes });

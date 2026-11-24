@@ -27,7 +27,7 @@ import { convexHull, clipToConvex, cutStairwells } from './planarGeometry.js';
 import {
     sunPosition, shadowRings, buildingHeightM, shadowOpacity, penumbraLayers, shadowColor,
     roofLiftM, visibleWalls, wallLight, insetPolygon, parapetShadowQuads, edgesWithNormals, roofLight,
-    PARAPET_W, STOREY_M, EXTRUDE_FACTOR, skyTint,
+    PARAPET_W, STOREY_M, EXTRUDE_FACTOR, skyTint, wallBehindBuilding,
 } from './sunShadow.js';
 
 const STYLE_ID = 'campus-layer-styles';
@@ -906,10 +906,12 @@ export const WALL_HEIGHT_M = 2.2;
  * The drawn walls (borders: [{ coordinates: [{lat, lng}] }]) in 2.5D, as the student sees the
  * buildings: each stretch raised WALL_HEIGHT_M (north-up, like drawBuildings), its face shaded by
  * the sun like a building's wall, a darker top edge. Far stretches first, so nearer ones cover them.
- * Draws into `layer` (cleared first).
+ * Draws into `layer` (cleared first), the one under the buildings; with `frontLayer` (over them) and
+ * `buildings`, a stretch in front of every building (wallBehindBuilding) goes there instead.
  */
-export function drawWalls25D(layer, borders, { theme = 'light', sun = null } = {}) {
+export function drawWalls25D(layer, borders, { theme = 'light', sun = null, buildings = [], frontLayer = null } = {}) {
     layer.clearLayers();
+    frontLayer?.clearLayers();
     const lift = roofLiftM(WALL_HEIGHT_M) / 111320;
     const tone = WALL[theme] || WALL.light;
     const segs = [];
@@ -928,12 +930,13 @@ export function drawWalls25D(layer, borders, { theme = 'light', sun = null } = {
         const normalDeg = ((Math.atan2(ne, nn) * 180) / Math.PI + 360) % 360;
         const fill = mixHex(tone.shade, tone.lit, wallLight(normalDeg, sun));
         const up = (p) => [+p.lat + lift, +p.lng];
+        const into = frontLayer && !wallBehindBuilding(a, b, buildings) ? frontLayer : layer;
         L.polygon([[+a.lat, +a.lng], [+b.lat, +b.lng], up(b), up(a)], {
             stroke: true, color: mixHex(fill, '#000000', 0.35), weight: 0.6, opacity: 0.8,
             fillColor: fill, fillOpacity: 0.95, interactive: false,
-        }).addTo(layer);
+        }).addTo(into);
         // Its top: a darker edge (a wall running north-south shows mostly as this line).
-        L.polyline([up(a), up(b)], { color: mixHex(fill, '#000000', 0.45), weight: 2.5, opacity: 0.95, lineCap: 'round', interactive: false }).addTo(layer);
+        L.polyline([up(a), up(b)], { color: mixHex(fill, '#000000', 0.45), weight: 2.5, opacity: 0.95, lineCap: 'round', interactive: false }).addTo(into);
     }
 }
 

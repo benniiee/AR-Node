@@ -189,3 +189,15 @@ test('skyTint: clear by day, warm at sunset, navy and darkest at night', () => {
     assert.ok(skyTint(-6).opacity > sunset.opacity && skyTint(-6).opacity < night.opacity);
     assert.equal(skyTint(NaN).opacity, 0);
 });
+
+test('a wall is behind a building when the building stands south of it (the viewer side)', async () => {
+    const { wallBehindBuilding } = await import('./sunShadow.js');
+    // A building tilted like CCS: corners at (0,0) (10,4) (14,-6) (4,-10), in lat/lng-ish units.
+    const ll = (x, y) => ({ lat: 6.9 + y * 1e-5, lng: 122 + x * 1e-5 });
+    const hall = { status: 'existing', polygon: [ll(0, 0), ll(10, 4), ll(14, -6), ll(4, -10)] };
+    // South of it (nearer the viewer): in front. North of it: behind. Off to the side: not behind.
+    assert.equal(wallBehindBuilding(ll(2, -14), ll(12, -14), [hall]), false, 'south: in front');
+    assert.equal(wallBehindBuilding(ll(2, 8), ll(12, 8), [hall]), true, 'north: behind');
+    assert.equal(wallBehindBuilding(ll(30, -20), ll(30, 20), [hall]), false, 'beside it');
+    assert.equal(wallBehindBuilding(ll(2, 8), ll(12, 8), [{ ...hall, status: 'planned' }]), false, 'a planned building is not drawn');
+});

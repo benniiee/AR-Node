@@ -230,6 +230,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const pendingMarkerRef = useRef(null);
     const cursorCircleRef = useRef(null);
     const borderLayerRef = useRef(null);
+    // Student view (2.5D walls): behind a building under it, in front over it, and always under the
+    // bridges (raised decks stand above any wall). The border layer is for Admin view's flat walls.
+    const wallBackLayerRef = useRef(null);
+    const wallFrontLayerRef = useRef(null);
     const linkLayerRef = useRef(null);
     const buildingLayerRef = useRef(null);
     const areaLayerRef = useRef(null);
@@ -680,8 +684,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         areaLayerRef.current = L.layerGroup().addTo(map);
         pathwayLayerRef.current = L.layerGroup().addTo(map);
         shadowLayerRef.current = L.layerGroup().addTo(map);
+        wallBackLayerRef.current = L.layerGroup().addTo(map);
         buildingLayerRef.current = L.layerGroup().addTo(map);
-        // Bridges over the roads between buildings: above the buildings.
+        wallFrontLayerRef.current = L.layerGroup().addTo(map);
+        // Bridges over the roads between buildings: above the buildings (and the walls).
         bridgeLayerRef.current = L.layerGroup().addTo(map);
         // "Which floor": the cut-away guide while placing a node in a building.
         floorGuideLayerRef.current = L.layerGroup().addTo(map);
@@ -1189,10 +1195,13 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     useEffect(() => {
         if (!mapInstance.current || !borderLayerRef.current) return;
         borderLayerRef.current.clearLayers();
+        wallBackLayerRef.current?.clearLayers();
+        wallFrontLayerRef.current?.clearLayers();
 
-        // Student view, nothing being edited: the walls stand up like the buildings (2.5D), as on /map.
-        if (showBorders && isStudentView && tool === IDLE && !isDrawingBorder) {
-            drawWalls25D(borderLayerRef.current, borders, { theme: mapTheme, sun: sunForWalls });
+        // Student view, nothing being edited: the walls stand up like the buildings (2.5D), as on /map:
+        // behind a building under it, in front over it.
+        if (showBorders && isStudentView && tool === IDLE && !isDrawingBorder && wallBackLayerRef.current) {
+            drawWalls25D(wallBackLayerRef.current, borders, { theme: mapTheme, sun: sunForWalls, buildings, frontLayer: wallFrontLayerRef.current });
             return;
         }
 
@@ -1330,7 +1339,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 });
             });
         }
-    }, [borders, drawingBorderPoints, showBorders, editingWallId, isDrawingBorder, isStudentView, tool, mapTheme, sunWallsKey]);
+    }, [borders, drawingBorderPoints, showBorders, editingWallId, isDrawingBorder, isStudentView, tool, mapTheme, sunWallsKey, buildings]);
 
     // Manage pending node marker
     useEffect(() => {

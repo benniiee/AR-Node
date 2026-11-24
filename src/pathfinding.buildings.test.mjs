@@ -92,5 +92,32 @@ test('an admin wall blocks the direct link, so the route walks around its end', 
     assert.ok(!buildWalkEdges(nodes, wall).some((e) => e.key === '1|5'), 'no link through the wall');
     const r = computeRoute(nodes, 9, at(0, 0).latitude, at(0, 0).longitude, 0, wall);
     assert.equal(r.success, true, r.message);
-    assert.ok(ids(r).includes(3), `expected the way around the wall's west end, got ${ids(r)}`);
+    // Round an end of the wall (a turning point just past it, or the nodes beyond), never through it.
+    const steps = r.path.slice(1).map((p, i) => [r.path[i], p]);
+    assert.ok(!steps.some(([a, b]) => a.type !== 'user' && segmentCrossesBorder(a, b, wall)), `through the wall: ${ids(r)}`);
+});
+
+test('walls: a route turns round an open end; behind a closed wall there is no route through it', () => {
+    const ll = (e, n) => ({ lat: at(e, n).latitude, lng: at(e, n).longitude });
+    const pt = (id, e, n, extra = {}) => ({ id, type: 'route', floor_level: 0, elevation: 0, path_type: 'outside', building_id: null, ...at(e, n), ...extra });
+    // A street (the pin) between a long wall and the campus; the only way in is round the wall's east end.
+    const wall = [{ group_id: 4, coordinates: [ll(-300, 10), ll(30, 10)] }];
+    const campus = [pt(1, -20, 20), pt(2, 40, 20), pt(9, -20, 40, { type: 'location' })];
+    const pin = at(-20, 0);
+    const r = computeRoute(campus, 9, pin.latitude, pin.longitude, 0, wall);
+    assert.equal(r.success, true, r.message);
+    const steps = r.path.slice(1).map((p, i) => [r.path[i], p]);
+    assert.ok(!steps.some(([a, b]) => segmentCrossesBorder(a, b, wall)), `through the wall: ${ids(r)}`);
+    assert.ok(r.path.some((p) => p.id === -3000041), 'round its east end');
+
+    // Walled in on every side (a closed loop) and well away from it: a message, not a route through it.
+    const box = [{ group_id: 5, coordinates: [ll(-50, -50), ll(50, -50), ll(50, 50), ll(-50, 50), ll(-50, -50)] }];
+    const outside = [pt(1, 80, 0), pt(9, 90, 0, { type: 'location' })];
+    const enclosed = computeRoute(outside, 9, at(0, 0).latitude, at(0, 0).longitude, 0, box);
+    assert.equal(enclosed.success, false);
+    assert.equal(enclosed.walled_in, true);
+    assert.match(enclosed.message, /A wall stands between you/);
+    // A metre inside it (GPS drift beside the wall): still routed from the nearest entry.
+    const drift = computeRoute(outside, 9, at(49, 0).latitude, at(49, 0).longitude, 0, box);
+    assert.equal(drift.success, true);
 });

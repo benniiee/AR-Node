@@ -14,6 +14,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Add ngrok's skip-warning header to every response so the free-plan interstitial
+        // is never shown on fresh mobile visits (PWA manifest, service worker, tiles).
+        $middleware->append(\App\Http\Middleware\NgrokTunnelHeaders::class);
+
         // API-only app: return 401 JSON instead of redirecting to a
         // non-existent "login" route when auth:sanctum rejects a request.
         Authenticate::redirectUsing(

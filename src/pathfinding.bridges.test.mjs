@@ -46,7 +46,7 @@ test('with a door, a route leaves the deck through it, not sideways into a build
     assert.ok(viaDoor.path.some((p) => p.id === 5));
 });
 
-test('a raised deck passes over a ground wall under it (a road edge); the ground does not', () => {
+test('a raised deck passes over a ground wall under it (a road edge); the ground goes round its end', () => {
     // A wall running north-south under the deck's middle, as drawn along a road.
     const wall = [{ group_id: 1, coordinates: [ll(20, -10), ll(20, 14)] }];
     const nodes = [node(1, 5, 2, 1, { path_type: 'inside' }), node(2, 35, 2, 1, { path_type: 'inside', type: 'location' }),
@@ -56,7 +56,11 @@ test('a raised deck passes over a ground wall under it (a road edge); the ground
     assert.equal(onDeck.success, true);
     const below = at(5, -6);
     const ground = computeRoute(nodes, 4, below.latitude, below.longitude, 0, wall, { userFloor: 0, bridges: [{ ...bridge, doors: [] }] });
-    assert.equal(ground.success, false);
+    // On the ground the wall still blocks: the route turns round its open end, never through it.
+    assert.equal(ground.success, true);
+    assert.ok(ground.path.some((p) => p.id <= -3000000 && p.id > -4000000), 'round the end of the wall (its turning point)');
+    const steps = ground.path.slice(1).map((p, i) => [ground.path[i], p]);
+    assert.ok(!steps.some(([a, b]) => a.type !== 'user' && segmentCrossesBorder(a, b, wall)), 'never through it');
 });
 
 test('a closed bridge is not crossed: another way if there is one, else a message with the reason', () => {
@@ -68,11 +72,13 @@ test('a closed bridge is not crossed: another way if there is one, else a messag
     const links = [{ node_a_id: 20, node_b_id: 10 }, { node_a_id: 21, node_b_id: 12 }];
     const footbridge = { ...bridge, doors: [], name: 'Footbridge' };
     const start = at(3, -6);
-    const route = (bridges, extra = []) => computeRoute([...deckNodes, ...feet, ...extra], 21, start.latitude, start.longitude, 0, wall, { userFloor: 0, links, bridges });
+    const route = (bridges, extra = [], walls = wall) => computeRoute([...deckNodes, ...feet, ...extra], 21, start.latitude, start.longitude, 0, walls, { userFloor: 0, links, bridges });
+    // The far side walled all round (a closed loop has no end to go round): only the bridge reaches it.
+    const enclosed = [{ group_id: 2, coordinates: [ll(20, -30), ll(20, 40), ll(60, 40), ll(60, -30), ll(20, -30)] }];
 
-    assert.equal(route([footbridge]).success, true, 'open: over the bridge');
+    assert.equal(route([footbridge], [], enclosed).success, true, 'open: over the bridge');
     const closed = { ...footbridge, closed: true, closed_reason: 'Campus A event until 5 PM' };
-    const blocked = route([closed]);
+    const blocked = route([closed], [], enclosed);
     assert.equal(blocked.success, false);
     assert.equal(blocked.closed_bridge, true);
     assert.equal(blocked.message, 'Footbridge is closed: Campus A event until 5 PM.');

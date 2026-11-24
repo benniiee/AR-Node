@@ -366,3 +366,23 @@ export function skyTint(altitudeDeg) {
     const t = Math.min(1, -alt / 12);
     return { color: hex(GOLDEN.map((g, i) => g + (NIGHT[i] - g) * t)), opacity: 0.18 + (0.6 - 0.18) * t };
 }
+
+/**
+ * Is the wall stretch a-b behind a building, as the north-up 2.5D map is looked at (from the south)?
+ * True when straight south of its middle there is a building: that building stands between it and
+ * the viewer, so the wall is drawn under it. Otherwise the wall is in front and drawn over them.
+ */
+export function wallBehindBuilding(a, b, buildings) {
+    const lat = (+a.lat + +b.lat) / 2;
+    const lng = (+a.lng + +b.lng) / 2;
+    return (buildings || []).some((bd) => {
+        const ring = bd?.status !== 'planned' && Array.isArray(bd?.polygon) ? bd.polygon : [];
+        // Where the line running south from the wall's middle crosses the outline.
+        return ring.some((p, i) => {
+            const q = ring[(i + 1) % ring.length];
+            if ((+p.lng > lng) === (+q.lng > lng)) return false;
+            const crossLat = +p.lat + ((lng - +p.lng) / (+q.lng - +p.lng)) * (+q.lat - +p.lat);
+            return crossLat < lat;
+        });
+    });
+}

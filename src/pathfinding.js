@@ -273,10 +273,80 @@ export function pathwayWaypoints(pathways) {
         points.forEach((p, k) => out.push({
             id: -(2000000 + Number(pw.id) * 10000 + k), type: 'route', name: null,
             latitude: p.lat, longitude: p.lng, elevation: 0, floor_level: 0,
-            path_type: pw.kind === 'covered' ? 'inside' : 'outside', building_id: null, pathway_id: pw.id,
+            path_type: pw.kind === 'covered' ? 'inside' : 'outside', building_id: null, pathway_id: pw.id, pathway_k: k,
         }));
     }
     return out;
+}
+
+/**
+ * Walking off the mapped paths (across open ground) costs this much more per metre than along a road
+ * or walkway, so routes keep to them where there are any; where there are none (a street between
+ * walls) every way is off-path alike and the straight one still wins. Only the choice: reported
+ * distances stay real.
+ */
+export const OFF_PATH_FACTOR = 1.5;
+
+/** Is a step between a and b off the mapped paths? (A wall's turning point, or two pathway points not next to each other.) */
+function offPath(a, b) {
+    if (a?.wall_end || b?.wall_end) return true;
+    if (a?.pathway_id == null || b?.pathway_id == null) return false;
+    return !(a.pathway_id === b.pathway_id && Math.abs(a.pathway_k - b.pathway_k) === 1);
+}
+
+/** Metres past a wall's open end where a route turns round it. */
+const WALL_END_STEP_M = 1.2;
+
+/**
+ * A virtual route node just past each open end of a drawn wall (a closed loop has none): the corner a
+ * route turns round, e.g. from the street at the end of a campus wall into the road behind it. The
+ * router only links points in straight lines that cross no wall, so without these it could not go
+ * round a wall's end. Ground floor, open air; never stored or drawn.
+ */
+export function wallEndWaypoints(walls) {
+    const out = [];
+    (walls || []).forEach((w, gi) => {
+        const c = (w?.coordinates || []).filter((p) => Number.isFinite(+p.lat) && Number.isFinite(+p.lng));
+        if (c.length < 2) return;
+        const first = c[0];
+        const last = c[c.length - 1];
+        if (+first.lat === +last.lat && +first.lng === +last.lng) return;
+        const key = Number.isFinite(Number(w.group_id)) ? Number(w.group_id) : gi;
+        [[first, c[1]], [last, c[c.length - 2]]].forEach(([end, prev], k) => {
+            const [e, n] = toLocalMeters(+end.lat, +end.lng, +prev.lat, +prev.lng);
+            const len = Math.hypot(e, n);
+            if (len < 1e-6) return;
+            const p = fromLocalMeters(+end.lat, +end.lng, (e / len) * WALL_END_STEP_M, (n / len) * WALL_END_STEP_M);
+            out.push({
+                id: -(3000000 + key * 10 + k), type: 'route', name: null, wall_end: true,
+                latitude: p.latitude, longitude: p.longitude, elevation: 0, floor_level: 0, path_type: 'outside', building_id: null,
+            });
+        });
+    });
+    return out;
+}
+
+/** Metres within which every route point in plain sight is a possible first step (beyond the nearest few). */
+const ENTRY_REACH_M = 60;
+
+/** Metres from a wall within which a GPS fix may be on its wrong side (drift), so a route may start across it. */
+const WALL_GPS_SLACK_M = 6;
+
+/** Shortest distance in metres from (lat, lng) to any wall stretch in `borders`. */
+function distanceToWalls(lat, lng, borders) {
+    let best = Infinity;
+    for (const b of borders || []) {
+        const c = b?.coordinates || [];
+        for (let i = 1; i < c.length; i += 1) {
+            const [ax, ay] = toLocalMeters(+c[i - 1].lat, +c[i - 1].lng, lat, lng);
+            const [bx, by] = toLocalMeters(+c[i].lat, +c[i].lng, lat, lng);
+            const dx = bx - ax;
+            const dy = by - ay;
+            const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1)));
+            best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+        }
+    }
+    return best;
 }
 
 export function bridgeDoorWaypoints(bridges) {
@@ -377,7 +447,8 @@ function buildGraph(nodes, borders = [], rainMultiplier = 1, links = [], shade =
                 if (!isGabrielEdge(a, b, floorNodes, dist, borders)) continue;
 
                 const cost = dist * edgeRainFactor(a.path_type, b.path_type, rainMultiplier)
-                    * (shade ? edgeShadeFactor(a, b, shade.map, shade.penalty) : 1);
+                    * (shade ? edgeShadeFactor(a, b, shade.map, shade.penalty) : 1)
+                    * (offPath(a, b) ? OFF_PATH_FACTOR : 1);
                 adjacency[String(a.id)][String(b.id)] = cost;
                 adjacency[String(b.id)][String(a.id)] = cost;
             }
@@ -444,10 +515,12 @@ function findNearbyRouteNodes(nodes, lat, lng, elevation, borders = [], k = 5, f
     const routeNodes = ranked.filter((e) => e.node.type === 'route' || (destKey !== null && String(e.node.id) === destKey));
     const candidates = routeNodes.length > 0 ? routeNodes : ranked;
     const valid = candidates.filter((e) => !segmentCrossesBorder(userPoint, e.node, borders));
-    // Fallback: every entry blocked by walls — a route is still better than
-    // none, so allow the single nearest entry.
-    if (valid.length === 0) return candidates.slice(0, 1);
-    return valid.slice(0, k);
+    // Every entry is behind a wall. Right beside a wall that is GPS drift (the fix is on the wrong side
+    // of it): start from the nearest entry anyway. Further away, never through a wall: no entry.
+    if (valid.length === 0) return distanceToWalls(lat, lng, borders) <= WALL_GPS_SLACK_M ? candidates.slice(0, 1) : [];
+    // The k nearest, and every other one in plain sight within ENTRY_REACH_M: on a street between walls
+    // the way out (a wall's far end) is often not among the nearest few, and starting there is straight.
+    return valid.filter((e, i) => i < k || e.dist <= ENTRY_REACH_M);
 }
 
 // ── Dijkstra: plain shortest path ─────────────────────────────────────
@@ -551,7 +624,8 @@ function snapPathToRoad(path, nodes, userLat, userLng, userElevation, borders, u
         const found = [];
 
         for (const n of nodes) {
-            if (n.type !== 'route') continue;
+            // A wall's turning point is a corner to go round, not road to follow: never snapped in.
+            if (n.type !== 'route' || n.wall_end) continue;
             if (inPath.has(String(n.id))) continue;
             // Only nodes of the floor this hop is on.
             if (Number.isFinite(floorB) && floorOf(n) !== floorB) continue;
@@ -573,7 +647,16 @@ function snapPathToRoad(path, nodes, userLat, userLng, userElevation, borders, u
         }
 
         found.sort((x, y) => x.t - y.t);
+        // In order along the hop, each kept only while the WHOLE hop stays within SNAP_DETOUR_M of its
+        // straight length: points on both sides of a long hop each pass on their own, but together zig-zag.
+        const d3 = (p, q) => haversineDistance(p.latitude, p.longitude, p.elevation || 0, q.latitude, q.longitude, q.elevation || 0);
+        let last = a;
+        let walked = 0;
         for (const f of found) {
+            const n = byId[f.id];
+            if (walked + d3(last, n) + d3(n, b) - hopLen > SNAP_DETOUR_M) continue;
+            walked += d3(last, n);
+            last = n;
             snapped.push(f.id);
             inPath.add(f.id);
         }
@@ -605,7 +688,11 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
     const walls = overDecks.length ? (wallBorders || []).map((w) => ({ ...w, overDecks })) : (wallBorders || []);
     const borders = [...walls, ...buildingBarriers(options.buildings), ...bridgeBarriers(options.bridges)];
     // options.pathways: every pathway is walkable along its line (pathwayWaypoints).
-    const doorNodes = [...doorWaypoints(options.buildings), ...bridgeDoorWaypoints(options.bridges), ...pathwayWaypoints(options.pathways)];
+    const doorNodes = [
+        ...doorWaypoints(options.buildings), ...bridgeDoorWaypoints(options.bridges), ...pathwayWaypoints(options.pathways),
+        // Routes turn round the open ends of drawn walls.
+        ...wallEndWaypoints(wallBorders),
+    ];
     const allNodes = nodes;
     const closedBridges = (options.bridges || []).filter((br) => br?.closed && Array.isArray(br.polygon) && br.polygon.length >= 3);
     if (closedBridges.length && nodes) nodes = nodes.filter((n) => !onClosedDeck(n, closedBridges));
@@ -672,9 +759,13 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
     }
     const nearbyEntries = findNearbyRouteNodes(routableNodes, userLat, userLng, startElevation, borders, 5, userFloor, destination.id);
     if (nearbyEntries.length === 0) {
+        const onThisFloor = routableNodes.some((n) => userFloor === null || floorOf(n) === userFloor);
         return {
             success: false,
-            message: userFloor !== null
+            walled_in: onThisFloor,
+            message: onThisFloor
+                ? 'A wall stands between you and every path nearby. Move your pin onto a walkway or road, or to the right side of the wall.'
+                : userFloor !== null
                 ? `No route nodes on ${userFloor === 0 ? 'the ground floor' : floorAria(userFloor).toLowerCase()} yet.`
                 : 'No route nodes available.',
         };
@@ -688,9 +779,15 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
     // The user stands outside, so an entry into a sheltered node is an
     // "entrance" and takes half the rain penalty — same rule as the server.
     graph['__user__'] = {};
+    // The first step from where you stand costs like any other: rain, sun on a hot day, and (when it
+    // ends on the outdoor network) walking off the paths to get onto it.
+    const here = { latitude: userLat, longitude: userLng, path_type: 'outside' };
     for (const entry of nearbyEntries) {
+        const ontoNetwork = entry.node.pathway_id != null || entry.node.wall_end;
         graph['__user__'][entry.node.id] = entry.dist
-            * edgeRainFactor('outside', entry.node.path_type, rainMultiplier);
+            * edgeRainFactor('outside', entry.node.path_type, rainMultiplier)
+            * (shade ? edgeShadeFactor(here, entry.node, shade.map, shade.penalty) : 1)
+            * (ontoNetwork ? OFF_PATH_FACTOR : 1);
     }
     let path = dijkstra(graph, '__user__', String(destination.id));
 

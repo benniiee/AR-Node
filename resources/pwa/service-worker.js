@@ -123,7 +123,14 @@ async function cacheFirst(req) {
  */
 async function campusTiles(req) {
     try {
-        const res = await fetch(req);
+        // Forward the range request with the tunnel header so ngrok's free-plan warning
+        // page is never served in place of binary tile data (same as sameOriginRequest).
+        const tunnelReq = new Request(req.url, {
+            headers: { ...Object.fromEntries(req.headers.entries()), ...SKIP_TUNNEL_WARNING },
+            credentials: req.credentials,
+            cache: req.cache,
+        });
+        const res = await fetch(tunnelReq);
         if (res.ok || res.status === 206) return res;
     } catch {
         // Offline: fall through to the saved copy.

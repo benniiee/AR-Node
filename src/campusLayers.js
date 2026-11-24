@@ -705,8 +705,10 @@ const STAIR_RISER = '#a35f00';
  * (not cleared). `liftOf(floor)` is the latitude lift of that floor's plate.
  *   muted: floors below the one being looked at (grey, see-through)
  *   ghost: climbs to a floor that is cut away (faint, ends at its outline)
+ *   walls: a footbridge's staircase, as built: a solid concrete body under each flight and a parapet
+ *          along both its sides (the far one behind the steps, the near one in front)
  */
-export function drawStairs25D(layer, link, a, b, liftOf, { muted = false, ghost = false } = {}) {
+export function drawStairs25D(layer, link, a, b, liftOf, { muted = false, ghost = false, walls = false } = {}) {
     if (!a || !b) return;
     const { plan, bottom, top } = planFromLink(link, a, b);
     const l0 = liftOf(floorOf(bottom));
@@ -722,6 +724,29 @@ export function drawStairs25D(layer, link, a, b, liftOf, { muted = false, ghost 
     // Far (north) to near (south): nearer steps cover the ones behind them.
     const centreN = (t) => t.ring.reduce((sum, p) => sum + p[1], 0) / t.ring.length;
     const parts = stairTreads(plan).sort((x, y) => centreN(y) - centreN(x) || x.u - y.u);
+    // Each flight's two sides: [from, to] corner points and the heights there; north side first.
+    const sides = [];
+    if (walls) {
+        for (const s of plan.segments) {
+            if (s.kind !== 'flight') continue;
+            const r = ((s.yawDeg + 90) * Math.PI) / 180;
+            for (const k of [-1, 1]) {
+                const off = [Math.sin(r) * k * (plan.widthM / 2), Math.cos(r) * k * (plan.widthM / 2)];
+                sides.push({ far: off[1] > 0, a: [s.from.e + off[0], s.from.n + off[1]], b: [s.to.e + off[0], s.to.n + off[1]], ua: s.from.u, ub: s.to.u });
+            }
+        }
+    }
+    // A parapet's top, RAIL_M above the steps: lifted at the stairs' own scale, past the top floor's plate.
+    const perMetre = plan.rise > 0 ? (l1 - l0) / plan.rise : 0;
+    const railLL = ([e, n], u) => {
+        const p = fromLocalMeters(bottom.latitude, bottom.longitude, e, n);
+        return [p.latitude + l0 + (u + RAIL_M) * perMetre, p.longitude];
+    };
+    const wallStyle = { stroke: true, color: FOOTBRIDGE.edge, weight: 0.6, opacity: alpha, fillColor: FOOTBRIDGE.concrete, fillOpacity: alpha, interactive: false };
+    const parapet = (w) => L.polygon([toLL(w.a, w.ua), toLL(w.b, w.ub), railLL(w.b, w.ub), railLL(w.a, w.ua)], wallStyle).addTo(layer);
+    // Behind the steps: the far parapets, and the near sides' solid body from the ground up to the steps.
+    sides.filter((w) => w.far).forEach(parapet);
+    sides.filter((w) => !w.far).forEach((w) => L.polygon([toLL(w.a, 0), toLL(w.b, 0), toLL(w.b, w.ub), toLL(w.a, w.ua)], { ...wallStyle, fillColor: mixHex(FOOTBRIDGE.concrete, '#000000', 0.12) }).addTo(layer));
     for (const t of parts) {
         // The riser under a tread shows when it faces the viewer (south).
         if (t.riser && Math.cos(((t.facingDeg - 180) * Math.PI) / 180) > 0.05) {
@@ -736,6 +761,8 @@ export function drawStairs25D(layer, link, a, b, liftOf, { muted = false, ghost 
             ...(ghost ? { dashArray: '3, 3' } : {}),
         }).addTo(layer);
     }
+    // In front of the steps: the near parapets.
+    sides.filter((w) => !w.far).forEach(parapet);
     // Where the top of the plan is not exactly on the upper node: a short
     // dashed link on the upper floor so the two still read as connected.
     const end = fromLocalMeters(bottom.latitude, bottom.longitude, plan.end.e, plan.end.n);
@@ -775,9 +802,12 @@ export function bridgeStyle(status, theme = 'dark') {
 const DECK_SLAB_M = 0.6;
 /** Railing height along a deck's long sides, metres (RouteModel3D's RAIL_M). */
 const RAIL_M = 1.05;
+/** A raised deck drawn like the campus footbridge (RouteModel3D's colours): concrete deck, cream concrete
+ * pillars and parapets, a dark edge band with light diagonal stripes. */
+const FOOTBRIDGE = { deck: '#bdb6a6', concrete: '#e6dabd', edge: '#8a8170', band: '#26262a', stripe: '#ece6d6' };
 
 /**
- * Draw every bridge into `layer` (cleared first): the deck in teal and a label chip such as
+ * Draw every bridge into `layer` (cleared first): the deck in teal (raised: as the real footbridge) and a label chip such as
  * "Footbridge · 1 floor up". `extrude` (the student map and Student view, like the 2.5D buildings):
  * a raised deck is lifted to its real height (bridgeDeckHeightM, the 3D views' height) on pillars,
  * with its edge band facing the viewer (north-up). Call it after drawBuildings so the deck crosses over them.
@@ -810,7 +840,7 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
             // The ground it crosses, faint; pillars at the deck's corners; the deck's edge facing the viewer.
             L.polygon(b.polygon.map((p) => [p.lat, p.lng]), { stroke: false, fillColor: style.color, fillOpacity: 0.08, interactive: false }).addTo(layer);
             for (const p of b.polygon) {
-                L.polyline([[p.lat, p.lng], up(p, under)], { color: theme === 'dark' ? '#9ca3af' : '#6b7280', weight: 3, opacity: 0.9, lineCap: 'round', interactive: false }).addTo(layer);
+                L.polyline([[p.lat, p.lng], up(p, under)], { color: b.closed ? '#9ca3af' : FOOTBRIDGE.concrete, weight: 5, opacity: 0.95, lineCap: 'butt', interactive: false }).addTo(layer);
             }
             // Staircases from the ground up to this deck, under the see-through deck as in 3D.
             const onDeck = (n) => n && n.building_id == null && floorOf(n) === Number(b.deck_floor)
@@ -819,7 +849,7 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
                 const a = nodeById.get(l.node_a_id);
                 const z = nodeById.get(l.node_b_id);
                 if (!a || !z || floorOf(a) === floorOf(z) || !(onDeck(a) || onDeck(z))) continue;
-                drawStairs25D(layer, l, a, z, (f) => (f > 0 ? lift : 0), { muted: Boolean(b.closed) });
+                drawStairs25D(layer, l, a, z, (f) => (f > 0 ? lift : 0), { muted: Boolean(b.closed), walls: true });
                 const { plan, bottom } = planFromLink(l, a, z);
                 const base = toLocal({ lat: +bottom.latitude, lng: +bottom.longitude });
                 for (const f of footprint(plan)) {
@@ -837,27 +867,33 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
             }
             for (const w of visibleWalls(b.polygon, 0)) {
                 L.polygon([up(w.a, under), up(w.b, under), up(w.b), up(w.a)], {
-                    stroke: true, color: mixHex(style.color, '#000000', 0.45), weight: 0.6, opacity: 0.7,
-                    fillColor: mixHex(style.color, '#000000', 0.3), fillOpacity: b.closed ? 0.45 : 0.95, interactive: false,
+                    stroke: true, color: b.closed ? mixHex(style.color, '#000000', 0.45) : '#111114', weight: 0.6, opacity: 0.7,
+                    fillColor: b.closed ? mixHex(style.color, '#000000', 0.3) : FOOTBRIDGE.band, fillOpacity: b.closed ? 0.45 : 0.95, interactive: false,
                 }).addTo(layer);
+                // The striped band along the deck's edge: short light dashes across its middle.
+                if (!b.closed) {
+                    const mid = (under + 1) / 2;
+                    L.polyline([up(w.a, mid), up(w.b, mid)], { color: FOOTBRIDGE.stripe, weight: 3, opacity: 0.9, dashArray: '2 5', lineCap: 'butt', interactive: false }).addTo(layer);
+                }
             }
         }
         // The stairwells are holes in the deck: the steps below show through them. With holes the
         // outline is drawn on its own (a cut ring's own stroke would trace slivers across the opening).
         const cut = holes.length ? cutStairwells(ring, holes) : null;
+        const concrete = lift > 0 && !b.closed;
         const deck = L.polygon(cut ? cut.pieces.map((piece) => piece.map(toLL)) : b.polygon.map((p) => up(p)), {
-            ...style, ...(lift > 0 && !b.closed ? { fillOpacity: 0.9 } : {}), ...(cut ? { stroke: false } : {}),
+            ...style, ...(concrete ? { fillColor: FOOTBRIDGE.deck, color: FOOTBRIDGE.edge, fillOpacity: 0.95 } : {}), ...(cut ? { stroke: false } : {}),
             interactive: Boolean(popup), className: popup ? 'campus-hit' : '',
         }).addTo(layer);
         if (cut) {
             // Drawn on their own (the pieces' own strokes would show the cuts between them): the deck's
             // outline, open where a stairwell reaches its edge, and each stairwell's edge over the deck in amber.
             const seg = ([p, q], color, weight) => L.polyline([toLL(p), toLL(q)], { color, weight, opacity: style.opacity, lineCap: 'round', interactive: false }).addTo(layer);
-            cut.outline.forEach((part) => seg(part, style.color, style.weight));
+            cut.outline.forEach((part) => seg(part, concrete ? FOOTBRIDGE.edge : style.color, style.weight));
             cut.wellEdges.forEach((part) => seg(part, STAIR_TREAD, 1.5));
         }
         if (lift > 0) {
-            // Railings along the long sides (the walking line's direction), a faint panel with a top rail.
+            // Parapets along the long sides (the walking line's direction): solid cream concrete with a top edge.
             const rail = (RAIL_M + heightM) / heightM;
             const line = Array.isArray(b.centre_line) ? b.centre_line : [];
             const k = Math.cos((b.polygon[0].lat * Math.PI) / 180);
@@ -869,8 +905,8 @@ export function drawBridges(layer, bridges, { popup = null, skipId = null, theme
                 const len = Math.hypot(...d);
                 if (len * 111320 < 0.2) return;
                 if (axis && Math.abs((d[0] * axis[0] + d[1] * axis[1]) / (len * Math.hypot(...axis))) < 0.7) return;
-                L.polygon([up(p), up(q), up(q, rail), up(p, rail)], { stroke: false, fillColor: '#e5e7eb', fillOpacity: 0.15, interactive: false }).addTo(layer);
-                L.polyline([up(p, rail), up(q, rail)], { color: style.color, weight: 1.5, opacity: 0.9, interactive: false }).addTo(layer);
+                L.polygon([up(p), up(q), up(q, rail), up(p, rail)], { stroke: false, fillColor: b.closed ? '#e5e7eb' : FOOTBRIDGE.concrete, fillOpacity: b.closed ? 0.15 : 0.92, interactive: false }).addTo(layer);
+                L.polyline([up(p, rail), up(q, rail)], { color: b.closed ? style.color : FOOTBRIDGE.edge, weight: 1.5, opacity: 0.9, interactive: false }).addTo(layer);
             });
         } else {
             // Flat map: each door is a light gap across the outline, like a building's.

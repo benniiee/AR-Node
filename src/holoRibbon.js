@@ -367,6 +367,169 @@ export function createHoloPath({
     };
 }
 
+/** The AR road's width on the ground, metres. */
+export const ROAD_WIDTH_M = 1.6;
+/** One painted chevron every this many metres along the road. */
+export const ROAD_CHEVRON_EVERY_M = 3;
+/** How fast the painted chevrons move toward the destination, metres per second. */
+export const ROAD_SPEED_MPS = 1.2;
+/** Corners are rounded off with a curve of up to this radius, metres (as RouteModel3D's route). */
+const ROAD_CORNER_M = 1.5;
+
+/**
+ * The polyline with each corner rounded off (a short curve up to ROAD_CORNER_M each side), sampled
+ * every `step` metres: a road bends smoothly instead of folding over itself at a sharp turn.
+ */
+export function roundedRoadLine(pts, step = 0.25) {
+    if (!pts || pts.length < 2) return [];
+    const v = pts.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+    const path = new THREE.CurvePath();
+    let at = v[0];
+    for (let i = 1; i < v.length - 1; i += 1) {
+        const p = v[i];
+        const back = v[i - 1].clone().sub(p);
+        const ahead = v[i + 1].clone().sub(p);
+        const r = Math.min(ROAD_CORNER_M, back.length() / 2, ahead.length() / 2);
+        back.normalize();
+        ahead.normalize();
+        if (r < 0.05 || back.dot(ahead) < -0.999) {
+            if (at.distanceTo(p) > 1e-3) path.add(new THREE.LineCurve3(at, p));
+            at = p;
+            continue;
+        }
+        const enter = p.clone().addScaledVector(back, r);
+        const leave = p.clone().addScaledVector(ahead, r);
+        if (at.distanceTo(enter) > 1e-3) path.add(new THREE.LineCurve3(at, enter));
+        path.add(new THREE.QuadraticBezierCurve3(enter, p, leave));
+        at = leave;
+    }
+    if (at.distanceTo(v[v.length - 1]) > 1e-3) path.add(new THREE.LineCurve3(at, v[v.length - 1]));
+    const length = path.getLength();
+    if (!(length > 0)) return [];
+    return path.getSpacedPoints(Math.max(2, Math.ceil(length / step)));
+}
+
+/**
+ * The road strip along a (rounded) line: two vertices per point, `halfWidth` either side of it,
+ * level across. UV: u 0..1 across, v = metres along (for the painted pattern).
+ * Returns { positions, uvs, indices } (plain arrays), or null for fewer than two points.
+ */
+export function roadStrip(line, halfWidth) {
+    if (!line || line.length < 2) return null;
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    let along = 0;
+    for (let i = 0; i < line.length; i += 1) {
+        const p = line[i];
+        const a = line[Math.max(0, i - 1)];
+        const b = line[Math.min(line.length - 1, i + 1)];
+        let tx = b.x - a.x;
+        let tz = b.z - a.z;
+        const len = Math.hypot(tx, tz) || 1;
+        tx /= len;
+        tz /= len;
+        // Left of the walking direction (x right, z towards the viewer: left is (tz, -tx)).
+        const nx = tz;
+        const nz = -tx;
+        if (i > 0) along += Math.hypot(p.x - line[i - 1].x, p.z - line[i - 1].z);
+        positions.push(p.x + nx * halfWidth, p.y, p.z + nz * halfWidth, p.x - nx * halfWidth, p.y, p.z - nz * halfWidth);
+        uvs.push(0, along, 1, along);
+        if (i > 0) {
+            const k = (i - 1) * 2;
+            indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+        }
+    }
+    return { positions, uvs, indices };
+}
+
+/**
+ * The AR route as a road on the ground (the 3D view's route, brought into the camera): a white strip
+ * with dark edges and dark chevrons painted on it, moving toward the destination. Points are on the
+ * ground already (the caller drops them from marker height).
+ *
+ * @returns {{ group: THREE.Group, setPoints: (pts: {x:number,y:number,z:number}[]) => void,
+ *   tick: (time: number, dt: number) => void, dispose: () => void }}
+ */
+export function createGroundRoad({ width = ROAD_WIDTH_M } = {}) {
+    const group = new THREE.Group();
+    group.visible = false;
+    // One tile of paint: 64 px across, 64 px per metre along; the chevron points up the tile (+v,
+    // the walking direction). White surface see-through enough to keep the ground in view.
+    const tilePx = 64 * ROAD_CHEVRON_EVERY_M;
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = tilePx;
+    const g = canvas.getContext('2d');
+    g.fillStyle = 'rgba(255,255,255,0.62)';
+    g.fillRect(0, 0, 64, tilePx);
+    g.fillStyle = 'rgba(22,22,27,0.92)';
+    g.fillRect(0, 0, 7, tilePx);
+    g.fillRect(57, 0, 7, tilePx);
+    // The chevron: a thick "^" across the middle of the road.
+    const top = tilePx / 2 - 26;
+    g.beginPath();
+    g.moveTo(32, top);
+    g.lineTo(52, top + 26);
+    g.lineTo(52, top + 42);
+    g.lineTo(32, top + 18);
+    g.lineTo(12, top + 42);
+    g.lineTo(12, top + 26);
+    g.closePath();
+    g.fillStyle = 'rgba(22,22,27,0.88)';
+    g.fill();
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 1 / ROAD_CHEVRON_EVERY_M);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const mat = new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, side: THREE.DoubleSide,
+        // An overlay on the camera feed: never write depth (same rule as the tube).
+        depthWrite: false,
+    });
+    let mesh = null;
+
+    const clear = () => {
+        if (!mesh) return;
+        group.remove(mesh);
+        mesh.geometry.dispose();
+        mesh = null;
+    };
+
+    return {
+        group,
+        setPoints(points) {
+            clear();
+            const strip = roadStrip(roundedRoadLine(points), width / 2);
+            if (!strip) {
+                group.visible = false;
+                return;
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(strip.positions, 3));
+            geo.setAttribute('uv', new THREE.Float32BufferAttribute(strip.uvs, 2));
+            geo.setIndex(strip.indices);
+            mesh = new THREE.Mesh(geo, mat);
+            mesh.renderOrder = -4;
+            group.add(mesh);
+            group.visible = true;
+        },
+        tick(time, dt) {
+            if (!group.visible) return;
+            // The paint slides toward the destination (v grows along the walk).
+            tex.offset.y = (tex.offset.y - (ROAD_SPEED_MPS / ROAD_CHEVRON_EVERY_M) * (Number.isFinite(dt) ? dt : 0)) % 1;
+        },
+        dispose() {
+            clear();
+            tex.dispose();
+            mat.dispose();
+            group.parent?.remove(group);
+        },
+    };
+}
+
 /**
  * 3D destination marker for campus wayfinding: a light beacon topped by a
  * floating "arrive here" arrow.

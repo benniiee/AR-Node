@@ -9,7 +9,7 @@ import { drawBuildings, drawPathways, bindLabelZoom } from '../campusLayers';
 import { sunPosition, STOREY_M } from '../sunShadow';
 import FollowView3D from './FollowView3D';
 import { useSatelliteLayer } from '../useSatellite';
-import { createBuildingLayer } from '../arBuildings';
+import { createBuildingLayer, AR_GROUND_Y } from '../arBuildings';
 import {
     bearingAndDistance, norm180, clamp, buildYouText, easeK, orientRate,
     ROUTE_COLOR, MAX_ROUTE_SPHERES, splitRemaining,
@@ -22,7 +22,7 @@ import {
 // This is now the only thing that draws the route connector — the pixel-width
 // Line2 ribbon that used to run underneath it has been dropped.
 import {
-    createHoloPath, createDestinationPin,
+    createHoloPath, createDestinationPin, createGroundRoad,
     trimPathStart, HOLO, HOLO_MIN_START,
 } from '../holoRibbon';
 import { createNavArrowPool, nodeArrowFade } from '../navArrow';
@@ -107,6 +107,8 @@ const DEST_RADIUS = 0.6;
 // Eye-height offset: markers are drawn below the camera's eye line so they
 // sit under the horizon instead of floating dead-centre of the view.
 const NODE_Y_DROP = -1.3;
+/** The AR road starts this far ahead of the camera (metres): just beyond your feet. */
+const ROAD_START_M = 1;
 
 // ── Staircases in 3D ─────────────────────────────────────────────────
 // A staircase joins two nodes on DIFFERENT floors, and the walker only ever
@@ -1905,6 +1907,9 @@ export default function ARView({
         // Line connection: glowing tube + marching chevrons along the route.
         const holoPath = createHoloPath();
         group.add(holoPath.group);
+        // The route as a road on the ground with chevrons painted on it (the 3D view's route in the camera).
+        const road = createGroundRoad();
+        group.add(road.group);
         // Campus buildings: invisible occluders (hide what is behind their walls),
         // door markers and names, same world frame as the route. Rebuilt only when buildings or the anchor change.
         const buildingLayer = createBuildingLayer();
@@ -2035,6 +2040,7 @@ export default function ARView({
             midSlots = [];
             destPin.group.visible = false;
             holoPath.setPoints([]);
+            road.setPoints([]);
             tubeDirty = true;
             statsRef.current.tubePts = 0;
         };
@@ -2894,8 +2900,13 @@ export default function ARView({
                     // trimPathStart returns [] once the whole route is shorter
                     // than that — i.e. on arrival — which hides it cleanly.
                     const holoPts = trimPathStart(routePts, HOLO_MIN_START);
-                    // Tube replaced by the 3D arrow (navArrow) - keep it hidden.
+                    // Tube replaced by the ground road - keep it hidden.
                     holoPath.setPoints([]);
+                    // The road: from a metre ahead of you (under the phone, not under your feet), on the
+                    // ground: the markers' height dropped to the ground plane (AR_GROUND_Y).
+                    const roadPts = trimPathStart(routePts, ROAD_START_M)
+                        .map((q) => ({ x: q.x, y: q.y + (AR_GROUND_Y - NODE_Y_DROP) + 0.02, z: q.z }));
+                    road.setPoints(roadPts);
                     statsRef.current.tubePts = holoPts.length >= 2 ? holoPts.length : 0;
                 }
 
@@ -2905,25 +2916,9 @@ export default function ARView({
                 // ghosting in/out eases over ~0.45 s.
                 spherePool.tick(dt);
                 holoPath.tick(t, dt);
-                {
-                    // Every stop wears an arrow aimed at the following stop
-                    // (the last stop aims at the destination pin).
-                    const chain = [];
-                    for (let k = 0; k < mids.length; k += 1) {
-                        const s2 = midSlots[k];
-                        if (s2 !== undefined && s2 >= 0) chain.push(spherePool.getPosition(s2));
-                    }
-                    if (destPin.group.visible) chain.push(destPin.group.position);
-                    const items = [];
-                    for (let k = 0; k < chain.length - 1; k += 1) {
-                        const from = chain[k];
-                        // Horizontal distance to the node drives the proximity
-                        // fade (arrow size is fixed, see NODE_ARROW_SCALE).
-                        const dCam = Math.hypot(from.x - camera.position.x, from.z - camera.position.z);
-                        items.push({ pos: from, next: chain[k + 1], dist: dCam });
-                    }
-                    nodeArrows.update(items, t, camera, behindWall);
-                }
+                road.tick(t, dt);
+                // The road's painted chevrons show the way now: no floating arrow over each stop.
+                nodeArrows.update([], t, camera, behindWall);
                 destPin.tick(t, camera);
 
                 if (shown.length > 0) {
@@ -3194,6 +3189,7 @@ export default function ARView({
             spherePool.dispose();
             destPin.dispose();
             holoPath.dispose();
+            road.dispose();
             buildingLayer.dispose();
             stairViz.dispose();
             nodeArrows.dispose();

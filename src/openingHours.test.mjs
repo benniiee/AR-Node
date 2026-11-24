@@ -168,6 +168,29 @@ test('a closed building with no doors is still reachable, and a blocked way is n
     assert.equal(blocked.message, 'The only way there goes through Misto, which is closed right now.');
 });
 
+test('a walkway that clips a closed building\'s outline still passes, and the blocking building is the one named', async () => {
+    const { computeRoute, pathwayWaypoints } = await import('./pathfinding.js');
+    const { fromLocalMeters } = await import('./geo.js');
+    const ll = (e, n) => { const p = fromLocalMeters(6.913, 122.061, e, n); return { lat: p.latitude, lng: p.longitude }; };
+    const far = (() => { const p = ll(500, 500); return [{ id: 99, type: 'route', latitude: p.lat, longitude: p.lng, floor_level: 5, elevation: 16, path_type: 'inside', building_id: null }]; })();
+    const sunday = at('2026-11-29T10:00:00');
+    // The Cashier's outline drawn 0.3 m over the walkway (x = 0): the walkway runs beside it, not through it.
+    const cashier = { id: 8, status: 'existing', name: 'Cashier', polygon: [ll(-0.3, 21), ll(10, 21), ll(10, 29), ll(-0.3, 29)], opening_hours: CANTEEN };
+    const walk = { id: 1, kind: 'walkway', status: 'existing', coordinates: [ll(0, 0), ll(0, 60)] };
+    const end = pathwayWaypoints([walk]).at(-1);
+    const start = ll(0, -2);
+    const r = computeRoute(far, end.id, start.lat, start.lng, 0, [], { buildings: [cashier], pathways: [walk], closedBuildingIds: closedBuildingIds([cashier], sunday) });
+    assert.equal(r.success, true, 'the clipped corner does not cut the walkway');
+
+    // Misto's door on the walkway (the open route passes it) and a hall across the walkway: the hall is named.
+    const misto = { id: 7, status: 'existing', name: 'Misto', polygon: [ll(-12, 8), ll(-2, 8), ll(-2, 14), ll(-12, 14)], doors: [{ lat: ll(-2, 10).lat, lng: ll(-2, 10).lng }], opening_hours: CANTEEN };
+    const hall = { id: 9, status: 'existing', name: 'Hall', polygon: [ll(-10, 30), ll(10, 30), ll(10, 45), ll(-10, 45)], opening_hours: CANTEEN };
+    const buildings = [misto, hall];
+    const blocked = computeRoute(far, end.id, start.lat, start.lng, 0, [], { buildings, pathways: [walk], closedBuildingIds: closedBuildingIds(buildings, sunday) });
+    assert.equal(blocked.success, false);
+    assert.equal(blocked.message, 'The only way there goes through Hall, which is closed right now.');
+});
+
 test('the sentence for a closed destination (no route is drawn to it)', () => {
     assert.equal(closedMessage('Misto', openState(CANTEEN, at('2026-11-29T10:00:00'))), 'Misto is closed now. It opens tomorrow 8 am.');
     const heat = [closure({ building_category: 'school', reason: 'Classes suspended: high heat index', ends_at: at('2026-11-23T17:00:00').toISOString() })];

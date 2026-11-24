@@ -23,10 +23,58 @@ const ROUTE_EDGE = 0x16161b;
 const GO = 0x22c55e;
 const STAIR = 0xffb02e;
 // Bridges: a teal deck and roof (the campus footbridge's colour), apart from the grey buildings.
-const BRIDGE_DECK = 0x99d8cc;
-const BRIDGE_SIDE = 0x0f766e;
-const BRIDGE_ROOF = 0x2dd4bf;
-const DECK_SLAB_M = 0.35;
+// The campus footbridge as built: cream concrete (parapet walls, pillars, stair walls), a black-and-
+// white striped band along the deck's edge, and a corrugated gable roof (grey-green on top, brown
+// underneath) on thin dark-red posts, over the deck and down over the stairs.
+const BRIDGE_DECK = 0xb9b2a3;
+const BRIDGE_CONCRETE = 0xe6dabd;
+const BRIDGE_ROOF_TOP = 0x8d9f96;
+const BRIDGE_ROOF_UNDER = 0x6b4834;
+const BRIDGE_POST = 0x7a2c20;
+const BRIDGE_LINE = 0x6f6552;
+const DECK_SLAB_M = 0.7;
+const ROOF_OVERHANG_M = 0.5;
+const ROOF_RIDGE_M = 0.7;
+const ROOF_POST_EVERY_M = 3;
+
+/** A repeating canvas pattern for the bridge (null outside a browser: the plain colour is used). */
+function patternTexture(width, height, paint) {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    paint(canvas.getContext('2d'));
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+}
+
+/** The deck edge's diagonal black-and-white stripes: one tile is 1 m (4 stripes). */
+const stripeTexture = () => patternTexture(64, 16, (g) => {
+    g.fillStyle = '#1d1d1f';
+    g.fillRect(0, 0, 64, 16);
+    g.fillStyle = '#ece6d6';
+    for (let x = -16; x < 80; x += 16) {
+        g.beginPath();
+        g.moveTo(x, 16);
+        g.lineTo(x + 6, 16);
+        g.lineTo(x + 14, 0);
+        g.lineTo(x + 8, 0);
+        g.closePath();
+        g.fill();
+    }
+});
+
+/** Corrugated roofing: light and dark ribs; one tile is 0.5 m along the bridge. */
+const ribTexture = () => patternTexture(16, 4, (g) => {
+    g.fillStyle = '#9fb1a8';
+    g.fillRect(0, 0, 16, 4);
+    g.fillStyle = '#76887f';
+    g.fillRect(0, 0, 4, 4);
+    g.fillRect(8, 0, 4, 4);
+});
 const RAIL_M = 1.05;
 const ROOF_CLEAR_M = 2.6;
 
@@ -303,14 +351,53 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         group.add(tag);
     }
 
-    // Bridges and other connectors: the deck at its height on pillars, railings along its
-    // long sides (the short ends stay open: that is where people walk on), and a roof
-    // when it has one. Planned ones are not built yet, so not drawn.
-    const deckTop = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.85 });
-    const railMat = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
-    const roofMat = new THREE.MeshStandardMaterial({ color: BRIDGE_ROOF, roughness: 0.6, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.8 });
-    const bridgeEdge = new THREE.LineBasicMaterial({ color: 0x5eead4 });
+    // Bridges and other connectors, drawn like the campus footbridge: the deck at its height on square
+    // concrete pillars, a striped band along its edge, solid concrete parapets along its long sides (the
+    // short ends stay open: that is where people walk on), and a gable roof on posts when it has one.
+    // Planned ones are not built yet, so not drawn.
+    const deckTop = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.9 });
+    const concreteMat = new THREE.MeshStandardMaterial({ color: BRIDGE_CONCRETE, roughness: 0.95, side: THREE.DoubleSide });
+    const stripes = stripeTexture();
+    const fasciaMat = new THREE.MeshStandardMaterial({ color: stripes ? 0xffffff : 0x2a2a2e, map: stripes, roughness: 0.9, side: THREE.DoubleSide });
+    const ribs = ribTexture();
+    // See-through from above, so a route on the deck still shows in the overhead 3D view.
+    const roofTopMat = new THREE.MeshStandardMaterial({ color: ribs ? 0xffffff : BRIDGE_ROOF_TOP, map: ribs, roughness: 0.55, metalness: 0.2, side: THREE.FrontSide, transparent: true, opacity: 0.55, depthWrite: false });
+    const roofUnderMat = new THREE.MeshStandardMaterial({ color: BRIDGE_ROOF_UNDER, roughness: 0.8, side: THREE.BackSide });
+    const postMat = new THREE.MeshStandardMaterial({ color: BRIDGE_POST, roughness: 0.7 });
+    const bridgeEdge = new THREE.LineBasicMaterial({ color: BRIDGE_LINE });
+    /** One flat quad (two triangles) from four scene points, with optional [u, v] per corner. */
+    const quad = (pts, mat, uv = null) => {
+        const g = new THREE.BufferGeometry();
+        const [a, b, c, d] = pts;
+        g.setAttribute('position', new THREE.Float32BufferAttribute([a, b, c, a, c, d].flatMap((p) => [p.x, p.y, p.z]), 3));
+        if (uv) {
+            const [ua, ub, uc, ud] = uv;
+            g.setAttribute('uv', new THREE.Float32BufferAttribute([...ua, ...ub, ...uc, ...ua, ...uc, ...ud], 2));
+        }
+        g.computeVertexNormals();
+        group.add(new THREE.Mesh(g, mat));
+    };
+    /** A thin square post from y0 to y1. */
+    const post = (x, z, y0, y1, size = 0.1, mat = postMat) => {
+        if (y1 - y0 < 0.05) return;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(size, y1 - y0, size), mat);
+        m.position.set(x, (y0 + y1) / 2, z);
+        group.add(m);
+    };
+    /** A roof on posts: its top (ribbed) and its brown underside, from four scene corners. */
+    const roofPanel = (pts, ribLengthM) => {
+        let corners = pts;
+        let uv = [[0, 0], [ribLengthM / 0.5, 0], [ribLengthM / 0.5, 1], [0, 1]];
+        // Wind the panel so its front faces up: the ribbed top is seen from above, the brown underside from below.
+        const [a, b, c] = pts;
+        const up = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
+        if (up < 0) {
+            corners = [pts[0], pts[3], pts[2], pts[1]];
+            uv = [uv[0], uv[3], uv[2], uv[1]];
+        }
+        quad(corners, roofTopMat, uv);
+        quad(corners, roofUnderMat);
+    };
     // Stairs that come up under a deck: the part of the deck over their steps is a stairwell,
     // cut out of the deck (outlined) so the steps below are seen through the opening.
     const stairHoles = new Map();
@@ -332,8 +419,8 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         }
     }
     const wellEdge = new THREE.LineBasicMaterial({ color: STAIR });
-    const wallMat = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9, side: THREE.DoubleSide });
-    const underMat = new THREE.MeshStandardMaterial({ color: BRIDGE_SIDE, roughness: 0.9, side: THREE.BackSide });
+    const wallMat = concreteMat;
+    const underMat = new THREE.MeshStandardMaterial({ color: BRIDGE_CONCRETE, roughness: 0.95, side: THREE.BackSide });
     const doorPane = new THREE.MeshBasicMaterial({ color: 0xe5e7eb, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
     const doorEdge = new THREE.LineBasicMaterial({ color: 0xffffff });
     for (const br of bridges || []) {
@@ -341,7 +428,6 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         const ring = br.polygon.map((p) => xz(p.lat, p.lng));
         for (const p of ring) radius = Math.max(radius, Math.hypot(p.x, p.z));
         const h = bridgeDeckHeightM(br);
-        const shape = new THREE.Shape(ring.map((p) => new THREE.Vector2(p.x, -p.z)));
         const slab = Math.min(DECK_SLAB_M, Math.max(0.05, h));
         const y0 = Math.max(0, h - slab);
         // The deck's top and underside: triangulated first, so each stairwell is cut out of convex
@@ -367,9 +453,10 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             group.add(new THREE.Mesh(g, mat));
         };
         const edgeLine = (a, c, y, mat) => group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x, y, a.z), new THREE.Vector3(c.x, y, c.z)]), mat));
-        // The outline, open where a stairwell reaches the deck's edge.
+        // The outline, open where a stairwell reaches the deck's edge: the striped band along its edge.
         for (const [a, c] of outline) {
-            wall(a, c);
+            const len = Math.hypot(c.x - a.x, c.z - a.z);
+            quad([{ x: a.x, y: y0, z: a.z }, { x: c.x, y: y0, z: c.z }, { x: c.x, y: h, z: c.z }, { x: a.x, y: h, z: a.z }], fasciaMat, [[0, 0], [len, 0], [len, 1], [0, 1]]);
             edgeLine(a, c, h, bridgeEdge);
             edgeLine(a, c, y0, bridgeEdge);
         }
@@ -386,12 +473,8 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             const c = ring[(i + 1) % ring.length];
             const dir = new THREE.Vector2(c.x - a.x, c.z - a.z);
             if (dir.length() < 0.2 || (axis && Math.abs(dir.normalize().dot(axis)) < 0.7)) continue;
-            const rail = new THREE.BufferGeometry();
-            rail.setAttribute('position', new THREE.Float32BufferAttribute([
-                a.x, h, a.z, c.x, h, c.z, c.x, h + RAIL_M, c.z, a.x, h, a.z, c.x, h + RAIL_M, c.z, a.x, h + RAIL_M, a.z,
-            ], 3));
-            rail.computeVertexNormals();
-            group.add(new THREE.Mesh(rail, railMat));
+            // A solid concrete parapet, as on the real bridge (not a see-through railing).
+            quad([{ x: a.x, y: h, z: a.z }, { x: c.x, y: h, z: c.z }, { x: c.x, y: h + RAIL_M, z: c.z }, { x: a.x, y: h + RAIL_M, z: a.z }], concreteMat);
             group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x, h + RAIL_M, a.z), new THREE.Vector3(c.x, h + RAIL_M, c.z)]), bridgeEdge));
         }
         // Each entrance: on the ground under the deck's edge (where people walk in to the stairs),
@@ -411,30 +494,51 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
                 new THREE.Vector3(a.x, y0 + 0.02, a.z), new THREE.Vector3(a.x, top, a.z), new THREE.Vector3(c.x, top, c.z), new THREE.Vector3(c.x, y0 + 0.02, c.z),
             ]), doorEdge));
         }
-        // Pillars under a raised deck, and posts holding the roof.
-        for (const p of ring) {
-            if (h > 0.6) {
-                const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, h - slab, 10), postMat);
-                pillar.position.set(p.x, (h - slab) / 2, p.z);
-                group.add(pillar);
-            }
-            if (br.roofed) {
-                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, ROOF_CLEAR_M, 8), postMat);
-                post.position.set(p.x, h + ROOF_CLEAR_M / 2, p.z);
-                group.add(post);
-            }
+        // Square concrete pillars under a raised deck.
+        if (h > 0.6) {
+            for (const p of ring) post(p.x, p.z, 0, h - slab, 0.6, concreteMat);
         }
+        // The roof: a gable along the bridge (ribs running down to the eaves) on thin posts standing on
+        // the parapets every few metres.
         if (br.roofed) {
-            const roofGeo = new THREE.ShapeGeometry(shape);
-            const roof = new THREE.Mesh(roofGeo, roofMat);
-            roof.rotation.x = -Math.PI / 2;
-            roof.position.y = h + ROOF_CLEAR_M;
-            group.add(roof);
+            let dir = axis ? { x: axis.x, z: axis.y } : null;
+            if (!dir) {
+                let longest = 0;
+                for (let i = 0; i < ring.length; i += 1) {
+                    const a = ring[i];
+                    const c = ring[(i + 1) % ring.length];
+                    const len = Math.hypot(c.x - a.x, c.z - a.z);
+                    if (len > longest) { longest = len; dir = { x: (c.x - a.x) / len, z: (c.z - a.z) / len }; }
+                }
+            }
+            const across = { x: -dir.z, z: dir.x };
+            const sOf = (p) => p.x * dir.x + p.z * dir.z;
+            const tOf = (p) => p.x * across.x + p.z * across.z;
+            const s0 = Math.min(...ring.map(sOf)) - ROOF_OVERHANG_M;
+            const s1 = Math.max(...ring.map(sOf)) + ROOF_OVERHANG_M;
+            const tMin = Math.min(...ring.map(tOf));
+            const tMax = Math.max(...ring.map(tOf));
+            const tMid = (tMin + tMax) / 2;
+            const at = (s, t, y) => ({ x: dir.x * s + across.x * t, y, z: dir.z * s + across.z * t });
+            const eave = h + ROOF_CLEAR_M;
+            const ridge = eave + ROOF_RIDGE_M;
+            const len = s1 - s0;
+            roofPanel([at(s0, tMin - ROOF_OVERHANG_M, eave), at(s1, tMin - ROOF_OVERHANG_M, eave), at(s1, tMid, ridge), at(s0, tMid, ridge)], len);
+            roofPanel([at(s1, tMax + ROOF_OVERHANG_M, eave), at(s0, tMax + ROOF_OVERHANG_M, eave), at(s0, tMid, ridge), at(s1, tMid, ridge)], len);
+            const span = len - 2 * ROOF_OVERHANG_M;
+            const count = Math.max(1, Math.ceil(span / ROOF_POST_EVERY_M));
+            for (let k = 0; k <= count; k += 1) {
+                const s = s0 + ROOF_OVERHANG_M + (span * k) / count;
+                for (const t of [tMin, tMax]) {
+                    const p = at(s, t, 0);
+                    post(p.x, p.z, h, eave);
+                }
+            }
         }
         const cx = ring.reduce((sum, p) => sum + p.x, 0) / ring.length;
         const cz = ring.reduce((sum, p) => sum + p.z, 0) / ring.length;
-        const tag = screenLabel(br.short_name || br.name, { bg: '#0f2e2a', fg: '#ccfbf1', border: 'rgba(45, 212, 191, 0.6)' }, 0.036);
-        tag.position.set(cx, h + (br.roofed ? ROOF_CLEAR_M + 1.2 : RAIL_M + 1.2), cz);
+        const tag = screenLabel(br.short_name || br.name, { bg: '#2e2a22', fg: '#f3ead6', border: 'rgba(230, 218, 189, 0.6)' }, 0.036);
+        tag.position.set(cx, h + (br.roofed ? ROOF_CLEAR_M + ROOF_RIDGE_M + 1.2 : RAIL_M + 1.2), cz);
         group.add(tag);
     }
 
@@ -443,7 +547,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
     const stepMat = new THREE.MeshStandardMaterial({ color: STAIR, roughness: 0.8 });
     const drawnLinks = new Set();
     /** The steps of one staircase, scaled to the real heights of its two ends (yOf). */
-    const drawSteps = (plan, bottom, top) => {
+    const drawSteps = (plan, bottom, top, mat = stepMat) => {
         const y0 = yOf(bottom);
         const y1 = yOf(top);
         const base = xz(bottom.latitude, bottom.longitude);
@@ -451,11 +555,71 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             const s = new THREE.Shape(t.ring.map(([e, n]) => new THREE.Vector2(base.x + e, -(base.z - n))));
             const geo = new THREE.ExtrudeGeometry(s, { depth: 0.12, bevelEnabled: false });
             geo.rotateX(-Math.PI / 2);
-            const mesh = new THREE.Mesh(geo, stepMat);
+            const mesh = new THREE.Mesh(geo, mat);
             mesh.position.y = y0 + (plan.rise > 0 ? t.u / plan.rise : 0) * (y1 - y0) - 0.12;
             group.add(mesh);
         }
     };
+    /** Is the scene point (x, z) under the deck outline ring? */
+    const underRing = (x, z, ring) => {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+            const a = ring[i];
+            const b = ring[j];
+            if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+        }
+        return inside;
+    };
+    /** A footbridge's staircase as built: solid concrete side walls, and (outside the deck) a roof sloping with it. */
+    const dressBridgeStairs = (plan, bottom, top, deck) => {
+        const y0 = yOf(bottom);
+        const y1 = yOf(top);
+        const yAt = (u) => y0 + (plan.rise > 0 ? u / plan.rise : 0) * (y1 - y0);
+        const base = xz(bottom.latitude, bottom.longitude);
+        const at = (e, n, y) => ({ x: base.x + e, y, z: base.z - n });
+        const deckRing = deck.polygon.map((p) => xz(p.lat, p.lng));
+        const roofed = (e, n) => deck.roofed && !underRing(base.x + e, base.z - n, deckRing);
+        const hw = plan.widthM / 2;
+        const rings = footprint(plan);
+        plan.segments.forEach((s, i) => {
+            if (s.kind === 'landing') {
+                const ring = rings[i].ring;
+                const lift = yAt(s.center.u);
+                ring.forEach(([e, n], k) => {
+                    const [e2, n2] = ring[(k + 1) % ring.length];
+                    quad([at(e, n, y0), at(e2, n2, y0), at(e2, n2, lift), at(e, n, lift)], concreteMat);
+                });
+                if (roofed(s.center.e, s.center.n)) {
+                    const roofY = lift + ROOF_CLEAR_M;
+                    roofPanel(ring.map(([e, n]) => at(e, n, roofY)), s.depth);
+                    for (const [e, n] of ring) post(at(e, n, 0).x, at(e, n, 0).z, lift, roofY);
+                }
+                return;
+            }
+            const side = { e: Math.sin(((s.yawDeg + 90) * Math.PI) / 180), n: Math.cos(((s.yawDeg + 90) * Math.PI) / 180) };
+            const edge = (p, k, w) => ({ e: p.e + side.e * w * k, n: p.n + side.n * w * k });
+            for (const k of [-1, 1]) {
+                const a = edge(s.from, k, hw);
+                const b = edge(s.to, k, hw);
+                quad([at(a.e, a.n, y0), at(b.e, b.n, y0), at(b.e, b.n, yAt(s.to.u) + RAIL_M), at(a.e, a.n, yAt(s.from.u) + RAIL_M)], concreteMat);
+            }
+            if (roofed((s.from.e + s.to.e) / 2, (s.from.n + s.to.n) / 2)) {
+                const w = hw + ROOF_OVERHANG_M / 2;
+                const [a, b, c, d] = [edge(s.from, -1, w), edge(s.to, -1, w), edge(s.to, 1, w), edge(s.from, 1, w)];
+                const roofFrom = yAt(s.from.u) + ROOF_CLEAR_M;
+                const roofTo = yAt(s.to.u) + ROOF_CLEAR_M;
+                roofPanel([at(a.e, a.n, roofFrom), at(b.e, b.n, roofTo), at(c.e, c.n, roofTo), at(d.e, d.n, roofFrom)], s.run);
+                for (const k of [-1, 1]) {
+                    for (const [p, u] of [[s.from, s.from.u], [s.to, s.to.u]]) {
+                        const q = edge(p, k, hw);
+                        const foot = at(q.e, q.n, 0);
+                        post(foot.x, foot.z, yAt(u) + RAIL_M, yAt(u) + ROOF_CLEAR_M);
+                    }
+                }
+            }
+        });
+    };
+    const concreteStep = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.9 });
     const pts = [];
     const push = (v) => { const last = pts[pts.length - 1]; if (!last || last.distanceTo(v) > 0.05) pts.push(v); };
     // Follow view: the user's start point is not part of the fixed ribbon. The
@@ -477,6 +641,8 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             const climb = walkLine(plan).map((q) => new THREE.Vector3(base.x + q.e, y0 + (plan.rise > 0 ? q.u / plan.rise : 0) * (y1 - y0) + 0.25, base.z - q.n));
             (bottom === prev ? climb : climb.reverse()).forEach(push);
             drawSteps(plan, bottom, top);
+            const deck = deckOf(prev) || deckOf(p);
+            if (deck) dressBridgeStairs(plan, bottom, top, deck);
         }
         push(new THREE.Vector3(here.x, yOf(p) + 0.25, here.z));
     });
@@ -487,9 +653,12 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             if (drawnLinks.has(l.id)) continue;
             const a = nodeById.get(l.node_a_id);
             const b = nodeById.get(l.node_b_id);
-            if (!a || !b || !(deckOf(a) || deckOf(b))) continue;
+            const deck = a && b ? deckOf(a) || deckOf(b) : null;
+            if (!deck) continue;
             const { plan, bottom, top } = planFromLink(l, a, b);
-            drawSteps(plan, bottom, top);
+            // Not on the route: plain concrete steps (the route's own stairs stay amber).
+            drawSteps(plan, bottom, top, concreteStep);
+            dressBridgeStairs(plan, bottom, top, deck);
         }
     }
     if (pts.length >= 2) {

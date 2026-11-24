@@ -167,10 +167,28 @@ export function segmentCrossesBorder(a, b, borders) {
         // building, never going in or out of it. A step that starts or ends
         // inside it is an entrance / exit (doors are not mapped).
         if (border.polygon && (insidePolygon(segA, border.polygon) || insidePolygon(segB, border.polygon))) continue;
+        // A closed building beside a walkway: a step along the walkway that only clips the drawn outline
+        // (an outline drawn a little over the path) still passes; one through the inside does not.
+        if (border.shut && a?.pathway_id != null && b?.pathway_id != null && !offPath(a, b) && !cutsInto(segA, segB, border)) continue;
 
         for (let i = 0; i + 1 < wall.length; i++) {
             if (segmentsIntersect(segA, segB, wall[i], wall[i + 1])) return true;
         }
+    }
+    return false;
+}
+
+/** How far (m) a walkway may clip into a closed building's drawn outline and still pass: about a walkway's
+ * half-width plus the slack of an outline drawn by hand over satellite imagery. */
+const SHUT_CLIP_M = 2;
+
+/** Does the step reach more than SHUT_CLIP_M inside the shut building's outline? */
+function cutsInto(segA, segB, border) {
+    const [dx, dy] = toLocalMeters(+segA.lat, +segA.lng, +segB.lat, +segB.lng);
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 0.5));
+    for (let i = 0; i <= steps; i += 1) {
+        const p = { lat: +segA.lat + ((+segB.lat - +segA.lat) * i) / steps, lng: +segA.lng + ((+segB.lng - +segA.lng) * i) / steps };
+        if (insidePolygon(p, border.shut) && distanceToWalls(p.lat, p.lng, [border]) > SHUT_CLIP_M) return true;
     }
     return false;
 }
@@ -730,7 +748,7 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
         // Shut doors: the whole outline is a wall (a straight line through two lined-up door gaps no longer passes).
         for (const b of options.buildings || []) {
             if (closed.has(String(b?.id)) && Array.isArray(b.polygon) && b.polygon.length >= 3) {
-                borders.push({ coordinates: [...b.polygon, b.polygon[0]] });
+                borders.push({ coordinates: [...b.polygon, b.polygon[0]], shut: b.polygon });
             }
         }
     }
@@ -817,12 +835,18 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
         }
         // Was a closed building (opening hours or an announcement) the only way through? Name it.
         let buildingMessage = null;
-        if (!bridgeMessage && closed.size) {
-            const through = computeRoute(allNodes, destinationId, userLat, userLng, userElevation, wallBorders, { ...options, closedBuildingIds: [] });
-            const crossed = through.success
+        if (!bridgeMessage && closed.size && !options.noExplain) {
+            // The one whose closing blocks the way: reopen each closed building alone. (A route that
+            // merely passes another closed building's door must not name that one.)
+            const byId = (id) => (options.buildings || []).find((b) => String(b.id) === id);
+            const alone = [...closed].map(byId).find((b) => b && computeRoute(allNodes, destinationId, userLat, userLng, userElevation, wallBorders, {
+                ...options, closedBuildingIds: [...closed].filter((id) => id !== String(b.id)), noExplain: true,
+            }).success);
+            const through = alone ? null : computeRoute(allNodes, destinationId, userLat, userLng, userElevation, wallBorders, { ...options, closedBuildingIds: [] });
+            const crossed = alone || (through.success
                 ? (options.buildings || []).find((b) => closed.has(String(b.id)) && through.path.some((p) => String(p.building_id) === String(b.id)
                     || (Array.isArray(b.polygon) && b.polygon.length >= 3 && pointInPolygon(Number(p.latitude), Number(p.longitude), b.polygon))))
-                : null;
+                : null);
             if (crossed) buildingMessage = `The only way there goes through ${crossed.short_name || crossed.name || 'a building'}, which is closed right now.`;
         }
         return {

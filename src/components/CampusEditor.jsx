@@ -42,6 +42,14 @@ const VERTEX_ICON = L.divIcon({
     iconSize: [28, 28],
     iconAnchor: [14, 14],
 });
+// While reshaping a pathway: a point of another pathway, or an outdoor route node, to join. Tapping it adds
+// the next point exactly there (blue ring, smaller than the path's own points).
+const JOIN_ICON = L.divIcon({
+    className: '',
+    html: '<div class="wall-node-pad"><div style="width:10px;height:10px;border-radius:50%;background:#e5e7eb;border:2px solid #2563eb;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div></div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+});
 // The selected corner: the next tap adds a corner joined to this one.
 const VERTEX_ICON_SELECTED = L.divIcon({
     className: '',
@@ -178,8 +186,23 @@ export default function CampusEditor({
                 }
             }
         }
+        // An outdoor route node is a point to join as well (a point beats a line).
+        for (const t of joinNodes()) {
+            const d = here.distanceTo(map.latLngToContainerPoint([t.at.lat, t.at.lng]));
+            if (d <= SNAP_POINT_PX && (!best || best.line || d < best.d)) best = { d, line: false, at: t.at, pw: { name: t.label } };
+        }
         return best ? { at: best.at, to: best.pw } : { at, to: null };
     };
+    /** Ground route nodes outside buildings: a pathway being reshaped may join them (pathways only). */
+    const joinNodes = () => (isOutline ? [] : (nodes || [])
+        .filter((n) => n.type === 'route' && n.building_id == null && Number(n.floor_level || 0) === 0)
+        .map((n) => ({ at: { lat: +n.latitude, lng: +n.longitude }, label: n.name || 'the route node' })));
+    /** Every point a pathway being reshaped can join: the other pathways' points and the outdoor route nodes. */
+    const joinTargets = () => (isOutline ? [] : [
+        ...(pathways || []).filter((pw) => pw.id !== record?.id && Array.isArray(pw.coordinates))
+            .flatMap((pw) => pw.coordinates.map((c) => ({ at: { lat: +c.lat, lng: +c.lng }, label: pw.name || 'the other pathway' }))),
+        ...joinNodes(),
+    ]);
     const joinedNote = (pw) => `Joined to ${pw.name || 'the other pathway'}: routes go from one onto the other here.`;
     const [branchAnchor, setBranchAnchor] = useState(null);
     const historyRef = useRef([]);
@@ -490,9 +513,20 @@ export default function CampusEditor({
                 setPoints((prev) => prev.map((q, i) => (i === k ? snapped.at : q)));
             });
         });
+        // The other pathways' points and the outdoor route nodes, so a join can be aimed at: tap one and the
+        // next point lands exactly on it, joined to the selected point (under the path's own points).
+        for (const t of joinTargets()) {
+            const tm = L.marker([t.at.lat, t.at.lng], {
+                icon: JOIN_ICON, bubblingMouseEvents: false, zIndexOffset: -100, keyboard: false, title: `Tap to join ${t.label} here`,
+            }).addTo(layer);
+            tm.on('click', () => {
+                vertexPressAt.current = Date.now();
+                addPointAt(t.at, { name: t.label });
+            });
+        }
         return fitBand ? () => map.off('zoomend', fitBand) : undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors, widthM, branches, branchAnchor, pathways]);
+    }, [points, step, candidates, isBuilding, isOutline, isBridge, record, kind, status, theme, doors, litDoor, anchor, manageDoors, widthM, branches, branchAnchor, pathways, nodes]);
 
     // Put a door where the outline was tapped (map or 3D view).
     const addDoorAt = (lat, lng) => {
@@ -562,35 +596,40 @@ export default function CampusEditor({
     const removeDoor = (k) => { setDoors((prev) => prev.filter((_, i) => i !== k)); setLitDoor(null); setDoorNote(null); setMovingDoor(null); };
 
 
+    // Add the next corner / point at `at` (a map tap, or a tapped point to join; `to` names what it joins).
+    const addPointAt = (at, to = null) => {
+        historyRef.current.push({ points, anchor, branches, branchAnchor });
+        setDrawNote(to ? joinedNote(to) : null);
+        // Carrying on a branch, or starting one from a middle point of a path: joined only to that point.
+        if (!isOutline && branchAnchor !== null && branches[branchAnchor]) {
+            setBranches(branches.map((b, i) => (i === branchAnchor ? [...b, at] : b)));
+            return;
+        }
+        if (!isOutline && anchor !== null && anchor > 0 && anchor < points.length - 1) {
+            setBranches([...branches, [points[anchor], at]]);
+            setBranchAnchor(branches.length);
+            setAnchor(null);
+            return;
+        }
+        // The new point joins ONLY the selected one (see shapeDraft.js).
+        const next = addJoined(points, anchor, at, { closed: isOutline });
+        setPoints(next.points);
+        setAnchor(next.anchor);
+        setSource((s) => (s === 'osm' && ref ? s : 'custom'));
+    };
+
     // Tapping the map adds the next corner / point.
     useEffect(() => {
         if (!map || step !== 'shape') return undefined;
         const onClick = (e) => {
             if (Date.now() - vertexPressAt.current < 350) return;
             const snapped = snapToOtherPaths({ lat: e.latlng.lat, lng: e.latlng.lng });
-            const at = snapped.at;
-            historyRef.current.push({ points, anchor, branches, branchAnchor });
-            setDrawNote(snapped.to ? joinedNote(snapped.to) : null);
-            // Carrying on a branch, or starting one from a middle point of a path: joined only to that point.
-            if (!isOutline && branchAnchor !== null && branches[branchAnchor]) {
-                setBranches(branches.map((b, i) => (i === branchAnchor ? [...b, at] : b)));
-                return;
-            }
-            if (!isOutline && anchor !== null && anchor > 0 && anchor < points.length - 1) {
-                setBranches([...branches, [points[anchor], at]]);
-                setBranchAnchor(branches.length);
-                setAnchor(null);
-                return;
-            }
-            // The new point joins ONLY the selected one (see shapeDraft.js).
-            const next = addJoined(points, anchor, at, { closed: isOutline });
-            setPoints(next.points);
-            setAnchor(next.anchor);
-            setSource((s) => (s === 'osm' && ref ? s : 'custom'));
+            addPointAt(snapped.at, snapped.to);
         };
         map.on('click', onClick);
         return () => map.off('click', onClick);
-    }, [map, step, ref, points, anchor, isOutline, branches, branchAnchor, pathways]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [map, step, ref, points, anchor, isOutline, branches, branchAnchor, pathways, nodes]);
 
     // Undo: back one addition (corner + which one was selected).
     const undo = () => {
@@ -725,9 +764,9 @@ export default function CampusEditor({
                 : middle
                 ? 'The green point is selected: tap the map to start a branch from it (a new walkway joined only to this point).'
                 : anchor !== null
-                ? `The green ${part} is selected: tap the map to add a ${part} joined only to it, and keep tapping to carry on from there. Tap it again to let go.`
+                ? `The green ${part} is selected: tap the map to add a ${part} joined only to it, and keep tapping to carry on from there.${isOutline ? '' : ' Tap a blue dot (another pathway or a route node) to join it there.'} Tap the green ${part} again to let go.`
                 : ready
-                ? `Tap a ${part} to add new ones after it, drag one to reshape, or drag the centre handle to move the whole ${noun}.${isOutline ? '' : ' To join another pathway, tap its point (or right on its line), or drag an end onto it.'} Then press Next.`
+                ? `Tap a ${part} to add new ones after it, drag one to reshape, or drag the centre handle to move the whole ${noun}.${isOutline ? '' : ' To join another pathway or a route node, tap its blue dot (or right on its line), or drag an end onto it.'} Then press Next.`
                 : `Tap to add the next ${isOutline ? 'corner' : 'point'} (${points.length} of at least ${minPoints}).`);
         } else if (record) {
             hint = `Tap the map to draw the new ${isOutline ? 'outline' : 'line'}.`;

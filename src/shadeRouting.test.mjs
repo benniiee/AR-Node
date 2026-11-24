@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { shadePenaltyFor, shadeMap, edgeShadeFactor, SHADE_MAX_PENALTY } from './shadeRouting.js';
 import { computeRoute } from './pathfinding.js';
+import { toLocalMeters } from './geo.js';
 
 const LAT = 6.913;
 const LNG = 122.061;
@@ -73,7 +74,13 @@ test('on a hot day the route takes the shaded way over the shorter sunny one', (
     assert.ok(east(normal), `expected the sunny east side, got ${ids(normal)}`);
 
     const hot = computeRoute(nodes, 9, start.latitude, start.longitude, 0, wall, { shade: { map: shadedWest, penalty: 1.6 } });
-    assert.ok(ids(hot).includes(4) && !ids(hot).includes(2), `expected the shaded west side, got ${ids(hot)}`);
-    // The reported distance stays physical (the detour really is longer).
-    assert.ok(hot.total_distance_meters > normal.total_distance_meters);
+    // The west side: up the wall's shaded west face (round its south end) or by node 4, never the east.
+    const west = (r) => !ids(r).includes(2) && r.path.some((p) => p.type !== 'user' && p.longitude < LNG);
+    assert.ok(west(hot), `expected the shaded west side, got ${ids(hot)}`);
+    // The reported distance stays physical: the metres walked, not the shade-weighted cost.
+    const walked = (r) => r.path.slice(1).reduce((t, p, i) => {
+        const [e, n] = toLocalMeters(p.latitude, p.longitude, r.path[i].latitude, r.path[i].longitude);
+        return t + Math.hypot(e, n);
+    }, 0);
+    for (const r of [normal, hot]) assert.ok(Math.abs(r.total_distance_meters - walked(r)) < 1, `${r.total_distance_meters} vs ${walked(r)}`);
 });

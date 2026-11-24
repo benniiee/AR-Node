@@ -121,3 +121,18 @@ test('walls: a route turns round an open end; behind a closed wall there is no r
     const drift = computeRoute(outside, 9, at(49, 0).latitude, at(49, 0).longitude, 0, box);
     assert.equal(drift.success, true);
 });
+
+test('a long street is one straight line: the far corner is a first step even with closer points around', () => {
+    const ll = (e, n) => ({ lat: at(e, n).latitude, lng: at(e, n).longitude });
+    const pt = (id, e, n, extra = {}) => ({ id, type: 'route', floor_level: 0, elevation: 0, path_type: 'outside', building_id: null, ...at(e, n), ...extra });
+    // A wall along the street, open at its east end (x = 30); the goal is just behind the wall. The pin is
+    // 80 m east of that corner, with five points behind it (nearer than the corner, but the wrong way):
+    // the old rule (5 nearest, then up to 60 m) never offered the corner as a first step.
+    const wall = [{ group_id: 6, coordinates: [ll(-300, 10), ll(30, 10)] }];
+    const around = [pt(1, 125, 3), pt(2, 125, -3), pt(3, 120, 5), pt(4, 120, -5), pt(5, 118, 0)];
+    const goal = pt(9, -20, 15, { type: 'location' });
+    const pin = at(110, 0);
+    const r = computeRoute([...around, goal], 9, pin.latitude, pin.longitude, 0, wall);
+    assert.equal(r.success, true, r.message);
+    assert.equal(r.path[1].id, -3000061, `straight to the street's far corner, got ${ids(r)}`);
+});

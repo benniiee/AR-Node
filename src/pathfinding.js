@@ -294,6 +294,9 @@ function offPath(a, b) {
     return !(a.pathway_id === b.pathway_id && Math.abs(a.pathway_k - b.pathway_k) === 1);
 }
 
+/** Metres within which a wall's turning point links to every point in plain sight. */
+const WALL_END_REACH_M = 60;
+
 /** Metres past a wall's open end where a route turns round it. */
 const WALL_END_STEP_M = 1.2;
 
@@ -326,8 +329,12 @@ export function wallEndWaypoints(walls) {
     return out;
 }
 
-/** Metres within which every route point in plain sight is a possible first step (beyond the nearest few). */
-const ENTRY_REACH_M = 60;
+/**
+ * Metres within which every route point in plain sight is a possible first step (beyond the nearest few).
+ * Long enough for a whole street: at 60 m a pin past the bridge could not see the street's far end and
+ * stepped sideways to a corner first. Walls still block, and the off-path cost keeps routes on walkways.
+ */
+const ENTRY_REACH_M = 150;
 
 /** Metres from a wall within which a GPS fix may be on its wrong side (drift), so a route may start across it. */
 const WALL_GPS_SLACK_M = 6;
@@ -444,7 +451,10 @@ function buildGraph(nodes, borders = [], rainMultiplier = 1, links = [], shade =
                     b.latitude, b.longitude, b.elevation || 0
                 );
                 if (segmentCrossesBorder(a, b, borders)) continue;
-                if (!isGabrielEdge(a, b, floorNodes, dist, borders)) continue;
+                // A wall's turning point links to every point it can see nearby, not only Gabriel neighbours:
+                // it is the corner a route turns at, and pruning its links forced a V through a third point.
+                const corner = (a.wall_end || b.wall_end) && dist <= WALL_END_REACH_M;
+                if (!corner && !isGabrielEdge(a, b, floorNodes, dist, borders)) continue;
 
                 const cost = dist * edgeRainFactor(a.path_type, b.path_type, rainMultiplier)
                     * (shade ? edgeShadeFactor(a, b, shade.map, shade.penalty) : 1)

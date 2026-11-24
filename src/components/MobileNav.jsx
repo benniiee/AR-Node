@@ -2206,7 +2206,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 .mnav-header > .mbtn { flex: 0 0 auto; align-self: stretch; justify-content: center; min-height: 52px; }
                 .mnav-header > .mbtn svg { flex: none; }
                 .mnav-3d-short { display: none; }
-                @media (max-width: 400px) {
+                /* Phones up to 480 px (most are 412 to 430 px): once a route is drawn the 3D button turns wide
+                   and green, and at 400 px only the destination name was squeezed to nothing. */
+                @media (max-width: 480px) {
                     .mnav-3d-long { display: none; }
                     .mnav-3d-short { display: inline; }
                     .mnav-header > .mbtn { padding: 0 12px !important; }
@@ -2268,9 +2270,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                     .mnav-mapwrap { min-height: 0; }
                     .leaflet-top.leaflet-left .leaflet-control-zoom { margin: 8px 0 0 8px; }
                 }
-                /* Narrow phones: the field itself opens the list, so the chevron goes
+                /* Phones: the field itself opens the list, so the chevron goes
                    and the destination name gets its width. */
-                @media (max-width: 400px) {
+                @media (max-width: 480px) {
                     .mnav-destination-chevron-btn { display: none; }
                     /* The pin icon is decoration here; the name needs the room. */
                     .mnav-destination-mark { display: none; }

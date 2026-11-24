@@ -4,7 +4,7 @@ import { createVoiceGuide, spokenText, STEADY_MS, MIN_GAP_MS } from './voiceGuid
 
 test('only the direction is spoken, not the distance to the next stop', () => {
     assert.equal(spokenText({ main: 'Turn left', sub: 'Next stop in 20 m' }), 'Turn left.');
-    assert.equal(spokenText({ main: 'Walk straight', sub: 'Library in 1.2 km' }), 'Walk straight.');
+    assert.equal(spokenText({ main: 'Go straight', sub: 'Library in 1.2 km' }), 'Go straight.');
 });
 
 test('a direction is spoken once it is steady, not while the phone swings around', () => {
@@ -12,7 +12,7 @@ test('a direction is spoken once it is steady, not while the phone swings around
     const v = createVoiceGuide((t) => said.push(t));
     const turn = { main: 'Turn left', sub: 'Next stop in 20 m' };
     v.update(turn, 0);
-    v.update({ main: 'Walk straight', sub: 'Next stop in 20 m' }, 400);   // flicker while turning
+    v.update({ main: 'Go straight', sub: 'Next stop in 20 m' }, 400);   // flicker while turning
     v.update(turn, 800);
     v.update(turn, 800 + STEADY_MS - 1);
     assert.deepEqual(said, []);
@@ -34,14 +34,14 @@ test('a new direction waits for the minimum gap; arrival is said once and ends g
     assert.deepEqual(said, ['Turn left.', 'Turn right.']);
     v.arrive('CCS');
     v.arrive('CCS');
-    v.update({ main: 'Walk straight', sub: '' }, 99999);
-    assert.deepEqual(said.slice(2), ['You have arrived at CCS.']);
+    v.update({ main: 'Go straight', sub: '' }, 99999);
+    assert.deepEqual(said.slice(2), ["You've arrived at CCS."]);
 });
 
 test('switching Voice on says the current direction at once', () => {
     const said = [];
     const v = createVoiceGuide((t) => said.push(t));
-    v.repeat({ main: 'Bear right', sub: 'Next stop in 8 m' }, 0);
-    v.update({ main: 'Bear right', sub: 'Next stop in 8 m' }, 5000);     // already said: not again
-    assert.deepEqual(said, ['Bear right.']);
+    v.repeat({ main: 'Turn right', sub: 'Next stop in 8 m' }, 0);
+    v.update({ main: 'Turn right', sub: 'Next stop in 8 m' }, 5000);     // already said: not again
+    assert.deepEqual(said, ['Turn right.']);
 });

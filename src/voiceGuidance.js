@@ -73,7 +73,7 @@ export function createVoiceGuide(speak) {
         arrive(place) {
             if (arrived) return;
             arrived = true;
-            speak(`You have arrived at ${place || 'your destination'}.`);
+            speak(`You've arrived at ${place || 'your destination'}.`);
         },
         /** Say the current direction again right away (the Voice button was just switched on). */
         repeat(guidance, now) {

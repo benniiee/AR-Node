@@ -4392,7 +4392,7 @@ export default function ARView({
                             <circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="2.5" />
                             <path d="M14.5 24.5l6.5 6.5 12.5-13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        <h2 className="ar-arrive-title" id="ar-arrive-title">You have arrived</h2>
+                        <h2 className="ar-arrive-title" id="ar-arrive-title">You've arrived</h2>
                         <p className="ar-arrive-place">{arrived.name}{destWhere ? `, ${destWhere}` : ''}</p>
                         <div className="ar-arrive-actions">
                             <button type="button" className="ar-btn ar-btn-primary ar-arrive-btn" onClick={stopAll}>Back to map</button>

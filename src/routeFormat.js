@@ -29,8 +29,15 @@ export function formatWalkTime(meters) {
     return `~${walkMinutes(m)} min walk`;
 }
 
+/** Within this angle (degrees) of straight ahead, the stop counts as ahead: small wobbles while walking say nothing new. */
+export const STRAIGHT_DEG = 30;
+/** Beyond this angle the stop is behind you. */
+export const BEHIND_DEG = 150;
+
 /**
- * The 3D view's spoken-style guidance for the next stop.
+ * The 3D view's guidance for the next stop, shown on the direction card and spoken as it is: a few
+ * everyday words ("Go straight", "Turn left", "Turn around"), no jargon such as "bear". The card's
+ * arrow turns to the exact angle, so a slight turn still looks slight.
  *
  * @param {{ relDeg: number|null, distM: number, isLast: boolean, destName?: string, arrived?: boolean }} g
  *   relDeg: signed angle from where the phone faces to the stop (+ = right),
@@ -39,15 +46,14 @@ export function formatWalkTime(meters) {
  */
 export function guidanceFor({ relDeg, distM, isLast, destName = '', arrived = false }) {
     const place = destName || 'your destination';
-    if (arrived) return { main: 'You have arrived', sub: place };
+    if (arrived) return { main: "You've arrived", sub: place };
     const d = formatDistance(distM);
     const sub = isLast ? `${place} in ${d}` : `Next stop in ${d}`;
-    if (relDeg === null || !Number.isFinite(relDeg)) return { main: 'Head to the next stop', sub };
+    if (relDeg === null || !Number.isFinite(relDeg)) return { main: 'Follow the route', sub };
     const abs = Math.abs(relDeg);
     let main;
-    if (abs < 25) main = 'Walk straight';
-    else if (abs > 155) main = 'Turn around';
-    else if (abs < 60) main = relDeg > 0 ? 'Bear right' : 'Bear left';
+    if (abs < STRAIGHT_DEG) main = 'Go straight';
+    else if (abs > BEHIND_DEG) main = 'Turn around';
     else main = relDeg > 0 ? 'Turn right' : 'Turn left';
     return { main, sub };
 }

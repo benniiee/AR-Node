@@ -26,7 +26,7 @@ import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../po
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
 import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint, drawWalls25D } from '../campusLayers';
 import { sunPosition, roofLiftM } from '../sunShadow';
-import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements, closedMessage } from '../openingHours';
+import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements, closedMessage, campusClosed, formatTime } from '../openingHours';
 import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
 import { LIST_CSS, bindScrollCue } from './ScrollWindow';
 import SatelliteControl, { SATELLITE_CSS } from './SatelliteControl';
@@ -38,6 +38,12 @@ import { stallAction, GPS_WATCH_OPTS, GPS_POLL_OPTS } from '../gpsWatchdog';
 // live in one place now.
 import { C, TYPE, INPUT_TEXT, TAP, btnBase, HUD_CSS, PANEL_RADIUS, MAP_ZOOM_CSS, INTERACTION_CSS, PILL, ELEVATION } from '../uiTokens';
 import { formatDistance, formatWalkTime } from '../routeFormat';
+
+// Demo controls for presentations (the campus-hours switch in the menu), as for the demo accounts on the
+// sign-in page: in development, and in a build made with VITE_DEMO_ACCOUNTS=true; never in a real
+// deployment, where students cannot turn the closing off. (Plain import.meta.env: replaced at build time.)
+const SHOW_DEMO = import.meta.env.DEV || import.meta.env.VITE_DEMO_ACCOUNTS === 'true';
+const CAMPUS_DEMO_KEY = 'arnode.campusDemo';
 
 // The 3D views bring three.js (about 600 kB), so they load only when opened. The service
 // worker still saves them at install (vite.config.js follows dynamic imports), so they work offline.
@@ -203,6 +209,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const [bridges, setBridges] = useState([]);
     // Closures and special openings (announcements), from the map feed: applied on top of opening hours.
     const [closures, setClosures] = useState([]);
+    // When the campus is open (from the map feed, config/campus.php): outside it, /map is closed.
+    const [campusHours, setCampusHours] = useState(null);
     const closuresRef = useRef([]);
     closuresRef.current = closures;
     // Buildings closed right now (opening hours, campus time): routes do not pass through them. Rechecked
@@ -211,6 +219,25 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // School-level announcements going on now (whole school, a campus, every college or office): a banner.
     const announcementList = useMemo(() => announcements(closures, sunDate), [closures, sunDate]);
     const closedKey = closedIds.join(',');
+    // Presentations only (same switch as the demo accounts): follow the clock, or force the campus
+    // closed / open. Kept for the tab, so a reload mid-demo keeps it.
+    const [campusDemo, setCampusDemoState] = useState(() => {
+        if (!SHOW_DEMO) return 'clock';
+        try { return sessionStorage.getItem(CAMPUS_DEMO_KEY) || 'clock'; } catch { return 'clock'; }
+    });
+    const setCampusDemo = (mode) => {
+        setCampusDemoState(mode);
+        try { sessionStorage.setItem(CAMPUS_DEMO_KEY, mode); } catch { /* private mode: for this view only */ }
+    };
+    // The whole campus closed (e.g. 9 pm to 6 am): the map gives way to a notice, rechecked every minute.
+    const campusClosedNow = useMemo(() => {
+        if (campusDemo === 'open') return null;
+        if (campusDemo === 'closed') return { opens: formatTime(campusHours?.opens || '06:00'), closes: formatTime(campusHours?.closes || '21:00') };
+        return campusClosed(campusHours, sunDate);
+    }, [campusHours, sunDate, campusDemo]);
+    const NEXT_DEMO = { clock: 'closed', closed: 'open', open: 'clock' };
+    const DEMO_LABEL = { clock: 'Demo: campus hours follow the clock', closed: 'Demo: campus shown closed', open: 'Demo: campus kept open' };
+    const campusDemoItem = SHOW_DEMO ? { label: DEMO_LABEL[campusDemo], onClick: () => setCampusDemo(NEXT_DEMO[campusDemo]) } : null;
     const [pathways, setPathways] = useState([]);
     // Campus outlines (Campus A, Campus B, ...): the campus picker and the map labels.
     const [campusAreas, setCampusAreas] = useState([]);
@@ -439,6 +466,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 setBuildings(data.buildings || []);
                 setBridges(data.bridges || []);
                 setClosures(data.closures || []);
+                setCampusHours(data.campus_hours || null);
                 setPathways(data.pathways || []);
                 setCampusAreas(data.campus_areas || []);
                 setOfflineCopy(source === 'offline' ? { savedAt } : null);
@@ -469,6 +497,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         setBuildings(map.buildings || []);
         setBridges(map.bridges || []);
         setClosures(map.closures || []);
+        setCampusHours(map.campus_hours || null);
         setPathways(map.pathways || []);
         setCampusAreas(map.campus_areas || []);
         setOfflineCopy(null);
@@ -1031,12 +1060,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             const hoursLine = hoursNow
                 ? `<small class="${hoursNow.open ? '' : 'bp-closed'}">${escapeHtml(hoursNow.label)}</small>${b.opening_hours ? `<small>${escapeHtml(summarizeHours(b.opening_hours))}</small>` : ''}`
                 : '';
-            if (isVisitor) {
-                return `
-                    <div class="bp">
-                        <div class="bp-head is-plain"><b>${escapeHtml(b.name)}</b><small>${escapeHtml(floorCountLabel(b))}</small></div>
-                    </div>`;
-            }
+            // Visitors get the same popup: their map holds only the important places staff showed them.
             const inside = nodes
                 .filter((n) => n.type === 'location' && n.building_id === b.id)
                 .sort((x, y) => floorOf(x) - floorOf(y) || String(x.name).localeCompare(String(y.name)));
@@ -1188,7 +1212,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // instead of staying pinned to wherever the session started. This is
     // the whole point of reporting the walked position back out of ARView.
     useEffect(() => {
-        if (!destId || !effectiveUser || nodes.length === 0) {
+        // Visitors have no stored nodes (only the outdoor network), so "loaded" is the test, not a count.
+        if (!destId || !effectiveUser || loading) {
             setRoute(null);
             setNoRoute(null);
             routeLayerRef.current?.clearLayers();
@@ -1378,7 +1403,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // `weather.rain_multiplier` / `weather.raining_now` rather than the
         // whole object: a poll rebuilds it every 5 minutes, and the route
         // only cares about the two values that change routing.
-    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey, destClosed]);
+    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey, destClosed, loading]);
 
     // A destination on another floor is a normal case now (the route climbs
     // the linked stairs), so it is only dropped when the node itself is gone.
@@ -1725,6 +1750,53 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // show a black, empty div because init never re-runs.
     return (
         <div className="mnav-root" role="main" data-picker-open={destinationOpen ? 'true' : undefined} style={{ height: '100%', display: 'flex', flexDirection: 'column', background: C.page, color: C.text }}>
+            {/* Campus closed: nothing on the map can be used until it opens (students and visitors alike).
+                Its own styles: it covers the page before the map's style sheet below has loaded. */}
+            {campusClosedNow && (
+                <div className="mnav-closed" role="alertdialog" aria-modal="true" aria-labelledby="mnav-closed-title" aria-describedby="mnav-closed-text">
+                    <style>{`
+                        .mnav-closed { position: fixed; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center;
+                            padding: 24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));
+                            background: ${C.page}; color: ${C.text}; text-align: center; animation: mnavClosedIn 0.45s ease both; }
+                        .mnav-closed-card { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 380px; }
+                        .mnav-closed-moon { display: grid; place-items: center; width: 88px; height: 88px; margin-bottom: 6px; border-radius: 50%;
+                            color: ${C.warning}; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.22);
+                            box-shadow: 0 0 0 10px rgba(251, 191, 36, 0.04); }
+                        .mnav-closed h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.01em; color: ${C.white}; }
+                        .mnav-closed p { margin: 0; max-width: 32ch; font-size: ${TYPE.sub}; line-height: 1.55; color: ${C.muted}; }
+                        .mnav-closed-hours { display: flex; gap: 8px; margin-top: 6px; }
+                        .mnav-closed-chip { display: flex; flex-direction: column; gap: 2px; min-width: 104px; padding: 10px 14px; border-radius: 14px;
+                            background: rgba(255, 255, 255, 0.04); border: 1px solid ${C.hairline}; }
+                        .mnav-closed-chip small { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${C.muted}; }
+                        .mnav-closed-chip b { font-size: 18px; font-weight: 800; color: ${C.white}; }
+                        .mnav-closed-demo { margin-top: 14px; min-height: ${TAP.minHeight}; padding: 0 20px; border-radius: 999px; cursor: pointer;
+                            border: 1px solid ${C.border}; background: rgba(255, 255, 255, 0.05); color: ${C.text};
+                            font: inherit; font-size: ${TYPE.desc}; font-weight: 700; transition: background-color 160ms ease, border-color 160ms ease; }
+                        .mnav-closed-demo:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.25); }
+                        .mnav-closed-demo:focus-visible { outline: ${TAP.focusOutline}; outline-offset: 2px; }
+                        @keyframes mnavClosedIn { from { opacity: 0; transform: translateY(8px); } }
+                        @media (prefers-reduced-motion: reduce) { .mnav-closed { animation: none; } }
+                    `}</style>
+                    <div className="mnav-closed-card">
+                        <div className="mnav-closed-moon" aria-hidden="true">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+                                <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                            </svg>
+                        </div>
+                        <h1 id="mnav-closed-title">The campus is closed</h1>
+                        <p id="mnav-closed-text">The campus map can be used while the campus is open. Come back at {campusClosedNow.opens}.</p>
+                        <div className="mnav-closed-hours">
+                            <span className="mnav-closed-chip"><small>Opens</small><b>{campusClosedNow.opens}</b></span>
+                            <span className="mnav-closed-chip"><small>Closes</small><b>{campusClosedNow.closes}</b></span>
+                        </div>
+                        {SHOW_DEMO && (
+                            <button type="button" className="mnav-closed-demo" onClick={() => setCampusDemo(campusDemo === 'closed' ? 'clock' : 'open')}>
+                                {campusDemo === 'closed' ? 'Demo: back to the clock' : 'Demo: open the map anyway'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
             <h1 className="sr-only">Campus navigation</h1>
             <style>{`
                 ${HUD_CSS}
@@ -2225,16 +2297,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             `}</style>
             <div className={`mnav-stage${leaving ? ' mnav-leaving' : ''}`}>
             {/* Header card: destination picker and the 3D launch, nothing else. */}
-            {isVisitor ? (
-                <div className="mnav-header mnav-visitor">
-                    <div className="mnav-visitor-text">
-                        <span className="mnav-visitor-title">Visitor view</span>
-                        <span className="mnav-visitor-sub">Campus buildings only. Sign in to search rooms and get directions.</span>
-                    </div>
-                    <button type="button" className="mbtn mnav-visitor-btn" onClick={onSignIn}>Sign in</button>
-                    <AppMenu isVisitor showInstall={showInstall} />
-                </div>
-            ) : (
+            {/* Visitors too: they pick a building (no rooms or offices) and get a route to it. */}
+            {(
             <div className="mnav-header">
                 <div
                     className={`mnav-destination${destinationOpen ? ' is-open' : ''}`}
@@ -2272,7 +2336,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                                 autoCapitalize="off"
                                 spellCheck={false}
                                 enterKeyHint="go"
-                                placeholder={selectedDestName || 'Search places'}
+                                placeholder={selectedDestName || (isVisitor ? 'Search buildings and offices' : 'Search places')}
                                 value={destinationOpen ? destQuery : selectedDestName}
                                 onFocus={() => setDestinationOpen(true)}
                                 onChange={(event) => {
@@ -2454,7 +2518,14 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                     <span className="mnav-3d-long">{launching ? 'Loading' : '3D view'}</span>
                     <span className="mnav-3d-short" aria-hidden="true">{launching ? '...' : '3D'}</span>
                 </button>
-                <AppMenu session={session} sync={sync} showInstall={showInstall} onSignOut={onSignOut} />
+                {isVisitor ? (
+                    <>
+                        <button type="button" className="mbtn mnav-visitor-btn" onClick={onSignIn}>Sign in</button>
+                        <AppMenu isVisitor showInstall={showInstall} demo={campusDemoItem} />
+                    </>
+                ) : (
+                    <AppMenu session={session} sync={sync} showInstall={showInstall} onSignOut={onSignOut} demo={campusDemoItem} />
+                )}
             </div>
             )}
             {/* School-level announcements (classes suspended, campus closed): everyone sees them, visitors too. */}

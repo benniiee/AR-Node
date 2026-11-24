@@ -48,7 +48,11 @@ const CSS = `
     .amenu-hint { margin: 2px 12px 6px; font-size: ${TYPE.desc}; line-height: 1.5; color: ${C.text}; }
 `;
 
-export default function AppMenu({ session, isVisitor, sync, showInstall, onSignOut }) {
+/**
+ * `demo` (presentations only): { label, onClick } adds one demo item, e.g. switching the campus-hours
+ * closing on and off.
+ */
+export default function AppMenu({ session, isVisitor, sync, showInstall, onSignOut, demo = null }) {
     const [open, setOpen] = useState(false);
     const btnRef = useRef(null);
     const panelRef = useRef(null);
@@ -68,7 +72,7 @@ export default function AppMenu({ session, isVisitor, sync, showInstall, onSignO
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
 
-    if (isVisitor && !showInstall) return null;
+    if (isVisitor && !showInstall && !demo) return null;
     const needsAttention = !isVisitor && (sync?.status?.phase === 'offline' || sync?.status?.phase === 'error');
     const name = session?.user?.name || [session?.user?.first_name, session?.user?.last_name].filter(Boolean).join(' ') || 'Student';
 
@@ -99,6 +103,12 @@ export default function AppMenu({ session, isVisitor, sync, showInstall, onSignO
                             </>
                         )}
                     </InstallApp>
+                    {demo && (
+                        <button type="button" className="amenu-item" onClick={() => { demo.onClick(); }}>
+                            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M14.5 10.5A6 6 0 1 1 7.5 3.5a5 5 0 0 0 7 7z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+                            {demo.label}
+                        </button>
+                    )}
                     {!isVisitor && (
                         <button type="button" className="amenu-item" onClick={() => { close(false); onSignOut(); }}>
                             <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M7 3.5H4.5v11H7M11 6l3 3-3 3M14 9H7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>

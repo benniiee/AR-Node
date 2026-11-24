@@ -81,6 +81,8 @@ class NodeController extends Controller
             'department_id' => 'sometimes|nullable|exists:departments,id',
             'building_id' => 'sometimes|nullable|exists:buildings,id',
             ...OpeningHours::rules(),
+            // Only a place (location) can be shown to visitors.
+            'is_public' => 'sometimes|boolean',
         ]);
         if (array_key_exists('opening_hours', $validated)) {
             $validated['opening_hours'] = OpeningHours::normalize($validated['opening_hours']);
@@ -114,6 +116,10 @@ class NodeController extends Controller
         );
 
         $node = new Node(Arr::except($validated, ['department_id']));
+        // A route node is never a visitor's destination.
+        if ($node->type !== 'location') {
+            $node->is_public = false;
+        }
         $node->department_id = $departmentId;
         $node->created_by = $user->id;
         $node->save();
@@ -162,6 +168,8 @@ class NodeController extends Controller
             'department_id' => 'sometimes|nullable|exists:departments,id',
             'building_id' => 'sometimes|nullable|exists:buildings,id',
             ...OpeningHours::rules(),
+            // Only a place (location) can be shown to visitors.
+            'is_public' => 'sometimes|boolean',
         ]);
         if (array_key_exists('opening_hours', $validated)) {
             $validated['opening_hours'] = OpeningHours::normalize($validated['opening_hours']);
@@ -193,6 +201,10 @@ class NodeController extends Controller
         );
 
         $node->fill(Arr::except($validated, ['department_id']));
+        // A route node is never a visitor's destination.
+        if ($node->type !== 'location') {
+            $node->is_public = false;
+        }
 
         if ($request->user()->isAdmin() && array_key_exists('department_id', $validated)) {
             $node->department_id = $validated['department_id'];

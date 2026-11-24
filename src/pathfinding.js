@@ -696,7 +696,8 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
     const allNodes = nodes;
     const closedBridges = (options.bridges || []).filter((br) => br?.closed && Array.isArray(br.polygon) && br.polygon.length >= 3);
     if (closedBridges.length && nodes) nodes = nodes.filter((n) => !onClosedDeck(n, closedBridges));
-    if (doorNodes.length && nodes && nodes.length) nodes = [...nodes, ...doorNodes];
+    // Visitors have no stored nodes at all, only the outdoor network: the virtual nodes are their map.
+    if (doorNodes.length) nodes = [...(nodes || []), ...doorNodes];
     if (!nodes || nodes.length === 0) {
         return { success: false, message: 'No nodes on the map yet.' };
     }

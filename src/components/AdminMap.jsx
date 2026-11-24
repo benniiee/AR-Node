@@ -357,6 +357,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const [editName, setEditName] = useState('');
     // A place's own opening hours (null: it follows its building's).
     const [editHours, setEditHours] = useState(null);
+    // An important place visitors may see and be routed to (the Dean's office).
+    const [editPublic, setEditPublic] = useState(false);
     const [editType, setEditType] = useState('route');
     const [editElevation, setEditElevation] = useState('0');
     const [editFloor, setEditFloor] = useState('0');
@@ -1429,6 +1431,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setEditingNode(node);
             setEditName(node.name || '');
             setEditHours(node.opening_hours ?? null);
+            setEditPublic(Boolean(node.is_public));
             setEditType(node.type);
             setEditElevation(String(node.elevation));
             setEditFloor(String(node.floor_level));
@@ -1867,8 +1870,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 campus: editCampus,
                 building_id: editBuilding === '' ? null : Number(editBuilding),
                 ...(isAdmin ? { department_id: editDept === '' ? null : Number(editDept) } : {}),
-                // Only a place (location) has hours; a route node never does.
+                // Only a place (location) has hours, or is shown to visitors; a route node never is.
                 opening_hours: editType === 'location' ? editHours : null,
+                is_public: editType === 'location' && editPublic,
             });
             setEditingNode(null);
             setIsSettingPosition(false);
@@ -3369,6 +3373,18 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                             const inherited = building?.opening_hours ? summarizeHours(building.opening_hours) : null;
                             return (
                                 <section className="mt-stairs" aria-labelledby="edit-hours-title">
+                                    <label className="hours-toggle" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox" checked={editPublic} onChange={(e) => setEditPublic(e.target.checked)}
+                                            style={{ flex: 'none', width: 18, height: 18, margin: '2px 0 0' }}
+                                        />
+                                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <span style={{ fontWeight: 600, color: '#fff' }}>Show to visitors</span>
+                                            <span className="ui-hint" style={{ margin: 0 }}>
+                                                An important place, like the Dean's office: visitors can find it and get a route to it. Other rooms stay hidden from them.
+                                            </span>
+                                        </span>
+                                    </label>
                                     <h3 className="mt-stairs-title" id="edit-hours-title">Opening hours</h3>
                                     <HoursEditor
                                         value={editHours} onChange={setEditHours} idPrefix="edit-hours"

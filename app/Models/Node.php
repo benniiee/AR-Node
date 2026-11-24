@@ -23,6 +23,8 @@ class Node extends Model
         'building_id',
         // A place's own weekly hours (App\Services\OpeningHours); null = its building's.
         'opening_hours',
+        // An important place visitors may see and be routed to (e.g. the Dean's office).
+        'is_public',
         // NOTE: created_by is deliberately NOT fillable — the controller sets
         // it server-side from the authenticated user on create, and nothing
         // may change it afterwards.
@@ -38,6 +40,7 @@ class Node extends Model
 
     protected $casts = [
         'opening_hours' => 'array',
+        'is_public' => 'boolean',
         'latitude' => 'float',
         'longitude' => 'float',
         'elevation' => 'float',

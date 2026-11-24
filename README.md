@@ -36,6 +36,7 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Draw walls, and edit or remove only the walls they drew.
 - Add staircases between their own nodes, or from one of their nodes to an outdoor node.
 - Swap two offices in their buildings: they trade names and departments and keep their spots.
+- Mark a room or office as an important place (**Show to visitors**, in its Edit panel): visitors can then find it and get a route to it.
 - Preview a route to any destination they can see, and print QR codes for nodes.
 - Add, rename and remove their own department's student courses in the **Courses** tab (a new course is always filed under their department). A course with students in it cannot be removed.
 - Read the **Activity log** of the students in their department's courses only (their sign-ins), not other staff or visitors.
@@ -54,9 +55,12 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Install ARNode on the home screen. After one online visit, the map, search and directions also work offline.
 - Change their own password (required after an admin reset).
 
+**Campus hours (students and visitors):** `/map` can only be used while the campus is open, by default 6 am to 9 pm campus time (`CAMPUS_OPENS_AT` / `CAMPUS_CLOSES_AT` in `.env`, read by `config/campus.php`). Outside them the map gives way to "The campus is closed", with when it opens again; the hours travel in the map feed, so this works offline too. The admin console is not affected. For presentations, the `/map` menu has a demo switch (follow the clock / show closed / keep open), shown only where the demo accounts are (development, or a build with `VITE_DEMO_ACCOUNTS=true`).
+
 **Visitors** (`/map`, "View as visitor", no sign-in)
-- See building locations, building names and campus areas only.
-- No rooms, offices or directions.
+- See the buildings, their names and opening hours, and the campus areas.
+- See the buildings with their floor counts, and the **important places** department staff show to visitors (such as the Dean's office), listed in each building's popup.
+- Pick a building or an important place as the destination and get walking directions to it (2D, 3D and AR), over the bridge and up the stairs too. Their map carries only the outdoor network (roads and walkways, walls, the bridge's deck and stairs), those places, and the unnamed indoor route nodes and stairs of their buildings: every other room and office stays hidden.
 
 ---
 
@@ -109,8 +113,8 @@ The trained models (`ml/model.json`, `ml/model_h60.json`, `ml/heat_model.json`),
 ### Tests
 
 ```bash
-php artisan test --compact                  # 285 PHP tests
-node --test src/*.test.mjs tests/*.test.mjs # 146 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, opening hours and closures, rain, heat, UV)
+php artisan test --compact                  # 287 PHP tests
+node --test src/*.test.mjs tests/*.test.mjs # 147 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, opening hours and closures, rain, heat, UV)
 python ml/test_satellite.py                 # satellite, cloud-motion and cloud-phase self-check (no network)
 vendor/bin/pint --format agent              # format PHP after changes
 ```

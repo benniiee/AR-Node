@@ -175,3 +175,15 @@ test('the sentence for a closed destination (no route is drawn to it)', () => {
     assert.equal(closedMessage('Canteen', openState(CANTEEN, MON_10)), null, 'open: no message, the route is drawn');
     assert.equal(closedMessage('Hall', null), null, 'no hours: always open');
 });
+
+test('the campus is closed outside its daily hours (9 pm to 6 am), in campus time', async () => {
+    const { campusClosed } = await import('./openingHours.js');
+    const hours = { opens: '06:00', closes: '21:00' };
+    assert.equal(campusClosed(hours, at('2026-11-23T20:59:00')), null, 'open until 9 pm');
+    assert.deepEqual(campusClosed(hours, at('2026-11-23T21:00:00')), { opens: '6 am', closes: '9 pm' });
+    assert.ok(campusClosed(hours, at('2026-11-24T05:59:00')), 'still closed before 6 am');
+    assert.equal(campusClosed(hours, at('2026-11-24T06:00:00')), null);
+    // A phone set to another time zone still uses campus time (21:30 in Manila = 13:30 UTC).
+    assert.ok(campusClosed(hours, new Date('2026-11-23T13:30:00Z')));
+    assert.equal(campusClosed(null, at('2026-11-23T23:00:00')), null, 'no hours: always open');
+});

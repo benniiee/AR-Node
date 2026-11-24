@@ -45,28 +45,42 @@ class MapSnapshot
     }
 
     /**
-     * What a visitor (not signed in) may see: building locations only. No
-     * offices, rooms, route nodes, staircases, walls or pathways. This is also
-     * the content of the public static file, which anyone can download.
+     * What a visitor (not signed in) may see: the buildings and the outdoor network that leads to them
+     * (roads and walkways, walls, outdoor route nodes such as a bridge's deck and stair feet, and the
+     * staircases between those), so a visitor can be routed to a building. No offices, rooms or
+     * anything inside a building. This is also the content of the public static file, which anyone
+     * can download.
      *
      * @return array<string, mixed>
      */
     public static function visitorPayload(): array
     {
         $full = self::fullPayload();
+        // Outdoor route nodes; the important places staff showed to visitors (is_public); and, to reach
+        // those, the unnamed route nodes of their buildings. No other place, nothing else inside.
+        $public = array_filter($full['nodes'], fn (array $n): bool => $n['type'] === 'location' && $n['is_public']);
+        $withPublic = array_flip(array_filter(array_column($public, 'building_id'), fn ($id) => $id !== null));
+        $outdoor = array_values(array_map(
+            fn (array $n): array => $n['type'] === 'route' ? ['name' => null] + $n : $n,
+            array_filter($full['nodes'], fn (array $n): bool => ($n['type'] === 'location' && $n['is_public'])
+                || ($n['type'] === 'route' && ($n['building_id'] === null || isset($withPublic[$n['building_id']])))),
+        ));
+        $ids = array_flip(array_column($outdoor, 'id'));
+        $links = array_values(array_filter($full['links'], fn (array $l): bool => isset($ids[$l['node_a_id']], $ids[$l['node_b_id']])));
 
         return [
             'version' => $full['version'],
-            'nodes' => [],
-            'links' => [],
-            'borders' => [],
+            'nodes' => $outdoor,
+            'links' => $links,
+            'borders' => $full['borders'],
             'buildings' => $full['buildings'],
-            'pathways' => [],
+            'pathways' => $full['pathways'],
             // Campus outlines and names are public, like the buildings; so are bridges (structures, not rooms).
             'campus_areas' => $full['campus_areas'],
             'bridges' => $full['bridges'],
             // School, campus, department and building announcements are public like the buildings; a room's are not.
             'closures' => array_values(array_filter($full['closures'], fn (array $c): bool => $c['node_id'] === null)),
+            'campus_hours' => $full['campus_hours'],
             'audience' => 'visitor',
         ];
     }
@@ -108,6 +122,7 @@ class MapSnapshot
                 'building_id' => $n->building_id,
                 // The place's own hours (null: its building's, if any).
                 'opening_hours' => $n->opening_hours,
+                'is_public' => (bool) $n->is_public,
                 // Department label colour. Creator names stay off the public
                 // feed - the admin panel reads those from GET /api/nodes.
                 'department' => $n->department ? [
@@ -193,7 +208,17 @@ class MapSnapshot
             'node_id' => $c->node_id,
             'starts_at' => $c->starts_at->toIso8601String(),
             'ends_at' => $c->ends_at->toIso8601String(),
-        ])->all()];
+        ])->all(), 'campus_hours' => self::campusHours()];
+    }
+
+    /**
+     * When /map can be used (config/campus.php): outside these hours the campus is closed.
+     *
+     * @return array{opens: string, closes: string}
+     */
+    private static function campusHours(): array
+    {
+        return ['opens' => (string) config('campus.opens_at'), 'closes' => (string) config('campus.closes_at')];
     }
 
     /**
@@ -244,6 +269,8 @@ class MapSnapshot
             // Only when there are bridges, so an unchanged map keeps its old hash (phones do not re-download it).
             ...(($payload['bridges'] ?? []) === [] ? [] : [$payload['bridges']]),
             ...(($payload['closures'] ?? []) === [] ? [] : [$payload['closures']]),
+            // Campus hours: a change reaches the phones' saved copies too.
+            $payload['campus_hours'] ?? null,
         ])), 0, 16);
 
         return [

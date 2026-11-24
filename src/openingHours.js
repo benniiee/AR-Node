@@ -239,3 +239,18 @@ export function closedMessage(name, status) {
     const reason = String(status.reason || '').trim();
     return `${name || 'This place'} is closed now${reason ? `: ${reason}` : ''}.${status.opens ? ` It opens ${status.opens}.` : ''}`;
 }
+
+/**
+ * Is the whole campus closed at `date` (outside its daily hours, campus time)? `hours`: { opens: '06:00',
+ * closes: '21:00' } from the map feed (config/campus.php); a closing time before the opening one wraps
+ * past midnight. Null while open or with no hours set; else { opens: '6 am', closes: '9 pm' }.
+ */
+export function campusClosed(hours, date = new Date()) {
+    if (!hours?.opens || !hours?.closes) return null;
+    const open = toMinutes(hours.opens);
+    const close = toMinutes(hours.closes);
+    if (!Number.isFinite(open) || !Number.isFinite(close) || open === close) return null;
+    const { minutes } = campusClock(date);
+    const isOpen = open < close ? minutes >= open && minutes < close : minutes >= open || minutes < close;
+    return isOpen ? null : { opens: formatTime(hours.opens), closes: formatTime(hours.closes) };
+}

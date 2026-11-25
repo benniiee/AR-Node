@@ -368,21 +368,26 @@ export function skyTint(altitudeDeg) {
 }
 
 /**
- * Is the wall stretch a-b behind a building, as the north-up 2.5D map is looked at (from the south)?
- * True when straight south of its middle there is a building: that building stands between it and
- * the viewer, so the wall is drawn under it. Otherwise the wall is in front and drawn over them.
+ * Is the wall stretch a-b (or a tree, bench or shed at a = b) behind a building, as the north-up 2.5D map
+ * is looked at (from the south)? True when a building stands straight south of its middle AND close
+ * enough that the two overlap on screen: within the building's roof lift (its walls are drawn rising
+ * north by that much), plus `reachM` for the thing's own size towards the building (a tree's crown).
+ * That building is between it and the viewer, so it is drawn under it. A building further south does
+ * not count: they never overlap, and counting it put a tree beside MSA behind MSA because CCS stands
+ * further south.
  */
-export function wallBehindBuilding(a, b, buildings) {
+export function wallBehindBuilding(a, b, buildings, reachM = 0) {
     const lat = (+a.lat + +b.lat) / 2;
     const lng = (+a.lng + +b.lng) / 2;
     return (buildings || []).some((bd) => {
         const ring = bd?.status !== 'planned' && Array.isArray(bd?.polygon) ? bd.polygon : [];
-        // Where the line running south from the wall's middle crosses the outline.
+        const coverM = roofLiftM(buildingHeightM(bd)) + Math.max(0, reachM) + 1;
+        // Where the line running south from the wall's middle crosses the outline, near enough.
         return ring.some((p, i) => {
             const q = ring[(i + 1) % ring.length];
             if ((+p.lng > lng) === (+q.lng > lng)) return false;
             const crossLat = +p.lat + ((lng - +p.lng) / (+q.lng - +p.lng)) * (+q.lat - +p.lat);
-            return crossLat < lat;
+            return crossLat < lat && (lat - crossLat) * 111320 <= coverM;
         });
     });
 }

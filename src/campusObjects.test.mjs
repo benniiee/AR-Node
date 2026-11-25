@@ -14,11 +14,26 @@ test('a tree looks the same every time from the same seed, and different from an
     assert.notDeepEqual(treeModel(tree()).puffs, treeModel(tree({ seed: 99 })).puffs);
     const m = treeModel(tree());
     assert.ok(m.crownTop <= 8 * 1.15 && m.crownTop > m.crownBase && m.crownBase > 0, 'the crown sits up the trunk, about the tree\'s height');
-    for (const form of ['round', 'spreading', 'tall', 'palm']) {
+    for (const form of ['round', 'spreading', 'canopy', 'tall', 'palm']) {
         assert.ok(crownFootprint(tree({ form })).length >= 8, `${form} has a crown outline`);
     }
     assert.equal(treeModel(tree({ form: 'palm' })).fronds.length >= 7, true, 'a palm has fronds');
     assert.ok(objectDefaults('shed').width_m > 0 && objectDefaults('tree').seed > 0);
+});
+
+test('a wide shade tree has limbs and a crown wider than tall, leaning out to one side', () => {
+    const m = treeModel(tree({ form: 'canopy', height_m: 10, width_m: 14 }));
+    assert.ok(m.limbs.length >= 5, 'heavy limbs out to its clumps');
+    assert.ok(m.crownTop <= 10 * 1.1, 'about the tree\'s height');
+    const squat = treeModel(tree({ form: 'canopy', height_m: 6, width_m: 20 }));
+    assert.ok(m.crownBase >= 2 - 1e-9 && squat.crownBase >= 2 - 1e-9, 'leaves hang low, but people still walk under them');
+    const xs = m.puffs.map((p) => p.e);
+    const ns = m.puffs.map((p) => p.n);
+    assert.ok(Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ns) - Math.min(...ns)) > m.crownTop - m.crownBase, 'wider than tall');
+    // Lopsided: the crown reaches further on one side of the trunk than on the other.
+    const mid = { e: xs.reduce((a, b) => a + b, 0) / xs.length, n: ns.reduce((a, b) => a + b, 0) / ns.length };
+    assert.ok(Math.hypot(mid.e, mid.n) > 1, 'the crown leans out');
+    assert.deepEqual(treeModel(tree({ form: 'round' })).limbs, [], 'other trees have no separate limbs');
 });
 
 test('a tree shades the ground away from the sun, and only while the sun is up', () => {

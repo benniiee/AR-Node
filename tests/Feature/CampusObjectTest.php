@@ -18,8 +18,8 @@ class CampusObjectTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
 
         $id = $this->postJson('/api/campus-objects', [
-            'kind' => 'tree', 'latitude' => 6.91, 'longitude' => 122.07, 'height_m' => 7, 'width_m' => 6, 'form' => 'spreading', 'seed' => 42,
-        ])->assertCreated()->assertJsonPath('form', 'spreading')->json('id');
+            'kind' => 'tree', 'latitude' => 6.91, 'longitude' => 122.07, 'height_m' => 7, 'width_m' => 6, 'form' => 'canopy', 'seed' => 42,
+        ])->assertCreated()->assertJsonPath('form', 'canopy')->json('id');
 
         $this->putJson("/api/campus-objects/{$id}", ['height_m' => 9.5, 'seed' => 7])
             ->assertOk()->assertJsonPath('height_m', 9.5)->assertJsonPath('seed', 7);

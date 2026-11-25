@@ -3778,6 +3778,9 @@ export default function ARView({
                 if (miniDirRef.current.getElement()) {
                     miniDirRef.current.getElement().style.display = rel === null ? 'none' : '';
                 }
+                // The arrow marks where you are; the white dot only when there is no arrow.
+                const dotEl = miniUserRef.current?.getElement();
+                if (dotEl) dotEl.style.display = rel === null ? '' : 'none';
                 // Heading pill mirrors the mobile page readout ("123° NE").
                 if (miniHdgRef.current) {
                     if (headingDeg === null) {

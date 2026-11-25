@@ -142,24 +142,59 @@ export function pathwayStyle(kind, status, theme = 'dark') {
 }
 
 /**
- * Map panes for the sunlit look, bottom to top:
- *   campusGround (380)  pathways: the ground that shadows fall onto
- *   skyTint      (375)  time-of-day tint over the base map (drawSkyTint)
- *   campusShadow (390)  sun shadows (blurred)
- *   overlayPane  (400)  buildings, walls, route  (Leaflet default)
- * Call once per map before drawing; harmless to call again.
+ * A layer group whose shapes (lines, polygons) are drawn in map pane `pane` (prepareCampusPanes), so they
+ * stay above or below other layers whatever is redrawn later. Shapes that already chose a pane (shadows,
+ * the floor guide) keep it; so do markers and labels.
+ */
+export function paneLayerGroup(pane) {
+    // Groups added inside it (a route's pieces above and below a floor) carry the pane down to their shapes.
+    const claim = (layer) => {
+        if (layer instanceof L.Path) {
+            if (layer.options.pane === 'overlayPane') layer.options.pane = pane;
+        } else if (layer instanceof L.LayerGroup && !layer.campusPane) {
+            layer.campusPane = pane;
+            const add = layer.addLayer.bind(layer);
+            layer.addLayer = (child) => { claim(child); return add(child); };
+            layer.eachLayer(claim);
+        }
+    };
+    const group = L.layerGroup();
+    claim(group);
+    return group;
+}
+
+/**
+ * Map panes for the sunlit 2.5D look, bottom to top:
+ *   skyTint            (375)  time-of-day tint over the base map (drawSkyTint)
+ *   campusGround       (380)  pathways: the ground that shadows fall onto
+ *   campusShadow       (390)  sun shadows (blurred)
+ *   campusAreas        (391)  campus areas
+ *   campusBack         (393)  walls behind a building
+ *   campusBackObjects  (394)  trees, benches, sheds behind a building
+ *   campusBuildings    (395)  buildings
+ *   campusFront        (396)  walls in front of the buildings
+ *   campusFrontObjects (397)  trees, benches, sheds in front of them
+ *   campusBridges      (398)  bridges over it all
+ *   campusTop          (399)  route, staircases, building cut-away, wall editor
+ *   overlayPane        (400)  anything drawn straight on the map: editor drafts, picked-node rings, GPS accuracy
+ *   floorGuide         (410)  the "which floor" guide
+ * Each its own pane because in one shared pane the last drawn wins: a redraw (Student view -> Admin view
+ * -> Student view, saving a tree) put trees, walls and the floor guide behind or in front of the buildings
+ * at random. Call once per map before drawing; harmless to call again.
  */
 export function prepareCampusPanes(map) {
     ensureStyles();
     if (!map.getPane('campusGround')) map.createPane('campusGround').style.zIndex = 380;
-    // The floor guide (drawFloorGuide) sits above the buildings (overlay pane, 400) and under the
-    // node pins (600): buildings are redrawn on every view change, and in a shared pane the last
-    // drawn wins, which buried the guide's floor plate after Student view -> Admin view -> Student view.
     if (!map.getPane('floorGuide')) {
         const guide = map.createPane('floorGuide');
         guide.style.zIndex = 410;
         guide.style.pointerEvents = 'none';
     }
+    const stack = [
+        ['campusAreas', 391], ['campusBack', 393], ['campusBackObjects', 394], ['campusBuildings', 395],
+        ['campusFront', 396], ['campusFrontObjects', 397], ['campusBridges', 398], ['campusTop', 399],
+    ];
+    for (const [name, z] of stack) if (!map.getPane(name)) map.createPane(name).style.zIndex = z;
     if (!map.getPane('campusShadow')) {
         const pane = map.createPane('campusShadow');
         pane.style.zIndex = 390;
@@ -1029,7 +1064,7 @@ const OBJECT_TONES = { trunk: '#6b4a2e', bench: '#8b5a2b', benchSide: '#5f3c1d',
  * are drawn into `layer` under the buildings, the rest into `frontLayer` over them. `onSelect(obj)` makes
  * them clickable (the editor); `selectedId` is outlined.
  */
-export function drawCampusObjects(layer, objects, { extrude = false, sun = null, buildings = [], frontLayer = null, onSelect = null, selectedId = null } = {}) {
+export function drawCampusObjects(layer, objects, { extrude = false, sun = null, buildings = [], frontLayer = null, onSelect = null, selectedId = null, onMove = null } = {}) {
     layer.clearLayers();
     frontLayer?.clearLayers();
     const list = (objects || []).filter((o) => Number.isFinite(+o.latitude) && Number.isFinite(+o.longitude));
@@ -1046,7 +1081,9 @@ export function drawCampusObjects(layer, objects, { extrude = false, sun = null,
     const sorted = [...list].sort((a, b) => +b.latitude - +a.latitude);
     for (const o of sorted) {
         const here = { lat: +o.latitude, lng: +o.longitude };
-        const into = frontLayer && !wallBehindBuilding(here, here, buildings) ? frontLayer : layer;
+        // A tree's crown reaches out over its width; benches, sheds and gates are about a metre.
+        const reach = o.kind === 'tree' ? (Number(o.width_m) || 4) / 2 : 1;
+        const into = frontLayer && !wallBehindBuilding(here, here, buildings, reach) ? frontLayer : layer;
         const selected = selectedId !== null && String(o.id) === String(selectedId);
         const hit = (shape) => {
             if (!onSelect || !shape) return;
@@ -1083,8 +1120,25 @@ export function drawCampusObjects(layer, objects, { extrude = false, sun = null,
                 hit(top);
             }
         }
+        // The selected one gets a handle to drag it somewhere else (tapping the map also moves it).
+        if (selected && onMove) {
+            const handle = L.marker([here.lat, here.lng], { icon: MOVE_HANDLE_ICON, draggable: true, zIndexOffset: 2000, keyboard: false, title: 'Drag to move' });
+            handle.on('dragend', () => { const p = handle.getLatLng(); onMove(p.lat, p.lng); });
+            handle.on('click', (e) => L.DomEvent.stopPropagation(e));
+            handle.addTo(frontLayer || layer);
+        }
     }
 }
+
+// A round green grip with four arrows, on the selected campus object's base point.
+const MOVE_HANDLE_ICON = L.divIcon({
+    className: '',
+    html: '<div style="width:34px;height:34px;border-radius:50%;background:#22c55e;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;cursor:grab" role="img" aria-label="Drag to move">'
+        + '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg></div>',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+});
 
 /** One tree: the trunk standing up to the crown, then the crown's puffs (or a palm's fronds), lit from above. */
 function drawTree25D(into, o, liftM, hit, outline, interactive) {
@@ -1096,10 +1150,22 @@ function drawTree25D(into, o, liftM, hit, outline, interactive) {
     const off = (e, n, u = 0) => [base.lat + n / 111320 + liftM(u), base.lng + e / k];
     // Trunk: a thin upright band from the ground to where the crown starts.
     const tr = m.trunkR;
-    const topU = m.fronds.length ? m.trunkH : m.crownBase + 0.3;
+    const topU = m.fronds.length || m.limbs.length ? m.trunkH : m.crownBase + 0.3;
     L.polygon([off(-tr, 0, 0), off(tr, 0, 0), off(m.lean.e + tr * 0.7, m.lean.n, topU), off(m.lean.e - tr * 0.7, m.lean.n, topU)], {
         stroke: false, fillColor: OBJECT_TONES.trunk, fillOpacity: 1, interactive: false,
     }).addTo(into);
+    // A shade tree's limbs, from the top of the trunk out to its clumps (drawn first: the leaves cover their ends).
+    for (const l of m.limbs) {
+        const len = Math.hypot(l.e, l.n) || 1;
+        const pe = -l.n / len;
+        const pn = l.e / len;
+        const w0 = tr * 0.6;
+        const w1 = tr * 0.22;
+        L.polygon([
+            off(m.lean.e + pe * w0, m.lean.n + pn * w0, m.trunkH), off(m.lean.e - pe * w0, m.lean.n - pn * w0, m.trunkH),
+            off(m.lean.e + l.e - pe * w1, m.lean.n + l.n - pn * w1, l.u), off(m.lean.e + l.e + pe * w1, m.lean.n + l.n + pn * w1, l.u),
+        ], { stroke: false, fillColor: OBJECT_TONES.trunk, fillOpacity: 1, interactive: false }).addTo(into);
+    }
     if (m.fronds.length) {
         let lastFrond = null;
         for (const f of m.fronds) {

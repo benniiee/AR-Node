@@ -31,7 +31,7 @@ class CampusObject extends Model
     public const KINDS = ['tree', 'bench', 'shed', 'gate'];
 
     /** A tree's shape (src/campusObjects.js TREE_FORMS). */
-    public const TREE_FORMS = ['round', 'spreading', 'tall', 'palm'];
+    public const TREE_FORMS = ['round', 'spreading', 'canopy', 'tall', 'palm'];
 
     protected $fillable = ['kind', 'latitude', 'longitude', 'rotation_deg', 'height_m', 'width_m', 'length_m', 'form', 'seed'];
 

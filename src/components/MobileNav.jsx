@@ -24,8 +24,9 @@ import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPU
 import { headingFromOrientationEvent, headingAccuracyFromEvent, createCompassWatcher, compassLabel } from '../heading';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../povMotion';
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint, drawWalls25D, drawCampusObjects, drawRouteDirection } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint, drawWalls25D, drawCampusObjects, drawRouteDirection, directionArrowIcon, paneLayerGroup } from '../campusLayers';
 import { bordersWithGates } from '../campusObjects';
+import { startBearing } from '../routeArrows';
 import { sunPosition, roofLiftM } from '../sunShadow';
 import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements, closedMessage, campusClosed, formatTime } from '../openingHours';
 import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
@@ -63,6 +64,9 @@ const USER_ICON = L.divIcon({
     iconSize: [18, 18],
     iconAnchor: [9, 9],
 });
+// With a route, the "you" marker is the raised blue arrow pointing the way to walk (rounded to 5 degrees, so
+// GPS jitter does not rebuild it on every fix); without one, the white dot.
+const userIconFor = (heading) => (heading === null ? USER_ICON : directionArrowIcon(heading));
 
 // Does this browser hide the orientation API behind a permission prompt
 // (iOS Safari, some Android builds)? If so, the 2D view must ask from inside
@@ -169,6 +173,14 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const mapInstance = useRef(null);
     const markersRef = useRef({});
     const userMarkerRef = useRef(null);
+    // Which way the route leaves your position (degrees), or null when there is no route.
+    const routeHeadingRef = useRef(null);
+    const setRouteHeading = (deg) => {
+        const next = deg === null || !Number.isFinite(deg) ? null : Math.round(deg / 5) * 5 % 360;
+        if (next === routeHeadingRef.current) return;
+        routeHeadingRef.current = next;
+        userMarkerRef.current?.setIcon(userIconFor(next));
+    };
     const accuracyRef = useRef(null);
     const routeLayerRef = useRef(null);
     const buildingLayerRef = useRef(null);
@@ -981,21 +993,21 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // Pathways and building labels sit under the route and the pins.
         prepareCampusPanes(map);
         // Campus outlines first: everything else draws over them.
-        areaLayerRef.current = L.layerGroup().addTo(map);
+        areaLayerRef.current = paneLayerGroup('campusAreas').addTo(map);
         pathwayLayerRef.current = L.layerGroup().addTo(map);
         // Sun shadows fall over the paths but under the buildings' roofs.
         shadowLayerRef.current = L.layerGroup().addTo(map);
         // Walls (2.5D) under the buildings: a building in front of a wall covers it.
-        wallLayerRef.current = L.layerGroup().addTo(map);
-        objectLayerRef.current = L.layerGroup().addTo(map);
-        buildingLayerRef.current = L.layerGroup().addTo(map);
+        wallLayerRef.current = paneLayerGroup('campusBack').addTo(map);
+        objectLayerRef.current = paneLayerGroup('campusBackObjects').addTo(map);
+        buildingLayerRef.current = paneLayerGroup('campusBuildings').addTo(map);
         // Walls in front of the buildings (south of them, nearer the viewer) draw over them.
-        wallFrontLayerRef.current = L.layerGroup().addTo(map);
-        objectFrontLayerRef.current = L.layerGroup().addTo(map);
-        bridgeLayerRef.current = L.layerGroup().addTo(map);
-        cutawayLayerRef.current = L.layerGroup().addTo(map);
+        wallFrontLayerRef.current = paneLayerGroup('campusFront').addTo(map);
+        objectFrontLayerRef.current = paneLayerGroup('campusFrontObjects').addTo(map);
+        bridgeLayerRef.current = paneLayerGroup('campusBridges').addTo(map);
+        cutawayLayerRef.current = paneLayerGroup('campusTop').addTo(map);
         bindLabelZoom(map);
-        routeLayerRef.current = L.layerGroup().addTo(map);
+        routeLayerRef.current = paneLayerGroup('campusTop').addTo(map);
         mapInstance.current = map;
 
         map.on('click', (e) => {
@@ -1180,7 +1192,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             // adopted", which drives the watch bootstrapping.
             follow.moveTo(ll[0], ll[1]);
         } else {
-            userMarkerRef.current = L.marker(ll, { icon: USER_ICON, zIndexOffset: 1000, title: 'Your location' }).addTo(map);
+            userMarkerRef.current = L.marker(ll, { icon: userIconFor(routeHeadingRef.current), zIndexOffset: 1000, title: 'Your location' }).addTo(map);
             follow.snapTo(ll[0], ll[1]);
         }
         // Anything created now starts where the dot is DRAWN, not at the
@@ -1234,6 +1246,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             setRoute(null);
             setNoRoute(null);
             routeLayerRef.current?.clearLayers();
+            setRouteHeading(null);
             return;
         }
         // Closed right now: no route, just why and when it opens (it reappears once open).
@@ -1241,6 +1254,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             setRoute(null);
             setNoRoute(destClosed);
             routeLayerRef.current?.clearLayers();
+            setRouteHeading(null);
             return;
         }
         try {
@@ -1278,6 +1292,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             // with a destination chosen.
             setNoRoute(result.success ? null : (result.message || 'No walking path to there yet.'));
             routeLayerRef.current?.clearLayers();
+            setRouteHeading(null);
             if (result.success && mapInstance.current) {
                 // Only the part of the route on the floor being shown is
                 // drawn; the rest appears when the student changes floor.
@@ -1400,9 +1415,12 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                     color: C.route, weight: 6, opacity: 0.95,
                     lineJoin: 'round', lineCap: 'round',
                 }).addTo(routeLayerRef.current);
-                // Which way to go: white chevrons along the line, and a raised arrow at your position
-                // pointing the way to start walking.
-                drawRouteDirection(routeLayerRef.current, lines);
+                // Which way to go: white chevrons along the line; your own marker turns into the raised
+                // arrow pointing the way to walk from here (the route starts where you are).
+                drawRouteDirection(routeLayerRef.current, lines, { userArrow: false });
+                // Only when the line shown starts where you are (not on another floor of a building).
+                const startsHere = effectiveUser && L.latLng(lines[0][0]).distanceTo([effectiveUser.latitude, effectiveUser.longitude]) < 15;
+                setRouteHeading(startsHere ? startBearing(lines[0]) : null);
                 above.addTo(routeLayerRef.current);
                 // Frame the route only when the destination itself changes,
                 // never on GPS drift — the view must stay put while testing.
@@ -1436,6 +1454,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         setRoute(null);
         setNoRoute(null);
         routeLayerRef.current?.clearLayers();
+        setRouteHeading(null);
     }, [destId, nodes, showAR, loading, buildingsById]);
 
     // While the 3D view is open, keep feeding it the live route: the route
@@ -1740,6 +1759,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         setRouteModelOpen(false);
         prevDestRef.current = null;
         routeLayerRef.current?.clearLayers();
+        setRouteHeading(null);
         setDestinationOpen(false);
     };
     const chooseDestination = (d) => {

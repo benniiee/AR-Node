@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActionBar, Sheet, Segmented } from './MapControls';
 import { OBJECT_KINDS, TREE_FORMS, kindLabel, newSeed } from '../campusObjects';
+import { ObjectPreview3D } from './Lazy3D';
 
 /** A number field in metres (or degrees), clamped on blur by the server's limits. */
 function NumberField({ id, label, value, onChange, step = 0.1, min = 0.2, max = 40, unit = 'm' }) {
@@ -22,9 +23,9 @@ function NumberField({ id, label, value, onChange, step = 0.1, min = 0.2, max = 
 /**
  * Campus objects tool (admin): pick what to place (tree, bench, shed, gate) and tap the map, like placing
  * buildings in a city-builder game. A placed object, when tapped, opens here to change its size and look;
- * a tap on the map then moves it.
+ * dragging its green handle or tapping the map moves it.
  */
-export default function ObjectPalette({ count, placeKind, onPlaceKind, selected, onChange, onSave, onDelete, onDeselect, onDone, saving = false, note = null }) {
+export default function ObjectPalette({ count, placeKind, onPlaceKind, selected, onChange, onSave, onDelete, onDeselect, onDone, saving = false, note = null, campus = null }) {
     if (!selected) {
         return (
             <ActionBar
@@ -41,7 +42,7 @@ export default function ObjectPalette({ count, placeKind, onPlaceKind, selected,
     return (
         <Sheet
             title={kindLabel(kind)}
-            subtitle={note || 'Tap the map to move it here.'}
+            subtitle={note || 'Drag the green handle, or tap the map, to move it. Save keeps the new spot.'}
             onClose={onDeselect}
             footer={(
                 <div className="mt-sheet-foot">
@@ -51,6 +52,12 @@ export default function ObjectPalette({ count, placeKind, onPlaceKind, selected,
                 </div>
             )}
         >
+            {campus && (
+                <ObjectPreview3D
+                    object={selected} objects={campus.objects} buildings={campus.buildings}
+                    pathways={campus.pathways} bridges={campus.bridges} height={230}
+                />
+            )}
             {kind === 'tree' && (
                 <>
                     <div className="ui-field">

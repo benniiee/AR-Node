@@ -22,7 +22,7 @@ import ScrollWindow from './ScrollWindow';
 import SunTimeSlider from './SunTimeSlider';
 import { useSatelliteSettings, useSatelliteLayer } from '../useSatellite';
 import { sunPosition } from '../sunShadow';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS, drawSkyTint, drawWalls25D, drawCampusObjects } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS, drawSkyTint, drawWalls25D, drawCampusObjects, paneLayerGroup } from '../campusLayers';
 import { buildingAt, nodePlaceLabel, floorCountLabel, statusLabel, kindLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, bridgeDeckHeightM, pointInPolygon } from '../campusGeometry';
 import {
     MAP_CONTROLS_CSS, ToolDock, ActionBar, Sheet, NodeForm, MenuToggle, MenuAction, StairLinks, NewStairModal,
@@ -711,22 +711,22 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         // Pathways and buildings first, so walls, stairs and routes draw on top.
         prepareCampusPanes(map);
         // Campus outlines lie under everything else.
-        areaLayerRef.current = L.layerGroup().addTo(map);
+        areaLayerRef.current = paneLayerGroup('campusAreas').addTo(map);
         pathwayLayerRef.current = L.layerGroup().addTo(map);
         shadowLayerRef.current = L.layerGroup().addTo(map);
-        wallBackLayerRef.current = L.layerGroup().addTo(map);
-        objectLayerRef.current = L.layerGroup().addTo(map);
-        buildingLayerRef.current = L.layerGroup().addTo(map);
-        wallFrontLayerRef.current = L.layerGroup().addTo(map);
-        objectFrontLayerRef.current = L.layerGroup().addTo(map);
+        wallBackLayerRef.current = paneLayerGroup('campusBack').addTo(map);
+        objectLayerRef.current = paneLayerGroup('campusBackObjects').addTo(map);
+        buildingLayerRef.current = paneLayerGroup('campusBuildings').addTo(map);
+        wallFrontLayerRef.current = paneLayerGroup('campusFront').addTo(map);
+        objectFrontLayerRef.current = paneLayerGroup('campusFrontObjects').addTo(map);
         // Bridges over the roads between buildings: above the buildings (and the walls).
-        bridgeLayerRef.current = L.layerGroup().addTo(map);
+        bridgeLayerRef.current = paneLayerGroup('campusBridges').addTo(map);
         // "Which floor": the cut-away guide while placing a node in a building.
         floorGuideLayerRef.current = L.layerGroup().addTo(map);
         bindLabelZoom(map);
-        routeLayerRef.current = L.layerGroup().addTo(map);
-        borderLayerRef.current = L.layerGroup().addTo(map);
-        linkLayerRef.current = L.layerGroup().addTo(map);
+        routeLayerRef.current = paneLayerGroup('campusTop').addTo(map);
+        borderLayerRef.current = paneLayerGroup('campusTop').addTo(map);
+        linkLayerRef.current = paneLayerGroup('campusTop').addTo(map);
         mapInstance.current = map;
 
         loadData();
@@ -1008,26 +1008,46 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         drawCampusObjects(objectLayerRef.current, shownObjects, {
             extrude: isStudentView, sun: isStudentView ? sunForWalls : null, buildings,
             frontLayer: objectFrontLayerRef.current,
-            onSelect: tool === TOOL_OBJECTS ? (o) => { setObjectNote(null); setObjectDraft({ ...o }); } : null,
+            onSelect: tool === TOOL_OBJECTS ? (o) => {
+                setObjectNote(null);
+                setObjectDraft({ ...o });
+                // Keep it (and its move handle) in sight beside the panel that opens: the panel sits at the
+                // bottom left on a computer and along the bottom on a phone.
+                const wide = window.innerWidth > 900;
+                mapInstance.current?.panInside([+o.latitude, +o.longitude], {
+                    paddingTopLeft: [wide ? 420 : 40, 80],
+                    paddingBottomRight: [60, wide ? 60 : Math.round(window.innerHeight * 0.62)],
+                });
+            } : null,
             selectedId: objectDraft?.id ?? null,
+            onMove: tool === TOOL_OBJECTS ? (lat, lng) => {
+                setObjectDraft((d) => {
+                    if (!d) return d;
+                    const spot = objectSpot(d.kind, lat, lng);
+                    return spot ? { ...d, ...spot } : d;
+                });
+            } : null,
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [shownObjects, isStudentView, sunWallsKey, buildings, tool, objectDraft?.id]);
+    }, [shownObjects, isStudentView, sunWallsKey, buildings, tool, objectDraft?.id, borders]);
+
+    // Where an object of `kind` goes when put at lat/lng: a gate snaps onto the nearest wall (null, with a
+    // note, when no wall is near); everything else stays where it was put.
+    const objectSpot = (kind, lat, lng) => {
+        if (kind !== 'gate') { setObjectNote(null); return { latitude: lat, longitude: lng }; }
+        const snap = snapGateToWall(borders, lat, lng);
+        setObjectNote(snap ? null : 'A gate goes in a wall: put it on or next to one.');
+        return snap;
+    };
 
     // Objects tool: a tap on the map places the chosen kind (saved at once), or moves the one open for changes.
     useEffect(() => {
         const map = mapInstance.current;
         if (!map || tool !== TOOL_OBJECTS) return undefined;
         const onClick = async (e) => {
-            const at = { latitude: e.latlng.lat, longitude: e.latlng.lng };
             const kind = objectDraft ? objectDraft.kind : objectKind;
-            let spot = at;
-            if (kind === 'gate') {
-                const snap = snapGateToWall(borders, at.latitude, at.longitude);
-                if (!snap) { setObjectNote('A gate goes in a wall: tap on or next to one.'); return; }
-                spot = snap;
-            }
-            setObjectNote(null);
+            const spot = objectSpot(kind, e.latlng.lat, e.latlng.lng);
+            if (!spot) return;
             if (objectDraft) { setObjectDraft((d) => ({ ...d, ...spot })); return; }
             try {
                 const created = await api.createCampusObject({ ...objectDefaults(kind), ...spot });
@@ -1316,16 +1336,17 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         wallBackLayerRef.current?.clearLayers();
         wallFrontLayerRef.current?.clearLayers();
 
-        // Student view, nothing being edited: the walls stand up like the buildings (2.5D), as on /map:
-        // behind a building under it, in front over it.
-        if (showBorders && isStudentView && tool === IDLE && !isDrawingBorder && wallBackLayerRef.current) {
+        // Student view, no wall being edited (nothing open, or the trees / benches / sheds / gates tool): the
+        // walls stand up like the buildings (2.5D), as on /map: behind a building under it, in front over it.
+        const wallsStand = isStudentView && (tool === IDLE || tool === TOOL_OBJECTS);
+        if (showBorders && wallsStand && !isDrawingBorder && wallBackLayerRef.current) {
             drawWalls25D(wallBackLayerRef.current, walls, { theme: mapTheme, sun: sunForWalls, buildings, frontLayer: wallFrontLayerRef.current });
             return;
         }
 
         // Saved walls honor the visibility toggle; the live draft below it
         // always draws, so points stay visible while creating or editing.
-        if (showBorders && !(isStudentView && tool === IDLE)) {
+        if (showBorders && !wallsStand) {
             for (const group of borders) {
                 if (!group.coordinates || group.coordinates.length < 2) continue;
                 // The wall being edited is drawn as the draft instead, so it
@@ -1354,7 +1375,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 // wall's card (Edit / Remove). In the Walls tool with an empty draft, a tap on
                 // one of its NODES still starts a new wall joined there (the old behaviour);
                 // bubblingMouseEvents off so the tap never also adds a draft point.
-                L.polyline(latlngs, {
+                // Not while placing trees, benches, sheds and gates: a tap on a wall there puts a gate in it.
+                if (tool !== TOOL_OBJECTS) L.polyline(latlngs, {
                     weight: 26,
                     opacity: 0,
                     interactive: true,
@@ -1457,7 +1479,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 });
             });
         }
-    }, [borders, drawingBorderPoints, showBorders, editingWallId, isDrawingBorder, isStudentView, tool, mapTheme, sunWallsKey, buildings]);
+    }, [borders, walls, drawingBorderPoints, showBorders, editingWallId, isDrawingBorder, isStudentView, tool, mapTheme, sunWallsKey, buildings]);
 
     // Manage pending node marker
     useEffect(() => {
@@ -3187,6 +3209,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         placeKind={objectKind}
                         onPlaceKind={(k) => { setObjectKind(k); setObjectNote(null); }}
                         selected={objectDraft}
+                        campus={{ objects: shownObjects, buildings, pathways, bridges }}
                         onChange={(patch) => setObjectDraft((d) => ({ ...d, ...patch }))}
                         onSave={saveObject}
                         onDelete={removeObject}

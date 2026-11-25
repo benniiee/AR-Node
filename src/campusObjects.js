@@ -18,7 +18,8 @@ export const OBJECT_KINDS = [
 /** A tree's overall shape (CampusObject::TREE_FORMS). */
 export const TREE_FORMS = [
     { value: 'round', label: 'Round (like a mango tree)' },
-    { value: 'spreading', label: 'Spreading (like an acacia)' },
+    { value: 'spreading', label: 'Spreading dome' },
+    { value: 'canopy', label: 'Wide shade tree (like an acacia or rain tree)' },
     { value: 'tall', label: 'Tall and narrow' },
     { value: 'palm', label: 'Palm' },
 ];
@@ -52,10 +53,13 @@ const num = (v, fallback) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Numb
 
 /**
  * A tree's shape in metres around its base (east, north, up): the trunk, and the crown as a cluster of
- * round puffs (a palm: fronds from the top of a tall trunk). Same object, same shape.
+ * round puffs (a palm: fronds from the top of a tall trunk; a wide shade tree: heavy limbs from a short
+ * trunk out to clumps of leaves). Same object, same shape. Puffs and limb ends are relative to the trunk's
+ * top (`lean`).
  *
  * @returns {{ trunkH: number, trunkR: number, lean: {e:number,n:number}, crownR: number, crownBase: number,
- *   crownTop: number, puffs: Array<{e:number,n:number,u:number,r:number}>, fronds: Array<{dir:number,len:number,droop:number}> }}
+ *   crownTop: number, puffs: Array<{e:number,n:number,u:number,r:number}>, fronds: Array<{dir:number,len:number,droop:number}>,
+ *   limbs: Array<{e:number,n:number,u:number}> }}
  */
 export function treeModel(obj) {
     const rand = seededRandom(obj.seed);
@@ -74,8 +78,9 @@ export function treeModel(obj) {
         for (let i = 0; i < count; i += 1) {
             fronds.push({ dir: (i / count) * 360 + rand() * 20, len: crownR * (0.75 + rand() * 0.3), droop: 0.35 + rand() * 0.3 });
         }
-        return { trunkH, trunkR: 0.16, lean, crownR, crownBase: trunkH - 0.6, crownTop: h, puffs, fronds };
+        return { trunkH, trunkR: 0.16, lean, crownR, crownBase: trunkH - 0.6, crownTop: h, puffs, fronds, limbs: [] };
     }
+    if (form === 'canopy') return canopyModel(h, w, rand);
     if (form === 'tall') {
         crownR = Math.min(w / 2, h * 0.18);
         trunkH = h * 0.3;
@@ -106,7 +111,46 @@ export function treeModel(obj) {
     }
     const crownBase = Math.min(...puffs.map((p) => p.u - p.r));
     const crownTop = Math.max(...puffs.map((p) => p.u + p.r));
-    return { trunkH, trunkR: Math.max(0.12, Math.min(0.35, h * 0.03)), lean, crownR, crownBase, crownTop, puffs, fronds };
+    return { trunkH, trunkR: Math.max(0.12, Math.min(0.35, h * 0.03)), lean, crownR, crownBase, crownTop, puffs, fronds, limbs: [] };
+}
+
+/**
+ * A big tropical shade tree (acacia, rain tree, narra), as along the WMSU fence: a short, thick trunk that
+ * splits into a few heavy limbs, each ending in a clump of leaves; the crown is much wider than it is tall
+ * and leans out to one side (over a road or walkway), where its clumps hang lower.
+ */
+function canopyModel(h, w, rand) {
+    const crownR = w / 2;
+    const trunkH = h * 0.32;
+    const dir = rand() * Math.PI * 2;
+    const lean = { e: Math.sin(dir) * h * 0.05, n: Math.cos(dir) * h * 0.05 };
+    // The crown's middle sits out over the side it leans to.
+    const mid = { e: Math.sin(dir) * crownR * 0.28, n: Math.cos(dir) * crownR * 0.28 };
+    const puffs = [];
+    const limbs = [];
+    // Leaves hang low but never below head height, so people still walk under the tree.
+    const clearM = Math.max(2, h * 0.2);
+    const clump = (e, n, uWanted, r) => {
+        const u = Math.max(uWanted, clearM + r);
+        limbs.push({ e, n, u: u - r * 0.3 });
+        puffs.push({ e, n, u, r });
+        const a = rand() * Math.PI * 2;
+        puffs.push({ e: e + Math.sin(a) * r * 0.6, n: n + Math.cos(a) * r * 0.6, u: u + (rand() - 0.3) * r * 0.4, r: r * (0.65 + rand() * 0.15) });
+    };
+    const count = 5 + Math.floor(rand() * 3);
+    for (let i = 0; i < count; i += 1) {
+        const ang = dir + (i / count) * Math.PI * 2 + (rand() - 0.5) * 0.6;
+        const dist = crownR * (0.4 + rand() * 0.2);
+        const r = crownR * 0.36 * (0.85 + rand() * 0.3);
+        // Clumps on the leaning side hang lower, like branches reaching out over the road.
+        const out = Math.max(0, Math.cos(ang - dir));
+        clump(mid.e + Math.sin(ang) * dist, mid.n + Math.cos(ang) * dist, h * (0.6 + (rand() - 0.5) * 0.1) - out * h * 0.14, r);
+    }
+    // One clump on top, over the middle, so the crown is a dense mass rather than a ring.
+    clump(mid.e * 0.6, mid.n * 0.6, h - crownR * 0.3, crownR * 0.4);
+    const crownBase = Math.min(...puffs.map((p) => p.u - p.r));
+    const crownTop = Math.max(...puffs.map((p) => p.u + p.r));
+    return { trunkH, trunkR: Math.max(0.22, Math.min(0.55, h * 0.045)), lean, crownR, crownBase, crownTop, puffs, fronds: [], limbs };
 }
 
 /** Point `east`/`north` metres from the object, as {lat, lng}. */
@@ -132,11 +176,19 @@ export function crownFootprint(obj, sides = 16) {
         });
         return pts;
     }
-    const reach = Math.max(...m.puffs.map((p) => Math.hypot(p.e, p.n) + p.r));
+    // How far the crown reaches in each direction from the trunk's top, puff by puff, so a lopsided crown
+    // (a shade tree leaning over a road) keeps its shape and its shade falls on the right side.
     return Array.from({ length: sides }, (_, i) => {
         const a = (i / sides) * Math.PI * 2;
-        const r = reach * (0.86 + rand() * 0.16);
-        return offset(obj, m.lean.e + Math.sin(a) * r, m.lean.n + Math.cos(a) * r);
+        const dx = Math.sin(a);
+        const dy = Math.cos(a);
+        let reach = 0;
+        for (const p of m.puffs) {
+            const across = Math.abs(p.e * dy - p.n * dx);
+            if (across < p.r) reach = Math.max(reach, p.e * dx + p.n * dy + Math.sqrt(p.r * p.r - across * across));
+        }
+        const r = Math.max(reach, m.trunkR) * (0.9 + rand() * 0.1);
+        return offset(obj, m.lean.e + dx * r, m.lean.n + dy * r);
     });
 }
 

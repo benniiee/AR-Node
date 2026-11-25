@@ -142,8 +142,9 @@ function screenLabel(text, opts = {}, size = 0.05) {
  * lat/lng to scene mapping (`xz`) with the route's points, for the follow view.
  * follow: the live 3D view walks a person along instead of the fixed one at the
  * start, and draws the roads and walkways (`pathways`) on the ground.
+ * origin: {lat, lng} to centre the scene on when there is no route (the campus object preview).
  */
-export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false }) {
+export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false, origin = null }) {
     const path = route?.path || [];
     const byId = new Map((buildings || []).map((b) => [b.id, b]));
     const inside = new Map();
@@ -155,7 +156,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
     const focus = byId.get([...inside.keys()][0]) || null;
     const originLL = focus?.polygon?.length
         ? { lat: focus.polygon.reduce((s, p) => s + +p.lat, 0) / focus.polygon.length, lng: focus.polygon.reduce((s, p) => s + +p.lng, 0) / focus.polygon.length }
-        : (path.length ? { lat: path[path.length - 1].latitude, lng: path[path.length - 1].longitude } : null);
+        : (path.length ? { lat: path[path.length - 1].latitude, lng: path[path.length - 1].longitude } : origin);
     if (!originLL) return { target: new THREE.Vector3(), radius: 20 };
     const xz = (lat, lng) => { const [e, n] = toLocalMeters(+lat, +lng, originLL.lat, originLL.lng); return { x: e, z: -n }; };
     const storey = (b) => buildingHeightM(b) / Math.max(1, Number(b.floors) || 1);
@@ -569,7 +570,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             if (o.kind === 'tree') {
                 const m = treeModel(o);
                 const leaf = leafMats[Math.floor(seededRandom((Number(o.seed) || 1) + 3)() * leafMats.length)];
-                const topU = m.fronds.length ? m.trunkH : m.crownBase + 0.3;
+                const topU = m.fronds.length || m.limbs.length ? m.trunkH : m.crownBase + 0.3;
                 const trunk = new THREE.Mesh(new THREE.CylinderGeometry(m.trunkR * 0.7, m.trunkR, topU, 8), trunkMat);
                 trunk.position.set(base.x + m.lean.e / 2, topU / 2, base.z - m.lean.n / 2);
                 trunk.rotation.z = -Math.atan2(m.lean.e, topU);
@@ -588,10 +589,21 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
                         group.add(frond);
                     }
                 } else {
+                    // A shade tree's limbs: tapered branches from the top of the trunk out to each clump.
+                    const top = new THREE.Vector3(base.x + m.lean.e, m.trunkH, base.z - m.lean.n);
+                    for (const l of m.limbs) {
+                        const d = new THREE.Vector3(base.x + m.lean.e + l.e, l.u, base.z - m.lean.n - l.n).sub(top);
+                        const len = d.length();
+                        const limb = new THREE.Mesh(new THREE.CylinderGeometry(m.trunkR * 0.25, m.trunkR * 0.55, len, 6), trunkMat);
+                        limb.position.copy(top).addScaledVector(d, 0.5);
+                        limb.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+                        group.add(limb);
+                    }
                     for (const p of m.puffs) {
                         const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(p.r, 1), leaf);
                         puff.position.set(base.x + m.lean.e + p.e, p.u, base.z - m.lean.n - p.n);
-                        puff.scale.y = 0.85;
+                        // Shade trees' clumps are flat layers of leaves; other crowns are rounder.
+                        puff.scale.y = m.limbs.length ? 0.6 : 0.85;
                         group.add(puff);
                     }
                 }

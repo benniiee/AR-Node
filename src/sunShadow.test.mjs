@@ -194,10 +194,16 @@ test('a wall is behind a building when the building stands south of it (the view
     const { wallBehindBuilding } = await import('./sunShadow.js');
     // A building tilted like CCS: corners at (0,0) (10,4) (14,-6) (4,-10), in lat/lng-ish units.
     const ll = (x, y) => ({ lat: 6.9 + y * 1e-5, lng: 122 + x * 1e-5 });
-    const hall = { status: 'existing', polygon: [ll(0, 0), ll(10, 4), ll(14, -6), ll(4, -10)] };
-    // South of it (nearer the viewer): in front. North of it: behind. Off to the side: not behind.
+    // Four floors: its roof is drawn about 5.8 m north of its outline, over what stands just behind it.
+    const hall = { status: 'existing', floors: 4, polygon: [ll(0, 0), ll(10, 4), ll(14, -6), ll(4, -10)] };
+    // South of it (nearer the viewer): in front. Just north of it: behind. Off to the side: not behind.
     assert.equal(wallBehindBuilding(ll(2, -14), ll(12, -14), [hall]), false, 'south: in front');
     assert.equal(wallBehindBuilding(ll(2, 8), ll(12, 8), [hall]), true, 'north: behind');
+    // Far north of it (60 m): the hall is drawn nowhere near, so it does not put the wall behind every building.
+    assert.equal(wallBehindBuilding(ll(2, 58), ll(12, 58), [hall]), false, 'far north: not behind');
+    // A tree whose base is a little too far north still has its crown reaching back over the roof.
+    assert.equal(wallBehindBuilding(ll(7, 12), ll(7, 12), [hall]), false, 'base too far for the roof alone');
+    assert.equal(wallBehindBuilding(ll(7, 12), ll(7, 12), [hall], 6), true, 'its crown reaches over the roof');
     assert.equal(wallBehindBuilding(ll(30, -20), ll(30, 20), [hall]), false, 'beside it');
     assert.equal(wallBehindBuilding(ll(2, 8), ll(12, 8), [{ ...hall, status: 'planned' }]), false, 'a planned building is not drawn');
 });

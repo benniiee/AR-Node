@@ -211,12 +211,17 @@ function insidePolygon(p, polygon) {
 /**
  * Labelled buildings as routing obstacles: each outline becomes a closed wall
  * that routes go AROUND, unless the step enters or leaves that building.
- * Planned buildings are not built yet, so they block nothing.
+ * Planned buildings are not built yet, so they block nothing. A building under construction is a
+ * building site: fenced all round (doors ignored), routes pass by, never through or into it.
  */
 export function buildingBarriers(buildings) {
     const out = [];
     for (const b of buildings || []) {
         if (!b || b.status === 'planned' || !Array.isArray(b.polygon) || b.polygon.length < 3) continue;
+        if (b.status === 'under_construction') {
+            out.push({ coordinates: [...b.polygon, b.polygon[0]], shut: b.polygon });
+            continue;
+        }
         // With doors the outline is a real wall with gaps: in and out only
         // through a door (doorWaypoints gives the graph a node in each gap).
         if (placedDoors(b.polygon, b.doors).length > 0) {

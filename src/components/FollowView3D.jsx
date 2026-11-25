@@ -46,7 +46,7 @@ const shortestTurn = (from, to) => {
 };
 
 export default function FollowView3D({
-    route, buildings, links, pathways, bridges = [], nodes = [], getPose, routeKey, floor = 0,
+    route, buildings, links, pathways, bridges = [], objects = [], nodes = [], getPose, routeKey, floor = 0,
     testWalk = false, onTestMove = null, joyBottom = 120,
 }) {
     const hostRef = useRef(null);
@@ -388,7 +388,7 @@ export default function FollowView3D({
         if (!s) return;
         disposeTree(s.world);
         s.world.clear();
-        const built = buildScene(s.world, { route, buildings, links, pathways, bridges, nodes, follow: true });
+        const built = buildScene(s.world, { route, buildings, links, pathways, bridges, objects, nodes, follow: true });
         // Solid things cast and catch shadows; the ground and see-through walls only catch them.
         s.world.traverse((o) => {
             if (!o.isMesh || !o.material.isMeshStandardMaterial) return;

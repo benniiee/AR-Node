@@ -11,25 +11,35 @@ use Illuminate\Support\Facades\Hash;
 class UserController extends Controller
 {
     /**
-     * List all users with their departments (admin only).
+     * List staff accounts with their departments: an admin sees all; a building head their own department's.
      */
     public function index(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isAdmin(), 403);
+        $me = $request->user();
+        // A building head lists their own department's staff, to pick who runs each office.
+        $isHead = $me->isFaculty() && $me->is_head && $me->department_id !== null;
+        abort_unless($me->isAdmin() || $isHead, 403);
 
         // Staff only: students are managed in their own tab (StudentController).
-        $users = User::with('department:id,name,color')->whereIn('role', User::STAFF_ROLES)->orderBy('name')->get();
+        $users = User::with(['department:id,name,color,kind', 'managedPlaces:id,name,manager_id'])
+            ->whereIn('role', User::STAFF_ROLES)
+            ->when(! $me->isAdmin(), fn ($q) => $q->where('role', 'faculty')->where('department_id', $me->department_id))
+            ->orderBy('name')->get();
 
         return response()->json($users->map(fn (User $u) => [
             'id' => $u->id,
             'name' => $u->name,
             'email' => $u->email,
             'role' => $u->role,
+            'is_head' => $u->is_head,
             'department' => $u->department ? [
                 'id' => $u->department->id,
                 'name' => $u->department->name,
                 'color' => $u->department->color,
+                'kind' => $u->department->kind,
             ] : null,
+            // The offices this staff member runs (assigned by their building head).
+            'places' => $u->managedPlaces->map(fn ($n) => ['id' => $n->id, 'name' => $n->name])->values(),
         ]));
     }
 
@@ -50,6 +60,8 @@ class UserController extends Controller
             'password' => 'required|string|min:8',
             'role' => 'sometimes|in:admin,faculty',
             'department_id' => 'nullable|exists:departments,id',
+            // Building head (Dean / office head) or office staff; heads by default.
+            'is_head' => 'sometimes|boolean',
         ]);
 
         $user = User::create([
@@ -58,6 +70,7 @@ class UserController extends Controller
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'] ?? 'faculty',
             'department_id' => $validated['department_id'] ?? null,
+            'is_head' => $validated['is_head'] ?? true,
         ]);
 
         return response()->json([
@@ -66,6 +79,7 @@ class UserController extends Controller
             'email' => $user->email,
             'role' => $user->role,
             'department_id' => $user->department_id,
+            'is_head' => $user->is_head,
         ], 201);
     }
 
@@ -86,6 +100,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'role' => 'sometimes|required|in:admin,faculty',
             'department_id' => 'nullable|exists:departments,id',
+            'is_head' => 'sometimes|boolean',
         ]);
 
         // Several admins may share the work, but there must always be one.
@@ -94,6 +109,10 @@ class UserController extends Controller
         }
 
         $user->update($validated);
+        // Offices go with the department: moved elsewhere or made head, they no longer run them.
+        if ($user->wasChanged('department_id') || $user->is_head) {
+            $user->managedPlaces()->update(['manager_id' => null]);
+        }
 
         return response()->json([
             'id' => $user->id,
@@ -101,6 +120,7 @@ class UserController extends Controller
             'email' => $user->email,
             'role' => $user->role,
             'department_id' => $user->department_id,
+            'is_head' => $user->is_head,
         ]);
     }
 

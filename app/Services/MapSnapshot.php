@@ -6,6 +6,7 @@ use App\Models\Border;
 use App\Models\Bridge;
 use App\Models\Building;
 use App\Models\CampusArea;
+use App\Models\CampusObject;
 use App\Models\Closure;
 use App\Models\Node;
 use App\Models\NodeLink;
@@ -81,6 +82,7 @@ class MapSnapshot
             // School, campus, department and building announcements are public like the buildings; a room's are not.
             'closures' => array_values(array_filter($full['closures'], fn (array $c): bool => $c['node_id'] === null)),
             'campus_hours' => $full['campus_hours'],
+            'objects' => $full['objects'],
             'audience' => 'visitor',
         ];
     }
@@ -99,13 +101,14 @@ class MapSnapshot
         $pathways = Pathway::orderBy('id')->get();
         $areas = CampusArea::orderBy('name')->get();
         $bridges = Bridge::orderBy('id')->get();
+        $objects = CampusObject::orderBy('id')->get();
 
         // A staircase edit changes routing, so it must bump the version too;
         // building labels and pathways change what the map shows.
         // max() returns the raw column value (a string), not a date: read it as a timestamp.
         $latest = fn (string $model): int => ($at = $model::max('updated_at')) ? (int) strtotime((string) $at) : 0;
         $version = max(array_map($latest, [
-            Node::class, Border::class, NodeLink::class, Building::class, Pathway::class, CampusArea::class, Bridge::class, Closure::class,
+            Node::class, Border::class, NodeLink::class, Building::class, Pathway::class, CampusArea::class, Bridge::class, Closure::class, CampusObject::class,
         ]));
 
         return [...self::shape(
@@ -208,7 +211,20 @@ class MapSnapshot
             'node_id' => $c->node_id,
             'starts_at' => $c->starts_at->toIso8601String(),
             'ends_at' => $c->ends_at->toIso8601String(),
-        ])->all(), 'campus_hours' => self::campusHours()];
+        ])->all(), 'campus_hours' => self::campusHours(),
+            // Trees, benches, sheds and gates (public, like the buildings).
+            'objects' => $objects->map(fn (CampusObject $o) => [
+                'id' => $o->id,
+                'kind' => $o->kind,
+                'latitude' => $o->latitude,
+                'longitude' => $o->longitude,
+                'rotation_deg' => $o->rotation_deg,
+                'height_m' => $o->height_m,
+                'width_m' => $o->width_m,
+                'length_m' => $o->length_m,
+                'form' => $o->form,
+                'seed' => $o->seed,
+            ])->all()];
     }
 
     /**
@@ -269,6 +285,7 @@ class MapSnapshot
             // Only when there are bridges, so an unchanged map keeps its old hash (phones do not re-download it).
             ...(($payload['bridges'] ?? []) === [] ? [] : [$payload['bridges']]),
             ...(($payload['closures'] ?? []) === [] ? [] : [$payload['closures']]),
+            ...(($payload['objects'] ?? []) === [] ? [] : [$payload['objects']]),
             // Campus hours: a change reaches the phones' saved copies too.
             $payload['campus_hours'] ?? null,
         ])), 0, 16);

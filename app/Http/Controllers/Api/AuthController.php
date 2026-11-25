@@ -73,7 +73,7 @@ class AuthController extends Controller
      * Shared shape for login + me: role and department drive what the admin
      * panel lets this user do (departments panel, node edit scope).
      *
-     * @return array{id: int, name: string, email: string, role: string, department: array{id: int, name: string, color: string}|null}
+     * @return array{id: int, name: string, email: string, role: string, is_head: bool, department: array{id: int, name: string, color: string, kind: string}|null, places: list<int>}
      */
     private static function userPayload(User $user): array
     {
@@ -84,11 +84,16 @@ class AuthController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role,
+            // Building head (Dean / office head); false = office staff, who only run their places.
+            'is_head' => $user->is_head,
             'department' => $user->department ? [
                 'id' => $user->department->id,
                 'name' => $user->department->name,
                 'color' => $user->department->color,
+                'kind' => $user->department->kind,
             ] : null,
+            // Ids of the places (offices) this staff member runs.
+            'places' => $user->managedPlaces()->pluck('id')->all(),
         ];
     }
 }

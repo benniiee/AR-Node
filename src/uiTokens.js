@@ -79,8 +79,8 @@ export const C = {
     error: '#ff2338',
     errorBorder: '#ff5566',
     white: '#fff',
-    /** The route line in 2D and 3D: white, like the 3D guidance arrows. */
-    route: '#ffffff',
+    /** The route line everywhere (2D map, 3D views, AR road): navigation blue, with white direction chevrons. */
+    route: '#1f6feb',
     /**
      * Destination / arrival green - beacon, destination pin, active pill
      * shadow. Kept in sync with the Three.js constants in `holoRibbon.js`.

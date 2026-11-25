@@ -179,6 +179,19 @@ export const api = {
     deleteCampusArea: (id) =>
         request(`/campus-areas/${id}`, { method: 'DELETE' }),
 
+    // Campus objects (trees, benches, sheds, gates): read by any staff, placed by admins.
+    getCampusObjects: () =>
+        request('/campus-objects'),
+
+    createCampusObject: (data) =>
+        request('/campus-objects', { method: 'POST', body: JSON.stringify(data) }),
+
+    updateCampusObject: (id, data) =>
+        request(`/campus-objects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+    deleteCampusObject: (id) =>
+        request(`/campus-objects/${id}`, { method: 'DELETE' }),
+
     // A pathway routes by itself: remove the duplicate route-node dots along it.
     clearPathwayNodes: (id) =>
         request(`/pathways/${id}/clear-route-nodes`, { method: 'POST' }),

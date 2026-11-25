@@ -14,6 +14,7 @@
 // Sheltered paths and the reported distance never change: only the cost the
 // router minimises does.
 import { sunPosition, shadowRings, buildingHeightM } from './sunShadow.js';
+import { objectShadowRings } from './campusObjects.js';
 
 /** Heat index (°C) where shade starts to matter: PAGASA "Caution". */
 export const SHADE_FROM_C = 27;
@@ -54,22 +55,25 @@ function inRing(lat, lng, ring) {
 }
 
 /**
- * Where the building shadows are right now. Returns null when the sun is down
+ * Where the shadows of the buildings, trees and sheds are right now. Returns null when the sun is down
  * or too low to cast one (then there is no sun to avoid).
  *
  * @returns {null | { isShaded(lat:number, lng:number): boolean, sun: object }}
  */
-export function shadeMap(buildings, date, lat, lng) {
+export function shadeMap(buildings, date, lat, lng, objects = []) {
     const sun = sunPosition(date, lat, lng);
     const rings = [];
+    const shapes = [];
     for (const b of buildings || []) {
         if (!b || b.status === 'planned' || !Array.isArray(b.polygon) || b.polygon.length < 3) continue;
-        const parts = shadowRings(b.polygon, buildingHeightM(b), sun);
-        for (const ring of parts) {
-            let s = Infinity; let n = -Infinity; let w = Infinity; let e = -Infinity;
-            for (const p of ring) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lng); e = Math.max(e, p.lng); }
-            rings.push({ ring, s, n, w, e });
-        }
+        shapes.push(...shadowRings(b.polygon, buildingHeightM(b), sun));
+    }
+    // Trees and sheds: their crowns and roofs, moved away from the sun.
+    shapes.push(...objectShadowRings(objects, sun));
+    for (const ring of shapes) {
+        let s = Infinity; let n = -Infinity; let w = Infinity; let e = -Infinity;
+        for (const p of ring) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lng); e = Math.max(e, p.lng); }
+        rings.push({ ring, s, n, w, e });
     }
     if (rings.length === 0 && sun.altitudeDeg < 2) return null;
     return {

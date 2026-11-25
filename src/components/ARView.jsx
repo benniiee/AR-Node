@@ -5,7 +5,8 @@ import { createDestinationPinIcon } from '../mapIcons';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../povMotion';
 import { APP_TAG } from '../mobileApi';
 import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPUS_MAP_LOCK, GPS_HIDDEN_LAYERS, GPS_FLAVOR, ROUTE_CASING } from '../campusMap';
-import { drawBuildings, drawPathways, bindLabelZoom } from '../campusLayers';
+import { drawBuildings, drawPathways, bindLabelZoom, drawRouteDirection } from '../campusLayers';
+import { startBearing } from '../routeArrows';
 import { sunPosition, STOREY_M } from '../sunShadow';
 import FollowView3D from './FollowView3D';
 import { useSatelliteLayer } from '../useSatellite';
@@ -83,18 +84,18 @@ const MINI_DEST_ICON = createDestinationPinIcon(C.go, 14);
 // lives on the inner element so it never fights Leaflet's own transform.
 // Centre-anchored at (48,48) so it pivots exactly on the user's position.
 const MINI_POV_ICON = createPovIcon();
-// Relative-direction arrow: an up-arrow pinned on the user dot, rotated by
-// the signed angle from the camera facing to the nearest node (0° = ahead).
-// White chevron in a white ring so it reads over dark tiles at any zoom.
+// Which way to walk: a raised blue arrow pinned on the user dot, pointing on the (north-up) map
+// along the route from here. Shown with or without a compass (a computer has none). Its darker
+// copy (.dir-side) stays offset straight down on screen, so it reads as a 3D marker at any angle.
+const MINI_DIR_SHAPE = (fill, stroke) => `<path d="M24 1 35 46 24 38 13 46Z" fill="${fill}" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>`;
 const MINI_DIR_ICON = L.divIcon({
     className: '',
-    html: '<div class="dir-rot" style="width:34px;height:34px;transform:rotate(0deg);transition:transform 0.2s linear;pointer-events:none;">'
-        + '<svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">'
-        + '<circle cx="17" cy="17" r="13" fill="rgba(12,12,16,0.85)" stroke="#ffffff" stroke-width="2"/>'
-        + '<path d="M17 8 L23 19 L17 16 L11 19 Z" fill="#fff"/>'
-        + '</svg></div>',
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
+    html: '<div style="position:relative;width:48px;height:48px;pointer-events:none;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.45))" role="img" aria-label="Walk this way">'
+        + `<div class="dir-side" style="position:absolute;inset:0;transform:translateY(4px) rotate(0deg);transition:transform 0.2s linear"><svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">${MINI_DIR_SHAPE('#0b3d91', '#0b3d91')}</svg></div>`
+        + `<div class="dir-rot" style="position:absolute;inset:0;transform:rotate(0deg);transition:transform 0.2s linear"><svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">${MINI_DIR_SHAPE('#3d8bff', '#ffffff')}</svg></div>`
+        + '</div>',
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
 });
 
 // ── Marker sizing / placement ───────────────────────────────────────
@@ -354,6 +355,8 @@ export default function ARView({
     buildings = [], pathways = [], destPlace = '',
     // Bridge decks for the 3D follow view (from /map).
     bridges = [],
+    // Trees, benches, sheds and gates for the 3D follow view.
+    objects = [],
     // Staircase links, for the steps in the 3D follow view.
     links = [],
     // Satellite settings owned by /map (same device setting); null = no control.
@@ -1062,6 +1065,7 @@ export default function ARView({
     const miniRouteGlowRef = useRef(null);
     const miniRouteRef = useRef(null);
     const miniDestRef = useRef(null);
+    const miniChevronsRef = useRef(null);
     // POV wedge (absolute camera heading) + relative-direction arrow
     // (signed angle from camera facing to the nearest node). Both ride on
     // the user dot and are rotated straight in the DOM — no React renders.
@@ -3648,9 +3652,13 @@ export default function ARView({
                 miniRouteRef.current.setLatLngs(latlngs);
             } else {
                 miniRouteRef.current = L.polyline(latlngs, {
-                    color: C.route, weight: 4, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false,
+                    color: C.route, weight: 5, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false,
                 }).addTo(map);
             }
+            // White chevrons along the route, pointing to the destination (the arrow on you is MINI_DIR_ICON).
+            if (!miniChevronsRef.current) miniChevronsRef.current = L.layerGroup().addTo(map);
+            miniChevronsRef.current.clearLayers();
+            drawRouteDirection(miniChevronsRef.current, [latlngs], { userArrow: false });
             const dest = latlngs[latlngs.length - 1];
             if (miniDestRef.current) {
                 miniDestRef.current.setLatLng(dest);
@@ -3659,7 +3667,7 @@ export default function ARView({
             }
         } else {
             // No route (yet): clear stale path layers, keep the user dot.
-            for (const ref of [miniRouteGlowRef, miniRouteRef, miniDestRef]) {
+            for (const ref of [miniRouteGlowRef, miniRouteRef, miniDestRef, miniChevronsRef]) {
                 if (ref.current) {
                     map.removeLayer(ref.current);
                     ref.current = null;
@@ -3722,11 +3730,12 @@ export default function ARView({
                 headingDeg = ((d.heading % 360) + 360) % 360;
             }
 
-            // Nearest remaining stop by straight-line distance.
+            // Which way to walk on the map: from here along the route, starting at the nearest remaining
+            // stop (straight-line distance), a few metres ahead. A map bearing, so no compass is needed.
             const path = d.route && Array.isArray(d.route.path) ? d.route.path : null;
             let rel = null;
-            if (path && path.length > 1 && headingDeg !== null) {
-                let best = null;
+            if (path && path.length > 1) {
+                let bestK = -1;
                 let bestDist = Infinity;
                 for (let k = 1; k < path.length; k += 1) {
                     const p = path[k];
@@ -3734,10 +3743,13 @@ export default function ARView({
                     const r = bearingAndDistance(fix.latitude, fix.longitude, p.latitude, p.longitude);
                     if (r.dist < bestDist) {
                         bestDist = r.dist;
-                        best = { bearing: r.bearing };
+                        bestK = k;
                     }
                 }
-                if (best) rel = norm180(best.bearing - headingDeg);
+                if (bestK > 0) {
+                    const ahead = [[fix.latitude, fix.longitude], ...path.slice(bestK).filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)).map((p) => [p.latitude, p.longitude])];
+                    rel = startBearing(ahead, 8);
+                }
             }
 
             try {
@@ -3760,6 +3772,8 @@ export default function ARView({
                         : rel + 360 * Math.round((prev - rel) / 360);
                     miniDirAngleRef.current = next;
                     dirEl.style.transform = `rotate(${next}deg)`;
+                    const sideEl = miniDirRef.current.getElement()?.querySelector('.dir-side');
+                    if (sideEl) sideEl.style.transform = `translateY(4px) rotate(${next}deg)`;
                 }
                 if (miniDirRef.current.getElement()) {
                     miniDirRef.current.getElement().style.display = rel === null ? 'none' : '';
@@ -4335,7 +4349,7 @@ export default function ARView({
             {followMain && started && (
                 <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
                     <FollowView3D
-                        route={route} buildings={buildings} links={links} pathways={pathways} bridges={bridges} nodes={nodes}
+                        route={route} buildings={buildings} links={links} pathways={pathways} bridges={bridges} objects={objects} nodes={nodes}
                         getPose={getFollowPose}
                         floor={floor}
                         testWalk={testWalkOn}

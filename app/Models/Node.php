@@ -46,6 +46,7 @@ class Node extends Model
         'elevation' => 'float',
         'floor_level' => 'integer',
         'building_id' => 'integer',
+        'manager_id' => 'integer',
     ];
 
     /**
@@ -63,6 +64,15 @@ class Node extends Model
     public function building(): BelongsTo
     {
         return $this->belongsTo(Building::class);
+    }
+
+    /**
+     * Office staff who run this place and set its hours (null = its building head does). Not fillable:
+     * NodeController sets it after checking who may assign whom.
+     */
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'manager_id');
     }
 
     /**

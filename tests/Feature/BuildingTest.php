@@ -124,6 +124,21 @@ class BuildingTest extends TestCase
         $this->assertSame($department->id, $building->fresh()->department_id);
     }
 
+    public function test_only_an_admin_marks_a_building_completed_or_under_construction(): void
+    {
+        $department = Department::factory()->create();
+        $building = Building::factory()->create(['department_id' => $department->id, 'status' => 'existing']);
+        Sanctum::actingAs(User::factory()->create(['role' => 'faculty', 'department_id' => $department->id]));
+
+        $this->putJson("/api/buildings/{$building->id}", ['status' => 'under_construction'])->assertForbidden();
+        // Re-sending its current status (the form always sends it) is fine.
+        $this->putJson("/api/buildings/{$building->id}", ['status' => 'existing', 'name' => 'Same'])->assertOk();
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->putJson("/api/buildings/{$building->id}", ['status' => 'under_construction'])
+            ->assertOk()->assertJsonPath('status', 'under_construction');
+    }
+
     public function test_moving_a_building_carries_every_room_filed_in_it(): void
     {
         $department = Department::factory()->create();

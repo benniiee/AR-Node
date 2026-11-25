@@ -24,7 +24,8 @@ import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPU
 import { headingFromOrientationEvent, headingAccuracyFromEvent, createCompassWatcher, compassLabel } from '../heading';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation } from '../povMotion';
 import { collectFloors, floorAria, floorOf, floorTag } from '../floors';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint, drawWalls25D } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawRouteFloors, floorLiftDeg, drawStairs25D, stairRouteLine, drawSkyTint, drawWalls25D, drawCampusObjects, drawRouteDirection } from '../campusLayers';
+import { bordersWithGates } from '../campusObjects';
 import { sunPosition, roofLiftM } from '../sunShadow';
 import { closedBuildingIds, summarizeHours, buildingStatus, placeStatusOf, announcements, closedMessage, campusClosed, formatTime } from '../openingHours';
 import { nodePlaceLabel, floorCountLabel, buildingAt, buildingFloors, pointInPolygon, bridgeDeckHeightM } from '../campusGeometry';
@@ -173,6 +174,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const buildingLayerRef = useRef(null);
     const wallLayerRef = useRef(null);
     const wallFrontLayerRef = useRef(null);
+    // Trees, benches, sheds and gates: behind the buildings (under them) and in front (over them).
+    const objectLayerRef = useRef(null);
+    const objectFrontLayerRef = useRef(null);
     // Buildings the route goes into, cut away at the floor being shown.
     const cutawayLayerRef = useRef(null);
     const pathwayLayerRef = useRef(null);
@@ -207,6 +211,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // Display only: routing still runs on nodes.
     const [buildings, setBuildings] = useState([]);
     const [bridges, setBridges] = useState([]);
+    // Trees, benches, sheds and gates (campus objects).
+    const [objects, setObjects] = useState([]);
     // Closures and special openings (announcements), from the map feed: applied on top of opening hours.
     const [closures, setClosures] = useState([]);
     // When the campus is open (from the map feed, config/campus.php): outside it, /map is closed.
@@ -465,6 +471,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                 setLinks(data.links || []);
                 setBuildings(data.buildings || []);
                 setBridges(data.bridges || []);
+                setObjects(data.objects || []);
                 setClosures(data.closures || []);
                 setCampusHours(data.campus_hours || null);
                 setPathways(data.pathways || []);
@@ -496,6 +503,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         setLinks(map.links || []);
         setBuildings(map.buildings || []);
         setBridges(map.bridges || []);
+        setObjects(map.objects || []);
         setClosures(map.closures || []);
         setCampusHours(map.campus_hours || null);
         setPathways(map.pathways || []);
@@ -525,7 +533,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // GPS snapping uses the same walkable network as routing: route nodes and the pathways' lines.
     const walkNodes = useMemo(() => [...nodes, ...pathwayWaypoints(pathways)], [nodes, pathways]);
     nodesRef.current = walkNodes;
-    bordersRef.current = borders;
+    // The walls with each gate's opening cut out: routing, GPS matching and the drawn walls use these.
+    const walls = useMemo(() => bordersWithGates(borders, objects), [borders, objects]);
+    bordersRef.current = walls;
 
     // The map is locked to the campus box and must never leave it — least of
     // all widen it to reach somewhere else (which is how the lock used to be
@@ -965,7 +975,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // Protomaps vector base map (campus PMTiles archive, box-restricted).
         // Light style (GPS_FLAVOR), same as the admin map: with the archive's
         // buildings and roads hidden, the dark style read as an empty black
-        // screen. The white route and "you" dot carry a dark edge (ROUTE_CASING)
+        // screen. The blue route and "you" dot carry a dark edge (ROUTE_CASING)
         // so they still stand out on the pale tiles.
         createTileLayer({ flavor: GPS_FLAVOR, hiddenLayers: GPS_HIDDEN_LAYERS }).addTo(map);
         // Pathways and building labels sit under the route and the pins.
@@ -977,9 +987,11 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         shadowLayerRef.current = L.layerGroup().addTo(map);
         // Walls (2.5D) under the buildings: a building in front of a wall covers it.
         wallLayerRef.current = L.layerGroup().addTo(map);
+        objectLayerRef.current = L.layerGroup().addTo(map);
         buildingLayerRef.current = L.layerGroup().addTo(map);
         // Walls in front of the buildings (south of them, nearer the viewer) draw over them.
         wallFrontLayerRef.current = L.layerGroup().addTo(map);
+        objectFrontLayerRef.current = L.layerGroup().addTo(map);
         bridgeLayerRef.current = L.layerGroup().addTo(map);
         cutawayLayerRef.current = L.layerGroup().addTo(map);
         bindLabelZoom(map);
@@ -1083,7 +1095,11 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         drawPathways(pathwayLayerRef.current, pathways, { theme: GPS_FLAVOR });
         // The drawn walls stand up like the buildings (2.5D), shaded by the sun.
         if (wallLayerRef.current) {
-            drawWalls25D(wallLayerRef.current, borders, { theme: GPS_FLAVOR, sun: sunForWalls, buildings, frontLayer: wallFrontLayerRef.current });
+            drawWalls25D(wallLayerRef.current, walls, { theme: GPS_FLAVOR, sun: sunForWalls, buildings, frontLayer: wallFrontLayerRef.current });
+        }
+        // Trees, benches, sheds and gates, standing up like the buildings, with their shadows.
+        if (objectLayerRef.current) {
+            drawCampusObjects(objectLayerRef.current, objects, { extrude: true, sun: sunForWalls, buildings, frontLayer: objectFrontLayerRef.current });
         }
         drawBuildings(buildingLayerRef.current, buildings, { popup, theme: GPS_FLAVOR, extrude: true, sun: sunForWalls, skipIds: routeBuildingIds });
         // After the buildings, raised like them (2.5D): the deck crosses over the road between them.
@@ -1097,7 +1113,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         map.on('popupopen', onOpen);
         return () => { map.off('popupopen', onOpen); unbind(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, bridges, pathways, nodes, links, borders, sunWallsKey, routeBuildingKey]);
+    }, [buildings, bridges, pathways, nodes, links, walls, objects, sunWallsKey, routeBuildingKey]);
 
     // Render node markers — destinations only, and only for the selected
     // floor. Intermediate route nodes stay hidden on the 2D screen; the path
@@ -1204,10 +1220,11 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         ? shadePenaltyFor(weather.heat_index_c, weather.uv_index) : 1;
     const routeShade = useMemo(() => {
         if (!(shadePenalty > 1)) return null;
-        const map = shadeMap(buildings, sunDate, CAMPUS_CENTER[0], CAMPUS_CENTER[1]);
+        // Buildings, trees and sheds shade the paths.
+        const map = shadeMap(buildings, sunDate, CAMPUS_CENTER[0], CAMPUS_CENTER[1], objects);
         return map ? { map, penalty: shadePenalty } : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, sunWallsKey, shadePenalty]);
+    }, [buildings, objects, sunWallsKey, shadePenalty]);
 
     // instead of staying pinned to wherever the session started. This is
     // the whole point of reporting the walked position back out of ARView.
@@ -1232,7 +1249,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             // must re-run Dijkstra — hence the weather deps below.
             // The floor the student is on is where the route starts; other
             // floors are reached only through the admin's staircase links.
-            const routeTo = (target) => computeRoute(nodes, target, effectiveUser.latitude, effectiveUser.longitude, 0, borders, {
+            const routeTo = (target) => computeRoute(nodes, target, effectiveUser.latitude, effectiveUser.longitude, 0, walls, {
                 rainMultiplier: rainMultiplierOf(weather),
                 rainNow: Boolean(weather.raining_now),
                 heatNow: heatClosed,
@@ -1372,18 +1389,20 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                     }).addTo(routeLayerRef.current);
                 }
                 if (latlngs.length < 2) { above.addTo(routeLayerRef.current); return; }
-                // Two strokes: a dark casing under a bright white line, so the
-                // route stands out on the light base map. White (not red): red
-                // means "problem" in this app, and the 3D arrows are white too.
+                // Two strokes: a dark casing under the blue route line, so it stands out on the light base
+                // map and on the satellite photo. Blue (not red): red means "problem" in this app.
                 const lines = segs.filter((s) => s.length >= 2);
                 L.polyline(lines, {
-                    color: ROUTE_CASING, weight: 9, opacity: 0.85,
+                    color: ROUTE_CASING, weight: 10, opacity: 0.85,
                     lineJoin: 'round', lineCap: 'round',
                 }).addTo(routeLayerRef.current);
                 L.polyline(lines, {
-                    color: C.route, weight: 5, opacity: 0.95,
+                    color: C.route, weight: 6, opacity: 0.95,
                     lineJoin: 'round', lineCap: 'round',
                 }).addTo(routeLayerRef.current);
+                // Which way to go: white chevrons along the line, and a raised arrow at your position
+                // pointing the way to start walking.
+                drawRouteDirection(routeLayerRef.current, lines);
                 above.addTo(routeLayerRef.current);
                 // Frame the route only when the destination itself changes,
                 // never on GPS drift — the view must stay put while testing.
@@ -1403,7 +1422,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         // `weather.rain_multiplier` / `weather.raining_now` rather than the
         // whole object: a poll rebuilds it every 5 minutes, and the route
         // only cares about the two values that change routing.
-    }, [destId, effectiveUser, nodes, borders, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey, destClosed, loading]);
+    }, [destId, effectiveUser, nodes, walls, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey, destClosed, loading]);
 
     // A destination on another floor is a normal case now (the route climbs
     // the linked stairs), so it is only dropped when the node itself is gone.
@@ -2592,7 +2611,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                         footer={<button type="button" className="ui-btn ui-btn-primary" onClick={() => setRouteModelOpen(false)}>Done</button>}
                     >
                         <React.Suspense fallback={<div role="status" style={{ ...LOADING_3D, height: 'min(64vh, 600px)' }}>Loading the 3D route...</div>}>
-                            <RouteModel3D route={route} buildings={buildings} bridges={bridges} nodes={nodes} links={links} height="min(64vh, 600px)" />
+                            <RouteModel3D route={route} buildings={buildings} bridges={bridges} objects={objects} nodes={nodes} links={links} height="min(64vh, 600px)" />
                         </React.Suspense>
                     </StairModal>
                 )}
@@ -2732,7 +2751,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                     {/* userLocation is LIVE (not a launch-time snapshot) so the
                         3D camera tracks the same fix the 2D you-are-here dot shows. */}
                     <ARView
-                        key={arKey} nodes={nodes} borders={borders} route={arRoute} userLocation={userLocation}
+                        key={arKey} nodes={nodes} borders={walls} objects={objects} route={arRoute} userLocation={userLocation}
                         floor={activeFloor} floors={floors} onFloorChange={setFloor} onExit={exit3D} onWalkedPosition={handleWalkedPosition}
                         buildings={buildings} pathways={pathways} bridges={bridges}
                         destPlace={selectedDest ? nodePlaceLabel(selectedDest, buildingsById) : ''}

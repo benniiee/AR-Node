@@ -90,10 +90,15 @@ class DepartmentOwnershipTest extends TestCase
         ]);
     }
 
-    public function test_faculty_cannot_list_users(): void
+    public function test_faculty_list_only_their_own_departments_staff(): void
     {
-        Sanctum::actingAs($this->faculty());
+        $head = $this->faculty();
+        $this->admin();
+        $this->faculty();
+        Sanctum::actingAs($head);
 
+        $this->getJson('/api/users')->assertOk()->assertJsonCount(1)->assertJsonPath('0.id', $head->id);
+        $head->forceFill(['is_head' => false])->save();
         $this->getJson('/api/users')->assertForbidden();
     }
 

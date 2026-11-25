@@ -50,6 +50,18 @@ test('a step that starts or ends inside a building is never blocked by it', () =
     assert.deepEqual(buildingBarriers([{ ...building, status: 'planned' }]), []);
 });
 
+test('a building under construction is walked around, even through its doors, and is no destination', async () => {
+    const { routableBuildings } = await import('./buildingDestinations.js');
+    const site = { ...building, status: 'under_construction', doors: [{ lat: LAT + dLat(20), lng: LNG }, { lat: LAT + dLat(50), lng: LNG }] };
+    const through = [...nodes, node(30, 0, 35)];
+    const r = computeRoute(through, 9, at(0, 0).latitude, at(0, 0).longitude, 0, [], { buildings: [site] });
+    assert.equal(r.success, true, r.message);
+    assert.ok(!ids(r).includes(30) && ids(r).includes(3), `expected the detour, got ${ids(r)}`);
+    const open = computeRoute(through, 9, at(0, 0).latitude, at(0, 0).longitude, 0, [], { buildings: [{ ...site, status: 'existing' }] });
+    assert.ok(ids(open).includes(30), `completed: through the doors, got ${ids(open)}`);
+    assert.deepEqual(routableBuildings([site, building]).map((b) => b.status), ['existing']);
+});
+
 // A student outside routes to a department's room upstairs: outdoor route
 // nodes (admin) lead to the building's ground floor (department staff), then
 // up the department's staircase. Without the staircase the floor is cut off.

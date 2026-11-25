@@ -9,7 +9,9 @@ import AdminCourses from './AdminCourses';
 import AdminAnnouncements from './AdminAnnouncements';
 import { C, TYPE, PANEL_RADIUS, RADIUS, MAP_ZOOM_CSS, ELEVATION, PILL, TAP } from '../uiTokens';
 import { usePresence, useHold, Collapse } from '../motion';
-import { IDLE, TOOL_ADD, TOOL_MOVE, TOOL_PIN, TOOL_WALLS, TOOL_BUILDING, TOOL_PATHWAY, TOOL_BRIDGE, TOOL_AREA, TOOL_AREAS, resolveTool, resolveMode, surfaceFor } from '../toolState';
+import { IDLE, TOOL_ADD, TOOL_MOVE, TOOL_PIN, TOOL_WALLS, TOOL_BUILDING, TOOL_PATHWAY, TOOL_BRIDGE, TOOL_AREA, TOOL_AREAS, TOOL_OBJECTS, resolveTool, resolveMode, surfaceFor } from '../toolState';
+import ObjectPalette from './ObjectPalette';
+import { bordersWithGates, objectDefaults, snapGateToWall, kindLabel as objectKindLabel } from '../campusObjects';
 import CampusEditor, { CAMPUS_EDITOR_CSS } from './CampusEditor';
 import CampusAreaEditor from './CampusAreaEditor';
 import QrSheet from './QrSheet';
@@ -20,7 +22,7 @@ import ScrollWindow from './ScrollWindow';
 import SunTimeSlider from './SunTimeSlider';
 import { useSatelliteSettings, useSatelliteLayer } from '../useSatellite';
 import { sunPosition } from '../sunShadow';
-import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS, drawSkyTint, drawWalls25D } from '../campusLayers';
+import { drawBuildings, drawBridges, drawPathways, drawShadows, bindLabelZoom, prepareCampusPanes, drawFloorGuide, floorLiftDeg, drawStairs25D, CAMPUS_COLORS, drawSkyTint, drawWalls25D, drawCampusObjects } from '../campusLayers';
 import { buildingAt, nodePlaceLabel, floorCountLabel, statusLabel, kindLabel, interiorPoint, bridgeKindLabel, deckLevelLabel, bridgeDeckHeightM, pointInPolygon } from '../campusGeometry';
 import {
     MAP_CONTROLS_CSS, ToolDock, ActionBar, Sheet, NodeForm, MenuToggle, MenuAction, StairLinks, NewStairModal,
@@ -48,7 +50,7 @@ const MUTED = C.muted;
 // Nodes on the floors below the one shown in the floor guide.
 const LOWER_FLOOR_GREY = '#8a8f98';
 const NODE_TYPE_COLORS = {
-    route: '#95a5a6',
+    route: '#1f6feb',
     location: THEME,
 };
 
@@ -193,6 +195,8 @@ function nextNodeName(name) {
 
 export default function AdminMap({ currentUser, tab = 'map' }) {
     const isAdmin = currentUser?.role === 'admin';
+    // Office staff (not their department's head): they set the hours of the places assigned to them, nothing else.
+    const isOfficeStaff = currentUser?.role === 'faculty' && currentUser?.is_head === false;
     const mapRef = useRef(null);
     const mapInstance = useRef(null);
     const markersRef = useRef({});
@@ -234,6 +238,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // bridges (raised decks stand above any wall). The border layer is for Admin view's flat walls.
     const wallBackLayerRef = useRef(null);
     const wallFrontLayerRef = useRef(null);
+    // Trees, benches, sheds and gates: behind the buildings (under them) and in front (over them).
+    const objectLayerRef = useRef(null);
+    const objectFrontLayerRef = useRef(null);
     const linkLayerRef = useRef(null);
     const buildingLayerRef = useRef(null);
     const areaLayerRef = useRef(null);
@@ -302,6 +309,17 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const [campusOpen, setCampusOpen] = useState(false);
     // Campus areas (named outlines) and the "show one campus" filter.
     const [campusAreas, setCampusAreas] = useState([]);
+    // Trees, benches, sheds and gates; the Objects tool's choice and the one open for changes (a draft).
+    const [campusObjects, setCampusObjects] = useState([]);
+    const [objectKind, setObjectKind] = useState('tree');
+    const [objectDraft, setObjectDraft] = useState(null);
+    const [objectSaving, setObjectSaving] = useState(false);
+    const [objectNote, setObjectNote] = useState(null);
+    // The walls with each gate's opening cut out (routing and the drawn walls), the draft included.
+    const shownObjects = useMemo(() => (objectDraft
+        ? campusObjects.map((o) => (o.id === objectDraft.id ? objectDraft : o))
+        : campusObjects), [campusObjects, objectDraft]);
+    const walls = useMemo(() => bordersWithGates(borders, shownObjects), [borders, shownObjects]);
     const [campusFilter, setCampusFilter] = useState(() => {
         try { return localStorage.getItem('admin_campus_filter') || 'all'; } catch { return 'all'; }
     });
@@ -359,6 +377,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const [editHours, setEditHours] = useState(null);
     // An important place visitors may see and be routed to (the Dean's office).
     const [editPublic, setEditPublic] = useState(false);
+    // Office staff who run the place being edited ('' = the building head).
+    const [editManager, setEditManager] = useState('');
     const [editType, setEditType] = useState('route');
     const [editElevation, setEditElevation] = useState('0');
     const [editFloor, setEditFloor] = useState('0');
@@ -430,6 +450,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const canEditNode = (node) => {
         // Admins: only nodes on bridges (decks and stair feet); rooms and routes in buildings are the departments'.
         if (isAdmin) return node?.building_id == null && bridges.some((br) => pointInPolygon(+node.latitude, +node.longitude, br.polygon || []));
+        if (isOfficeStaff) return node?.manager_id != null && node.manager_id === myId;
         // Outside buildings: not staff. Inside: the building's department.
         if (node?.building_id == null) return false;
         const b = buildings.find((x) => x.id === node.building_id);
@@ -440,7 +461,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // rename) the buildings filed under their own department. Adding and
     // removing buildings stays admin-only (BuildingController).
     const myDept = currentUser?.department?.id ?? null;
-    const canEditBuilding = (b) => isAdmin || (myDept !== null && (b?.department?.id ?? b?.department_id) === myDept);
+    const canEditBuilding = (b) => isAdmin || (!isOfficeStaff && myDept !== null && (b?.department?.id ?? b?.department_id) === myDept);
+    // "Close now": the building head's (or an admin's) closure of the whole building, until reopened. It
+    // overrides the opening hours without changing them (a closure, like the Announcements ones).
+    const closedNowOf = (b) => closures.find((c) => c.building_id === b.id && c.kind !== 'open' && c.can_manage
+        && new Date(c.starts_at) <= new Date() && new Date(c.ends_at) > new Date());
     // Where this account may place nodes: admins anywhere; staff only inside
     // their department's buildings (NodeController enforces the same rule).
     const ownBuildings = isAdmin ? buildings : buildings.filter(canEditBuilding);
@@ -567,13 +592,13 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             userLocation.latitude,
             userLocation.longitude,
             0,
-            borders,
+            walls,
             // Closed buildings (opening hours, now) are walked around, as on /map.
             { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings, new Date(), closures) },
         );
         setRouteResult(result);
         drawRoute(result);
-    }, [userLocation, selectedDestination, nodes, borders, drawRoute, buildings, bridges, links, pathways, closures]);
+    }, [userLocation, selectedDestination, nodes, walls, drawRoute, buildings, bridges, links, pathways, closures]);
     const loadData = useCallback(async () => {
         try {
             const nodesData = await api.getNodes();
@@ -606,6 +631,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             try {
                 setCampusAreas(await api.getCampusAreas());
             } catch { setCampusAreas([]); /* older backend without campus areas */ }
+            try {
+                setCampusObjects(await api.getCampusObjects());
+            } catch { setCampusObjects([]); /* older backend without campus objects */ }
             try {
                 setClosures(await api.getClosures());
             } catch { setClosures([]); }
@@ -687,8 +715,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         pathwayLayerRef.current = L.layerGroup().addTo(map);
         shadowLayerRef.current = L.layerGroup().addTo(map);
         wallBackLayerRef.current = L.layerGroup().addTo(map);
+        objectLayerRef.current = L.layerGroup().addTo(map);
         buildingLayerRef.current = L.layerGroup().addTo(map);
         wallFrontLayerRef.current = L.layerGroup().addTo(map);
+        objectFrontLayerRef.current = L.layerGroup().addTo(map);
         // Bridges over the roads between buildings: above the buildings (and the walls).
         bridgeLayerRef.current = L.layerGroup().addTo(map);
         // "Which floor": the cut-away guide while placing a node in a building.
@@ -971,6 +1001,89 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         });
     }, [nodes, tool, editingNode, stairPick, swapPick, stairStart, bridgeConnect, bridges, links, buildings, isStudentView, guideBuilding?.id, guideFloor, manageBuilding?.id, focusKey, manageOnlyFloor, campusFilter, campusAreas]);
 
+    // Trees, benches, sheds and gates: standing up with their shadows in Student view, a top-down symbol in
+    // Admin view; tappable (to change one) only in the Objects tool.
+    useEffect(() => {
+        if (!mapInstance.current || !objectLayerRef.current) return;
+        drawCampusObjects(objectLayerRef.current, shownObjects, {
+            extrude: isStudentView, sun: isStudentView ? sunForWalls : null, buildings,
+            frontLayer: objectFrontLayerRef.current,
+            onSelect: tool === TOOL_OBJECTS ? (o) => { setObjectNote(null); setObjectDraft({ ...o }); } : null,
+            selectedId: objectDraft?.id ?? null,
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [shownObjects, isStudentView, sunWallsKey, buildings, tool, objectDraft?.id]);
+
+    // Objects tool: a tap on the map places the chosen kind (saved at once), or moves the one open for changes.
+    useEffect(() => {
+        const map = mapInstance.current;
+        if (!map || tool !== TOOL_OBJECTS) return undefined;
+        const onClick = async (e) => {
+            const at = { latitude: e.latlng.lat, longitude: e.latlng.lng };
+            const kind = objectDraft ? objectDraft.kind : objectKind;
+            let spot = at;
+            if (kind === 'gate') {
+                const snap = snapGateToWall(borders, at.latitude, at.longitude);
+                if (!snap) { setObjectNote('A gate goes in a wall: tap on or next to one.'); return; }
+                spot = snap;
+            }
+            setObjectNote(null);
+            if (objectDraft) { setObjectDraft((d) => ({ ...d, ...spot })); return; }
+            try {
+                const created = await api.createCampusObject({ ...objectDefaults(kind), ...spot });
+                setCampusObjects((list) => [...list, created]);
+                setObjectNote(`${objectKindLabel(kind)} placed. Tap it to change its size or look.`);
+            } catch (err) {
+                onError(err.message);
+            }
+        };
+        map.on('click', onClick);
+        return () => map.off('click', onClick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tool, objectKind, objectDraft, borders]);
+
+    const startObjects = () => {
+        cancelWallEdit();
+        setCampusEdit(null);
+        setAreaEdit(null);
+        setManageBuildingId(null);
+        setPendingNode(null);
+        setEditingNode(null);
+        setCampusOpen(false);
+        setObjectDraft(null);
+        setObjectNote(null);
+        mapInstance.current?.closePopup();
+        setTool(TOOL_OBJECTS);
+    };
+    const saveObject = async () => {
+        if (!objectDraft) return;
+        setObjectSaving(true);
+        try {
+            const saved = await api.updateCampusObject(objectDraft.id, objectDraft);
+            setCampusObjects((list) => list.map((o) => (o.id === saved.id ? saved : o)));
+            setObjectDraft(null);
+            setObjectNote('Saved.');
+        } catch (err) {
+            onError(err.message);
+        } finally {
+            setObjectSaving(false);
+        }
+    };
+    const removeObject = async () => {
+        if (!objectDraft) return;
+        setObjectSaving(true);
+        try {
+            await api.deleteCampusObject(objectDraft.id);
+            setCampusObjects((list) => list.filter((o) => o.id !== objectDraft.id));
+            setObjectDraft(null);
+            setObjectNote('Removed.');
+        } catch (err) {
+            onError(err.message);
+        } finally {
+            setObjectSaving(false);
+        }
+    };
+
     const isCampusTool = tool === TOOL_BUILDING || tool === TOOL_PATHWAY || tool === TOOL_BRIDGE;
 
     // Labelled buildings + pathways. The one being edited is drawn by the
@@ -993,12 +1106,15 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     esc(buildingArea(b, campusAreas)?.name || 'Outside every campus area'),
                     `<span class="pp-muted">${inside === 0 ? 'No rooms filed yet' : `${inside} ${inside === 1 ? 'room' : 'rooms'} inside`}</span>`,
                 ],
-                badge: statusBadge(b.status),
+                badge: closedNowOf(b) ? { text: 'Closed now', tone: 'danger' } : statusBadge(b.status),
                 actions: [
                     ...(canEditBuilding(b) ? [
                         { label: 'Edit', call: ['__editBuilding', b.id] },
                         { label: 'Move / reshape', call: ['__moveBuilding', b.id] },
                     ] : []),
+                    ...(canEditBuilding(b) && b.status !== 'under_construction' ? [closedNowOf(b)
+                        ? { label: 'Reopen', call: ['__reopenBuilding', b.id], wide: true }
+                        : { label: 'Close now', call: ['__closeBuildingNow', b.id], kind: 'danger', wide: true }] : []),
                     ...(isAdmin ? [{ label: 'Remove building', call: ['__deleteBuilding', b.id], kind: 'danger', wide: true }] : []),
                 ],
             });
@@ -1064,7 +1180,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         // After the buildings: in the shared overlay pane the last drawn is on top, and decks cross over them.
         if (brLayer) drawBridges(brLayer, bridges, { popup: bridgePopup, skipId: editingId('bridge'), theme: mapTheme, extrude: isStudentView, links, nodes });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [buildings, pathways, bridges, showCampus, campusEdit, isCampusTool, nodes, links, isAdmin, mapTheme, isStudentView, sunWallsKey, routeResult, campusFilter, campusAreas, pathConnect]);
+    }, [buildings, pathways, bridges, showCampus, campusEdit, isCampusTool, nodes, links, isAdmin, mapTheme, isStudentView, sunWallsKey, routeResult, campusFilter, campusAreas, pathConnect, closures]);
 
     // Campus outlines: only in Manage campus areas (and, for context, while one of
     // them is being drawn or edited). Anywhere else they would sit over the whole
@@ -1203,7 +1319,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         // Student view, nothing being edited: the walls stand up like the buildings (2.5D), as on /map:
         // behind a building under it, in front over it.
         if (showBorders && isStudentView && tool === IDLE && !isDrawingBorder && wallBackLayerRef.current) {
-            drawWalls25D(wallBackLayerRef.current, borders, { theme: mapTheme, sun: sunForWalls, buildings, frontLayer: wallFrontLayerRef.current });
+            drawWalls25D(wallBackLayerRef.current, walls, { theme: mapTheme, sun: sunForWalls, buildings, frontLayer: wallFrontLayerRef.current });
             return;
         }
 
@@ -1432,6 +1548,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setEditName(node.name || '');
             setEditHours(node.opening_hours ?? null);
             setEditPublic(Boolean(node.is_public));
+            setEditManager(node.manager_id ? String(node.manager_id) : '');
             setEditType(node.type);
             setEditElevation(String(node.elevation));
             setEditFloor(String(node.floor_level));
@@ -1460,7 +1577,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setRouteResult(null);
 
             try {
-                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, borders, { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings, new Date(), closures) });
+                const result = computeRoute(nodes, nodeId, userLocation.latitude, userLocation.longitude, 0, walls, { buildings, bridges, links, pathways, closedBuildingIds: closedBuildingIds(buildings, new Date(), closures) });
                 setRouteResult(result);
                 drawRoute(result);
             } catch (err) {
@@ -1537,6 +1654,36 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         window.__movePathway = (id) => {
             const p = pathways.find((x) => x.id === id);
             if (p) startCampus('pathway', p, 'shape');
+        };
+        window.__closeBuildingNow = async (id) => {
+            const b = buildings.find((x) => x.id === id);
+            if (!b || !(await confirmAction({
+                title: `Close ${b.short_name || b.name} now?`,
+                message: 'Students see it as closed and routes go around it until you reopen it. Its opening hours stay as they are.',
+                confirmLabel: 'Close now', tone: 'danger',
+            }))) return;
+            try {
+                const now = new Date();
+                // shortcut: "until reopened" is a closure ending in a year; a forgotten one shows as Closed now on the map.
+                await api.createClosure({
+                    building_id: id, reason: 'Closed now', starts_at: now.toISOString(),
+                    ends_at: new Date(now.getTime() + 365 * 86400000).toISOString(),
+                });
+                mapInstance.current?.closePopup();
+                setClosures(await api.getClosures());
+                showToast(`${b.short_name || b.name} is closed until you reopen it`);
+            } catch (err) { onError(err.message); }
+        };
+        window.__reopenBuilding = async (id) => {
+            const b = buildings.find((x) => x.id === id);
+            const closure = b && closedNowOf(b);
+            if (!closure) return;
+            try {
+                await api.deleteClosure(closure.id);
+                mapInstance.current?.closePopup();
+                setClosures(await api.getClosures());
+                showToast(`${b.short_name || b.name} follows its opening hours again`);
+            } catch (err) { onError(err.message); }
         };
         const nodeWord = (n) => `${n} ${n === 1 ? 'node' : 'nodes'}`;
         window.__deleteBuilding = async (id) => {
@@ -1649,6 +1796,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             delete window.__editBuilding;
             delete window.__moveBuilding;
             delete window.__movePathway;
+            delete window.__closeBuildingNow;
+            delete window.__reopenBuilding;
             delete window.__deleteBuilding;
             delete window.__editPathway;
             delete window.__deletePathway;
@@ -1852,6 +2001,16 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
 
     const handleUpdateNode = async () => {
         if (!editingNode) return;
+        if (isOfficeStaff) {
+            if (hoursProblem(editHours)) { onError(hoursProblem(editHours)); return; }
+            try {
+                await api.updateNode(editingNode.id, { opening_hours: editHours });
+                setEditingNode(null);
+                loadData();
+                showToast('Hours saved');
+            } catch (err) { onError(err.message); }
+            return;
+        }
         if (editType === 'location' && !editName.trim()) {
             onError('Name is required for locations');
             return;
@@ -1873,6 +2032,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 // Only a place (location) has hours, or is shown to visitors; a route node never is.
                 opening_hours: editType === 'location' ? editHours : null,
                 is_public: editType === 'location' && editPublic,
+                ...(!isAdmin && editType === 'location' ? { manager_id: editManager === '' ? null : Number(editManager) } : {}),
             });
             setEditingNode(null);
             setIsSettingPosition(false);
@@ -2975,6 +3135,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         <MenuAction label={`Label a building (${buildings.length} labelled)`} onClick={() => startCampus('building')} />
                         <MenuAction label={`Add a bridge (${bridges.length} drawn)`} onClick={() => startCampus('bridge')} />
                         <MenuAction label={`Manage campus areas (${campusAreas.length} drawn)`} onClick={startManageAreas} />
+                        <MenuAction label={`Trees, benches, sheds and gates (${campusObjects.length} placed)`} onClick={startObjects} />
                         <p className="ui-hint" style={{ margin: '4px 12px 8px' }}>
                             Adopt a shape from the base map or draw a new one (e.g. a building under construction).
                             Tap a building or bridge on the map to edit it. Roads and walkways: Add path. Rooms, offices and doors are managed by each building's department staff.
@@ -3017,6 +3178,22 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         links={links}
                         startStep={campusEdit.startStep}
                         theme={mapTheme}
+                    />
+                )}
+
+                {surface === 'objects' && (
+                    <ObjectPalette
+                        count={campusObjects.length}
+                        placeKind={objectKind}
+                        onPlaceKind={(k) => { setObjectKind(k); setObjectNote(null); }}
+                        selected={objectDraft}
+                        onChange={(patch) => setObjectDraft((d) => ({ ...d, ...patch }))}
+                        onSave={saveObject}
+                        onDelete={removeObject}
+                        onDeselect={() => { setObjectDraft(null); setObjectNote(null); }}
+                        onDone={() => { setObjectDraft(null); setObjectNote(null); setTool(IDLE); }}
+                        saving={objectSaving}
+                        note={objectNote}
                     />
                 )}
 
@@ -3351,12 +3528,21 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                                 </div>
                                 <div className="mt-sheet-foot">
                                     <button className="ui-btn ui-btn-primary" onClick={handleUpdateNode}>Save</button>
-                                    <button className="ui-btn ui-btn-secondary" onClick={toggleNodeMove}>Move</button>
-                                    <button className="ui-btn ui-btn-danger" aria-expanded={confirmDelete} onClick={() => setConfirmDelete(!confirmDelete)}>Remove</button>
+                                    {!isOfficeStaff && (
+                                        <>
+                                            <button className="ui-btn ui-btn-secondary" onClick={toggleNodeMove}>Move</button>
+                                            <button className="ui-btn ui-btn-danger" aria-expanded={confirmDelete} onClick={() => setConfirmDelete(!confirmDelete)}>Remove</button>
+                                        </>
+                                    )}
                                 </div>
                             </>
                         )}
                     >
+                        {isOfficeStaff ? (
+                            <p className="ui-hint" style={{ margin: 0, color: TEXT }}>
+                                <strong>{editingNode.name}</strong>: you run this office. Set its hours below; the building head manages everything else.
+                            </p>
+                        ) : (
                         <NodeForm
                             id="edit"
                             type={editType} setType={setEditType}
@@ -3368,11 +3554,27 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                             buildings={ownBuildings} buildingId={editBuilding} setBuildingId={setEditBuilding} allowOutdoors={isAdmin}
                             departments={isAdmin ? departments : null} departmentId={editDept} setDepartmentId={setEditDept}
                         />
+                        )}
                         {editType === 'location' && (() => {
                             const building = editBuilding !== '' ? buildings.find((b) => String(b.id) === String(editBuilding)) : null;
                             const inherited = building?.opening_hours ? summarizeHours(building.opening_hours) : null;
+                            const ownerDept = editingNode.department_id ?? building?.department?.id ?? building?.department_id;
+                            const staff = users.filter((u) => u.role === 'faculty' && u.department?.id === ownerDept && u.id !== myId);
                             return (
                                 <section className="mt-stairs" aria-labelledby="edit-hours-title">
+                                    {!isAdmin && !isOfficeStaff && (
+                                        <div className="ui-field" style={{ marginBottom: 14 }}>
+                                            <label className="ui-label" htmlFor="edit-manager">Runs this office</label>
+                                            <select id="edit-manager" className="ui-select" value={editManager} onChange={(e) => setEditManager(e.target.value)} aria-describedby="edit-manager-hint">
+                                                <option value="">You (the building head)</option>
+                                                {staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                            </select>
+                                            <span className="ui-hint" id="edit-manager-hint">
+                                                {staff.length ? 'They can set this office\'s hours and close it, nothing else.' : 'No office staff in your department yet. An admin adds their accounts.'}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {!isOfficeStaff && (
                                     <label className="hours-toggle" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, cursor: 'pointer' }}>
                                         <input
                                             type="checkbox" checked={editPublic} onChange={(e) => setEditPublic(e.target.checked)}
@@ -3385,6 +3587,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                                             </span>
                                         </span>
                                     </label>
+                                    )}
                                     <h3 className="mt-stairs-title" id="edit-hours-title">Opening hours</h3>
                                     <HoursEditor
                                         value={editHours} onChange={setEditHours} idPrefix="edit-hours"
@@ -3395,7 +3598,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                                 </section>
                             );
                         })()}
-                        {!isAdmin && editingNode.type === 'location' && (
+                        {!isAdmin && !isOfficeStaff && editingNode.type === 'location' && (
                             <section className="mt-stairs" aria-label="Swap offices">
                                 <h3 className="mt-stairs-title">Office moved?</h3>
                                 <p className="ui-hint" style={{ margin: '0 0 10px' }}>
@@ -3404,6 +3607,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                                 <button type="button" className="ui-btn ui-btn-secondary ui-btn-block" onClick={startSwapPick}>Swap with another office</button>
                             </section>
                         )}
+                        {!isOfficeStaff && (
                         <StairLinks
                             node={editingNode}
                             nodes={nodes}
@@ -3413,6 +3617,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                             onUpdate={updateStairLink}
                             onRemove={removeStairLink}
                         />
+                        )}
                     </Sheet>
                 )}
             </div>

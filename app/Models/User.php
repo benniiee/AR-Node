@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'role', 'department_id', 'student_number', 'first_name', 'last_name', 'course_id', 'year_level'])]
+#[Fillable(['name', 'email', 'password', 'role', 'department_id', 'is_head', 'student_number', 'first_name', 'last_name', 'course_id', 'year_level'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -46,6 +46,7 @@ class User extends Authenticatable
      */
     protected $attributes = [
         'role' => 'faculty',
+        'is_head' => true,
     ];
 
     /**
@@ -96,6 +97,25 @@ class User extends Authenticatable
     }
 
     /**
+     * Office staff: a staff member of a department who is not its head (Dean / office head). They only
+     * set the hours of, and post closures for, the places assigned to them (nodes.manager_id).
+     */
+    public function isOfficeStaff(): bool
+    {
+        return $this->isFaculty() && ! $this->is_head;
+    }
+
+    /**
+     * Places (offices) this staff member runs.
+     *
+     * @return HasMany<Node, $this>
+     */
+    public function managedPlaces(): HasMany
+    {
+        return $this->hasMany(Node::class, 'manager_id');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -107,6 +127,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'year_level' => 'integer',
             'must_change_password' => 'boolean',
+            'is_head' => 'boolean',
         ];
     }
 }

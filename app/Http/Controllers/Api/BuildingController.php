@@ -88,6 +88,9 @@ class BuildingController extends Controller
         if (! $user->isAdmin() && $request->has('category') && $request->input('category') !== $building->category) {
             abort(403, 'Only an admin can change whether a building is a school or an office building.');
         }
+        if (! $user->isAdmin() && $request->has('status') && $request->input('status') !== $building->status) {
+            abort(403, 'Only an admin can mark a building completed or under construction.');
+        }
         if ($user->isAdmin() && $request->has('doors')) {
             abort(403, 'Doors are managed by the staff of the department that owns this building.');
         }

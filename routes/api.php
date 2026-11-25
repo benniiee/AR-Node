@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BorderController;
 use App\Http\Controllers\Api\BridgeController;
 use App\Http\Controllers\Api\BuildingController;
 use App\Http\Controllers\Api\CampusAreaController;
+use App\Http\Controllers\Api\CampusObjectController;
 use App\Http\Controllers\Api\ClosureController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\DepartmentController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\Api\WeatherHistoryController;
 use App\Http\Controllers\Api\WeatherRefreshController;
 use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\LogStaffActions;
+use App\Http\Middleware\RestrictOfficeStaff;
 use Illuminate\Support\Facades\Route;
 
 // Public reads, throttled by the 'public-read' limiter (AppServiceProvider).
@@ -52,7 +54,8 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:si
 // Protected: admin console endpoints, staff (admin / faculty) only. Student
 // accounts authenticate but are refused here by EnsureStaff.
 // LogStaffActions: every successful change made here goes to the activity log.
-Route::middleware(['auth:sanctum', EnsureStaff::class, LogStaffActions::class])->group(function () {
+// RestrictOfficeStaff: office staff (not a building head) change only their own offices' hours and closures.
+Route::middleware(['auth:sanctum', EnsureStaff::class, RestrictOfficeStaff::class, LogStaffActions::class])->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -69,6 +72,8 @@ Route::middleware(['auth:sanctum', EnsureStaff::class, LogStaffActions::class])-
     Route::apiResource('pathways', PathwayController::class);
     // Campus areas (Campus A, Campus B, ...): staff read, admins edit (enforced in the controller).
     Route::apiResource('campus-areas', CampusAreaController::class);
+    // Trees, benches, sheds and gates: staff read, admins place them (enforced in the controller).
+    Route::apiResource('campus-objects', CampusObjectController::class);
     // A pathway routes by itself: this removes the duplicate route-node dots along it.
     Route::post('/pathways/{pathway}/clear-route-nodes', [PathwayController::class, 'clearRouteNodes']);
     // Bridges and other connectors: staff read, admins edit (enforced in the controller).

@@ -6,7 +6,7 @@
 // (first point NOT repeated at the end); a pathway is an open polyline.
 
 export const BUILDING_STATUSES = [
-    { value: 'existing', label: 'Existing' },
+    { value: 'existing', label: 'Completed' },
     { value: 'under_construction', label: 'Under construction' },
     { value: 'planned', label: 'Planned' },
 ];
@@ -45,7 +45,7 @@ export function deckLevelLabel(deckFloor) {
     return `${f} ${f === 1 ? 'floor' : 'floors'} up`;
 }
 
-export const statusLabel = (status) => BUILDING_STATUSES.find((s) => s.value === status)?.label || 'Existing';
+export const statusLabel = (status) => BUILDING_STATUSES.find((s) => s.value === status)?.label || 'Completed';
 /** Usual width of a pathway, metres, when it has none of its own (pathways.width_m). */
 export const PATHWAY_WIDTH_M = { road: 5, walkway: 2.4, covered: 2.4 };
 /** How wide a pathway is drawn (2D map and 3D strips): its own width, else the usual one for its kind. */

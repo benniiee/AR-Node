@@ -9,6 +9,7 @@ import { planFromLink, stairTreads, walkLine, footprint } from '../stairGeometry
 import { makeLabel, disposeTree } from './StairPreview3D';
 import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
 import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
+import { treeModel, seededRandom, shedRoof, gateEnds, objectRect } from '../campusObjects';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -18,7 +19,11 @@ import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
 // the start point to the destination pin. Drag to orbit, pinch / wheel to zoom.
 // Scene axes: x = east, y = up, z = -north (as the other 3D previews).
 
-const ROUTE = 0xffffff;
+// Navigation blue (uiTokens C.route), with white chevrons riding on it towards the destination.
+const ROUTE = 0x1f6feb;
+const ROUTE_CHEVRON = 0xffffff;
+/** One chevron every this many metres along the 3D route. */
+const CHEVRON_EVERY_M = 6;
 const ROUTE_EDGE = 0x16161b;
 const GO = 0x22c55e;
 const STAIR = 0xffb02e;
@@ -138,7 +143,7 @@ function screenLabel(text, opts = {}, size = 0.05) {
  * follow: the live 3D view walks a person along instead of the fixed one at the
  * start, and draws the roads and walkways (`pathways`) on the ground.
  */
-export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], nodes = [], follow = false }) {
+export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false }) {
     const path = route?.path || [];
     const byId = new Map((buildings || []).map((b) => [b.id, b]));
     const inside = new Map();
@@ -542,6 +547,95 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         group.add(tag);
     }
 
+    // Trees, benches, sheds and gates (campus objects), each from the same shape as the 2D map.
+    if (objects?.length) {
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.95 });
+        const leafMats = [0x3f7d3a, 0x467f36, 0x3b7442, 0x4d8a3c, 0x38703a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }));
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.85 });
+        const shedMat = new THREE.MeshStandardMaterial({ color: 0x8d9f96, roughness: 0.6, metalness: 0.2, side: THREE.DoubleSide });
+        const postMat3 = new THREE.MeshStandardMaterial({ color: 0x5b5f63, roughness: 0.7 });
+        const pillarMat = new THREE.MeshStandardMaterial({ color: 0xe6dabd, roughness: 0.95 });
+        const box = (w, h, d, mat, x, y, z, rotY = 0) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            m.position.set(x, y, z);
+            m.rotation.y = rotY;
+            group.add(m);
+            return m;
+        };
+        for (const o of objects) {
+            if (!Number.isFinite(+o.latitude) || !Number.isFinite(+o.longitude)) continue;
+            const base = xz(o.latitude, o.longitude);
+            const rotY = -((Number(o.rotation_deg) || 0) * Math.PI) / 180;
+            if (o.kind === 'tree') {
+                const m = treeModel(o);
+                const leaf = leafMats[Math.floor(seededRandom((Number(o.seed) || 1) + 3)() * leafMats.length)];
+                const topU = m.fronds.length ? m.trunkH : m.crownBase + 0.3;
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(m.trunkR * 0.7, m.trunkR, topU, 8), trunkMat);
+                trunk.position.set(base.x + m.lean.e / 2, topU / 2, base.z - m.lean.n / 2);
+                trunk.rotation.z = -Math.atan2(m.lean.e, topU);
+                trunk.rotation.x = Math.atan2(-m.lean.n, topU) * -1;
+                group.add(trunk);
+                if (m.fronds.length) {
+                    for (const f of m.fronds) {
+                        const a = (f.dir * Math.PI) / 180;
+                        const frond = new THREE.Mesh(new THREE.ConeGeometry(0.4, f.len, 4), leaf);
+                        // Lay each frond out from the top, drooping towards its tip.
+                        frond.position.set(base.x + m.lean.e + Math.sin(a) * f.len * 0.45, m.trunkH - f.droop * f.len * 0.4, base.z - m.lean.n - Math.cos(a) * f.len * 0.45);
+                        frond.rotation.order = 'YXZ';
+                        frond.rotation.y = -a;
+                        frond.rotation.x = Math.PI / 2 + f.droop * 0.8;
+                        frond.scale.set(1, 1, 0.25);
+                        group.add(frond);
+                    }
+                } else {
+                    for (const p of m.puffs) {
+                        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(p.r, 1), leaf);
+                        puff.position.set(base.x + m.lean.e + p.e, p.u, base.z - m.lean.n - p.n);
+                        puff.scale.y = 0.85;
+                        group.add(puff);
+                    }
+                }
+            } else if (o.kind === 'bench') {
+                const len = Number(o.length_m) || 1.8;
+                const wid = Number(o.width_m) || 0.5;
+                const seat = Number(o.height_m) || 0.45;
+                const piv = new THREE.Group();
+                piv.position.set(base.x, 0, base.z);
+                piv.rotation.y = rotY;
+                const seatMesh = new THREE.Mesh(new THREE.BoxGeometry(wid, 0.06, len), woodMat);
+                seatMesh.position.y = seat;
+                piv.add(seatMesh);
+                for (const s of [-1, 1]) {
+                    const leg = new THREE.Mesh(new THREE.BoxGeometry(wid * 0.9, seat, 0.08), woodMat);
+                    leg.position.set(0, seat / 2, s * (len / 2 - 0.15));
+                    piv.add(leg);
+                }
+                group.add(piv);
+            } else if (o.kind === 'shed') {
+                const roofY = Number(o.height_m) || 2.6;
+                const corners = shedRoof(o).map((p) => xz(p.lat, p.lng));
+                for (const c of corners) box(0.1, roofY, 0.1, postMat3, c.x, roofY / 2, c.z);
+                const roofGeo = new THREE.BufferGeometry();
+                const [a, b, c2, d] = corners;
+                roofGeo.setAttribute('position', new THREE.Float32BufferAttribute([a, b, c2, a, c2, d].flatMap((q) => [q.x, roofY, q.z]), 3));
+                roofGeo.computeVertexNormals();
+                group.add(new THREE.Mesh(roofGeo, shedMat));
+                // A bench under the roof, along its length.
+                const inner = objectRect(o, 0.45, (Number(o.length_m) || 4) * 0.7).map((p) => xz(p.lat, p.lng));
+                const cx = inner.reduce((s, q) => s + q.x, 0) / 4;
+                const cz = inner.reduce((s, q) => s + q.z, 0) / 4;
+                box(0.45, 0.06, (Number(o.length_m) || 4) * 0.7, woodMat, cx, 0.45, cz, rotY);
+            } else if (o.kind === 'gate') {
+                const h = Number(o.height_m) || 2.2;
+                for (const p of gateEnds(o)) {
+                    const c = xz(p.lat, p.lng);
+                    box(0.5, h, 0.5, pillarMat, c.x, h / 2, c.z, rotY);
+                    box(0.62, 0.12, 0.62, pillarMat, c.x, h + 0.06, c.z, rotY);
+                }
+            }
+        }
+    }
+
     // The route as one polyline in 3D; floor changes climb the stairs.
     const linkFor = (a, b) => (links || []).find((l) => (l.node_a_id === a.id && l.node_b_id === b.id) || (l.node_a_id === b.id && l.node_b_id === a.id));
     const stepMat = new THREE.MeshStandardMaterial({ color: STAIR, roughness: 0.8 });
@@ -686,10 +780,29 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         }
         curve.add(new THREE.LineCurve3(at, pts[pts.length - 1]));
         const segs = Math.min(4000, pts.length * 16);
-        // White route with a thin dark edge: the edge tube shows only its back
-        // faces, so it outlines the white tube instead of covering it.
+        // Blue route with a thin dark edge: the edge tube shows only its back
+        // faces, so it outlines the blue tube instead of covering it.
         group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.3, 10, false), new THREE.MeshBasicMaterial({ color: ROUTE_EDGE, side: THREE.BackSide })));
         group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.22, 10, false), new THREE.MeshBasicMaterial({ color: ROUTE })));
+        // White chevrons lying on top of the tube, pointing towards the destination: a notched arrowhead
+        // built pointing along +Z, so lookAt() aims it along the route.
+        const chevGeo = new THREE.BufferGeometry();
+        chevGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+            0, 0, 0.55, 0.42, 0, -0.2, 0, 0, 0.05,
+            0, 0, 0.55, 0, 0, 0.05, -0.42, 0, -0.2,
+        ], 3));
+        chevGeo.computeVertexNormals();
+        const chevMat = new THREE.MeshBasicMaterial({ color: ROUTE_CHEVRON, side: THREE.DoubleSide });
+        const routeLen = curve.getLength();
+        for (let m = CHEVRON_EVERY_M / 2; m < routeLen - 1; m += CHEVRON_EVERY_M) {
+            const t = m / routeLen;
+            const p = curve.getPointAt(t);
+            const tan = curve.getTangentAt(t);
+            const chev = new THREE.Mesh(chevGeo, chevMat);
+            chev.position.set(p.x, p.y + 0.24, p.z);
+            chev.lookAt(p.x + tan.x, p.y + 0.24 + tan.y, p.z + tan.z);
+            group.add(chev);
+        }
         // Start and destination.
         // You: a person at the start, facing the way the route goes (the
         // follow view moves its own person with you instead).
@@ -723,7 +836,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
     return { target: new THREE.Vector3(0, 3, 0), radius, xz, toLatLng, routePts: pts, stops };
 }
 
-export default function RouteModel3D({ route, buildings, links, bridges = [], nodes = [], height = 420 }) {
+export default function RouteModel3D({ route, buildings, links, bridges = [], objects = [], nodes = [], height = 420 }) {
     const hostRef = useRef(null);
     const stateRef = useRef(null);
 
@@ -755,7 +868,7 @@ export default function RouteModel3D({ route, buildings, links, bridges = [], no
             keys: new Set(), joy: { x: 0, y: 0 }, last: 0, home: new THREE.Vector3(),
         };
         stateRef.current = s;
-        const built = buildScene(group, { route, buildings, links, bridges, nodes });
+        const built = buildScene(group, { route, buildings, links, bridges, objects, nodes });
         s.target.copy(built.target);
         s.home.copy(built.target);
         s.base = built.radius * 2.6 + 10;

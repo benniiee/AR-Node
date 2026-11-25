@@ -29,6 +29,7 @@ class NodeController extends Controller
         'department:id,name,color',
         'creator:id,name',
         'building:id,name,short_name,floors',
+        'manager:id,name',
     ];
 
     /**
@@ -154,6 +155,18 @@ class NodeController extends Controller
      */
     public function update(Request $request, Node $node): JsonResponse
     {
+        // Office staff set the hours of the places assigned to them, nothing else.
+        if ($request->user()->isOfficeStaff()) {
+            abort_unless($node->manager_id === $request->user()->id, 403, 'You can only set the hours of the offices assigned to you.');
+            $validated = $request->validate(OpeningHours::rules());
+            if (array_key_exists('opening_hours', $validated)) {
+                $node->opening_hours = OpeningHours::normalize($validated['opening_hours']);
+                $node->save();
+            }
+
+            return response()->json($node->load(self::WITH));
+        }
+
         $this->authorizeNode($request, $node);
 
         $validated = $request->validate([
@@ -170,7 +183,12 @@ class NodeController extends Controller
             ...OpeningHours::rules(),
             // Only a place (location) can be shown to visitors.
             'is_public' => 'sometimes|boolean',
+            // Office staff who run this place (the building head assigns them).
+            'manager_id' => 'sometimes|nullable|integer|exists:users,id',
         ]);
+        if (array_key_exists('manager_id', $validated)) {
+            $node->manager_id = $this->managerFor($node, $validated['manager_id']);
+        }
         if (array_key_exists('opening_hours', $validated)) {
             $validated['opening_hours'] = OpeningHours::normalize($validated['opening_hours']);
         }
@@ -200,7 +218,7 @@ class NodeController extends Controller
             (int) (array_key_exists('floor_level', $validated) ? $validated['floor_level'] : $node->floor_level),
         );
 
-        $node->fill(Arr::except($validated, ['department_id']));
+        $node->fill(Arr::except($validated, ['department_id', 'manager_id']));
         // A route node is never a visitor's destination.
         if ($node->type !== 'location') {
             $node->is_public = false;
@@ -329,6 +347,26 @@ class NodeController extends Controller
     /**
      * Faculty are scoped to nodes inside their department's buildings; admins are unrestricted.
      */
+    /**
+     * Who may run a place: a staff member of the department that owns it (the place's own department,
+     * else its building's). Null clears it (the head runs it again).
+     */
+    private function managerFor(Node $node, ?int $managerId): ?int
+    {
+        if ($managerId === null) {
+            return null;
+        }
+        abort_unless($node->type === 'location', 422, 'Only a place (an office or room) can be assigned to staff.');
+        $owner = $node->department_id ?? $node->building?->department_id;
+        $manager = User::find($managerId);
+        abort_unless(
+            $manager !== null && $manager->isFaculty() && $owner !== null && $manager->department_id === $owner,
+            422, 'Assign someone from the department that owns this place.',
+        );
+
+        return $manager->id;
+    }
+
     private function authorizeNode(Request $request, Node $node): void
     {
         $user = $request->user();

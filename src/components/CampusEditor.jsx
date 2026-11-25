@@ -216,9 +216,10 @@ export default function CampusEditor({
     const [floors, setFloors] = useState(String(record?.floors ?? 1));
     // Optional measured height; blank = estimated from floors (floors x 3.2 m).
     const [heightM, setHeightM] = useState(record?.height_m ? String(record.height_m) : '');
-    // Status is no longer asked: everything on the map is an existing
-    // building or path (saving one marks it existing).
-    const status = 'existing';
+    // Buildings: completed (the default) or under construction (shown faded, never routed into or to);
+    // the admin's to set. Paths and bridges are always existing.
+    const [buildingStatus, setBuildingStatus] = useState(record?.status === 'under_construction' ? 'under_construction' : 'existing');
+    const status = isBuilding ? buildingStatus : 'existing';
     // Legacy column, kept as it was: the campus now comes from the campus areas.
     const campus = record?.campus === 'B' ? 'B' : 'A';
     const [departmentId, setDepartmentId] = useState(record?.department_id ? String(record.department_id) : '');
@@ -1029,6 +1030,21 @@ export default function CampusEditor({
                                     </span>
                                 </label>
                             )}
+                        </div>
+                        <div className="ui-field">
+                            <label className="ui-label" htmlFor="cf-status">Status</label>
+                            <select
+                                id="cf-status" className="ui-select" value={buildingStatus} onChange={(e) => setBuildingStatus(e.target.value)}
+                                disabled={!canChangeDepartment} aria-describedby="cf-status-hint"
+                            >
+                                <option value="existing">Completed</option>
+                                <option value="under_construction">Under construction</option>
+                            </select>
+                            <span className="ui-hint" id="cf-status-hint">
+                                {buildingStatus === 'under_construction'
+                                    ? 'Shown faded and labelled on the map. Routes go around it and it is not a destination.'
+                                    : canChangeDepartment ? 'In use: students can be routed to it.' : 'Only an admin can change the status.'}
+                            </span>
                         </div>
                         <div className="ui-field">
                             <label className="ui-label" htmlFor="cf-category">Building type</label>

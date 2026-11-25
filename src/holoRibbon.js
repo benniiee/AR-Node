@@ -444,8 +444,8 @@ export function roadStrip(line, halfWidth) {
 }
 
 /**
- * The AR route as a road on the ground (the 3D view's route, brought into the camera): a white strip
- * with dark edges and dark chevrons painted on it, moving toward the destination. Points are on the
+ * The AR route as a road on the ground (the 3D view's route, brought into the camera): a blue strip
+ * (the route colour everywhere) with white edges and white chevrons painted on it, moving toward the destination. Points are on the
  * ground already (the caller drops them from marker height).
  *
  * @returns {{ group: THREE.Group, setPoints: (pts: {x:number,y:number,z:number}[]) => void,
@@ -455,15 +455,15 @@ export function createGroundRoad({ width = ROAD_WIDTH_M } = {}) {
     const group = new THREE.Group();
     group.visible = false;
     // One tile of paint: 64 px across, 64 px per metre along; the chevron points up the tile (+v,
-    // the walking direction). White surface see-through enough to keep the ground in view.
+    // the walking direction). Blue surface see-through enough to keep the ground in view.
     const tilePx = 64 * ROAD_CHEVRON_EVERY_M;
     const canvas = document.createElement('canvas');
     canvas.width = 64;
     canvas.height = tilePx;
     const g = canvas.getContext('2d');
-    g.fillStyle = 'rgba(255,255,255,0.62)';
+    g.fillStyle = 'rgba(31,111,235,0.66)';
     g.fillRect(0, 0, 64, tilePx);
-    g.fillStyle = 'rgba(22,22,27,0.92)';
+    g.fillStyle = 'rgba(255,255,255,0.92)';
     g.fillRect(0, 0, 7, tilePx);
     g.fillRect(57, 0, 7, tilePx);
     // The chevron: a thick "^" across the middle of the road.
@@ -476,7 +476,7 @@ export function createGroundRoad({ width = ROAD_WIDTH_M } = {}) {
     g.lineTo(12, top + 42);
     g.lineTo(12, top + 26);
     g.closePath();
-    g.fillStyle = 'rgba(22,22,27,0.88)';
+    g.fillStyle = 'rgba(255,255,255,0.95)';
     g.fill();
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.ClampToEdgeWrapping;

@@ -4,6 +4,32 @@ import { C, TYPE, TAP } from '../uiTokens';
 import { Collapse } from '../motion';
 import { confirmAction } from './ConfirmDialog';
 import ScrollWindow from './ScrollWindow';
+import { Segmented } from './MapControls';
+
+// Account roles as people say them: an admin, a department's head (the Dean of a college, the head of
+// an office building), or office staff, who run the offices their head assigns them (IT office, CS office).
+const ROLES = [
+    { value: 'admin', label: 'Admin' },
+    { value: 'head', label: 'Head (Dean)' },
+    { value: 'staff', label: 'Office staff' },
+];
+// The head of an office building is its head; of a college, its Dean.
+const headLabel = (r, kind) => (r.value === 'head' && kind === 'office' ? 'Head' : r.label);
+const roleOf = (u) => (u.role === 'admin' ? 'admin' : u.is_head === false ? 'staff' : 'head');
+const rolePatch = (role) => (role === 'admin' ? { role: 'admin' } : { role: 'faculty', is_head: role === 'head' });
+const ROLE_HINTS = {
+    admin: 'Admins manage departments, accounts, buildings and pathways.',
+    head: 'Runs the department\'s building: rooms, doors, hours, Close now, and who runs each office.',
+    staff: 'Sets the hours of the offices the head assigns them, nothing else.',
+};
+// College (school) matters apart from office matters (registrar, cashier...), and the admins.
+const GROUPS = [
+    { value: 'all', label: 'All' },
+    { value: 'college', label: 'Colleges' },
+    { value: 'office', label: 'Offices' },
+    { value: 'admin', label: 'Admins' },
+];
+const groupOf = (u) => (u.role === 'admin' ? 'admin' : u.department?.kind === 'office' ? 'office' : u.department ? 'college' : 'none');
 
 const FALLBACK_COLOR = '#22c55e';
 const isHex = (v) => /^#[0-9a-fA-F]{6}$/.test(v || '');
@@ -74,7 +100,7 @@ const DEPT_CSS = `
         scroll-padding-block: 8px; border-radius: 10px;
     }
     .acct-row {
-        display: grid; grid-template-columns: minmax(0, 1fr) 104px minmax(132px, 0.85fr) auto;
+        display: grid; grid-template-columns: minmax(0, 1fr) 128px minmax(132px, 0.85fr) auto;
         grid-template-areas: "text role dept remove";
         align-items: center; gap: 8px; height: 66px; min-height: 66px;
         padding: 8px 6px; margin: 0; border-top: 1px solid ${C.hairline}; border-radius: 10px;
@@ -89,6 +115,9 @@ const DEPT_CSS = `
         font-size: ${TYPE.desc}; font-weight: 700; }
     .acct-admins { margin-left: 2px; color: ${C.muted}; font-weight: 600; }
     .acct-search { margin: 4px 0 4px; }
+    .acct-groups { margin: 4px 0 8px; }
+    .acct-groups .seg { width: 100%; }
+    .acct-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .acct-row .ui-select {
         width: 100%; min-width: 0; height: 40px; min-height: 40px;
         padding: 8px 9px; font-size: ${TYPE.desc};
@@ -147,14 +176,17 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
     const [userEmail, setUserEmail] = useState('');
     const [userPassword, setUserPassword] = useState('');
     const [userDept, setUserDept] = useState('');
-    // Several admins can share the map work; new accounts default to faculty.
-    const [userRole, setUserRole] = useState('faculty');
+    // Several admins can share the map work; new accounts default to a department head.
+    const [userRole, setUserRole] = useState('head');
     const adminCount = users.filter((u) => u.role === 'admin').length;
     // Filter accounts by name, email, role or department.
     const [accountQuery, setAccountQuery] = useState('');
+    const [accountGroup, setAccountGroup] = useState('all');
     const shownUsers = users.filter((u) => {
+        if (accountGroup !== 'all' && groupOf(u) !== accountGroup) return false;
         const words = accountQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
-        const hay = `${u.name} ${u.email} ${u.role} ${u.department?.name || ''}`.toLowerCase();
+        const role = ROLES.find((r) => r.value === roleOf(u))?.label || '';
+        const hay = `${u.name} ${u.email} ${role} ${u.department?.name || ''} ${(u.places || []).map((pl) => pl.name).join(' ')}`.toLowerCase();
         return words.every((w) => hay.includes(w));
     });
     const [savingUser, setSavingUser] = useState(false);
@@ -231,13 +263,13 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                 name: userName.trim(),
                 email: userEmail.trim(),
                 password: userPassword,
-                role: userRole,
+                ...rolePatch(userRole),
                 department_id: userDept === '' ? null : Number(userDept),
             });
-            setUserName(''); setUserEmail(''); setUserPassword(''); setUserDept(''); setUserRole('faculty');
+            setUserName(''); setUserEmail(''); setUserPassword(''); setUserDept(''); setUserRole('head');
             setShowUserForm(false);
             await refresh();
-            notify(userRole === 'admin' ? 'Admin account added' : 'Faculty account added');
+            notify(`${ROLES.find((r) => r.value === userRole)?.label} account added`);
         } catch (err) { fail(err.message); } finally { setSavingUser(false); }
     };
 
@@ -269,7 +301,7 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                 <header className="rise" style={{ '--i': 0 }}>
                     <h1 className="ui-h1">Departments &amp; accounts</h1>
                     <p className="ui-sub">
-                        Department colours label the map; a faculty account's nodes are filed under its department. Each department's courses (Courses tab) decide which students its staff see in the Activity log.
+                        Department colours label the map; a staff account's rooms and offices are filed under its department. Each department's head (the Dean of a college) runs its building and assigns office staff to its offices. Each department's courses (Courses tab) decide which students its staff see in the Activity log.
                     </p>
                 </header>
 
@@ -404,21 +436,23 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                                 <div className="ui-field">
                                     <label className="ui-label" htmlFor="acct-role">Role</label>
                                     <select id="acct-role" className="ui-select" value={userRole} onChange={(e) => setUserRole(e.target.value)} aria-describedby="acct-role-hint">
-                                        <option value="faculty">Faculty</option>
-                                        <option value="admin">Admin</option>
+                                        {ROLES.map((r) => <option key={r.value} value={r.value}>{headLabel(r, departments.find((d) => String(d.id) === userDept)?.kind)}</option>)}
                                     </select>
-                                    <span className="ui-hint" id="acct-role-hint">Admins manage departments, accounts, buildings and pathways</span>
+                                    <span className="ui-hint" id="acct-role-hint">{ROLE_HINTS[userRole]}</span>
                                 </div>
                                 <div className="acct-form-actions">
                                     <button type="button" className="ui-btn ui-btn-secondary" onClick={() => setShowUserForm(false)}>Cancel</button>
                                     <button type="submit" className="ui-btn ui-btn-primary" disabled={savingUser}>
                                         {savingUser && <span className="btn-spin" aria-hidden="true" />}
-                                        {savingUser ? 'Adding' : (userRole === 'admin' ? 'Add admin' : 'Add faculty')}
+                                        {savingUser ? 'Adding' : 'Add account'}
                                     </button>
                                 </div>
                             </form>
                         </Collapse>
 
+                        <div className="acct-groups">
+                            <Segmented label="Show accounts of" value={accountGroup} onChange={setAccountGroup} options={GROUPS} />
+                        </div>
                         {users.length > 4 && (
                             <div className="ui-field acct-search">
                                 <label className="ui-label" htmlFor="acct-search">Find an account</label>
@@ -431,7 +465,9 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                         {users.length === 0 ? (
                             <p className="dept-empty">No accounts yet.</p>
                         ) : shownUsers.length === 0 ? (
-                            <p className="dept-empty">No account matches “{accountQuery}”.</p>
+                            <p className="dept-empty">
+                                {accountQuery.trim() ? `No account matches “${accountQuery}”.` : `No ${GROUPS.find((g) => g.value === accountGroup)?.label.toLowerCase()} accounts yet.`}
+                            </p>
                         ) : (
                             <>
                             <ScrollWindow
@@ -450,18 +486,20 @@ export default function AdminDepartments({ departments, users, currentUser, onCh
                                                     {u.name}
                                                     {isSelf && <span className="acct-you">You</span>}
                                                 </div>
-                                                <div className="dept-sub">{u.email}</div>
+                                                <div className="dept-sub acct-sub">
+                                                    {u.email}
+                                                    {(u.places || []).length > 0 && <> · Runs {u.places.map((pl) => pl.name).join(', ')}</>}
+                                                </div>
                                             </div>
                                             <select
                                                 className="ui-select"
                                                 aria-label={`Role for ${u.name}`}
-                                                value={u.role}
+                                                value={roleOf(u)}
                                                 disabled={isSelf || isLastAdmin}
                                                 title={lockReason}
-                                                onChange={(e) => updateUser(u.id, { role: e.target.value }, 'Role updated')}
+                                                onChange={(e) => updateUser(u.id, rolePatch(e.target.value), 'Role updated')}
                                             >
-                                                <option value="admin">Admin</option>
-                                                <option value="faculty">Faculty</option>
+                                                {ROLES.map((r) => <option key={r.value} value={r.value}>{headLabel(r, u.department?.kind)}</option>)}
                                             </select>
                                             <select
                                                 className="ui-select acct-dept"

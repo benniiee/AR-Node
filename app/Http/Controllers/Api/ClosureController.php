@@ -85,6 +85,11 @@ class ClosureController extends Controller
         if ($user->isAdmin()) {
             return;
         }
+        if ($user->isOfficeStaff()) {
+            abort_unless($this->ownOffice($user, $closure), 403, 'You can only close the offices assigned to you.');
+
+            return;
+        }
         abort_unless($user->department_id !== null, 403, 'Ask an admin to assign you a department first.');
         abort_if(
             $closure->campus !== null || $closure->building_category !== null || $closure->isSchoolLevel(), 403,
@@ -95,10 +100,20 @@ class ClosureController extends Controller
 
     private function canManage(User $user, Closure $closure): bool
     {
+        if ($user->isOfficeStaff()) {
+            return $this->ownOffice($user, $closure);
+        }
+
         return $user->isAdmin()
             || ($user->department_id !== null && ! $closure->isSchoolLevel()
                 && $closure->campus === null && $closure->building_category === null
                 && $this->withinDepartment($user, $closure));
+    }
+
+    /** A closure of one of the places this office staff member runs. */
+    private function ownOffice(User $user, Closure $closure): bool
+    {
+        return $closure->node_id !== null && Node::whereKey($closure->node_id)->where('manager_id', $user->id)->exists();
     }
 
     private function withinDepartment(User $user, Closure $closure): bool

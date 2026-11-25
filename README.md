@@ -11,10 +11,11 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 ## Who can do what
 
 **Admins** (admin console at `/admin`)
-- Manage buildings: label them from the base map or draw them; edit name, short name, floors, height and status; move, reshape or remove them. Removing a building also deletes every node filed under it (rooms, offices, indoor routes on all floors) and their staircases.
+- Manage buildings: label them from the base map or draw them; edit name, short name, floors, height and status (**Completed**, or **Under construction**: drawn faded and labelled, routes go around it and it is not a destination); move, reshape or remove them. Removing a building also deletes every node filed under it (rooms, offices, indoor routes on all floors) and their staircases.
 - Assign a building to a department, or hand it over to another department. Its rooms and routes stay where they are, and the new department manages them.
 - Manage bridges (such as the footbridge between the two campuses): draw the deck's outline like a building, set its name, deck level (at ground level, or 1 to 5 floors up), height and roof, then lay route nodes along the deck in one step. A raised deck's route nodes are on its floor (at the deck's height), so routes reach it only by stairs. **Connect to ground** (the bridge's popup or Edit panel) joins it to the existing ground routes like a building's stairs: tap a deck node at one end, then the ground route node the stairs come down to, then set the stairs' shape and slope; once per end. (Where no ground route exists yet, "Also build new stairs down to new ground nodes" makes a 35° staircase and a ground node one stair-length beyond each end.) A roofed deck counts as sheltered in rain. Bridges show on the student map and in the 3D views drawn like the campus footbridge: concrete parapet walls, a striped band along the deck's edge, square pillars, and a gable roof on posts over the deck and down over the stairs (whose sides are solid walls). **Manage entrances** (a bridge's openings; the same editor as a building's doors): with entrances, routes get on and off the deck only through them, on the deck's floor (the ground under a raised deck stays open), so a route cannot slip sideways off the deck into a building next to it. **Find entrances** places them where existing paths come in: ground paths into a staircase's foot, and paths joining the deck on its own floor (a path counts within 10 m of the outline). The same button is in a building's Manage doors, where it puts a door wherever a ground path crosses the outline. Check them, then Save. **Manage nodes** (the bridge's Edit panel or popup) lists the nodes on the deck with Edit / Remove, adds new ones on the deck's floor, and opens Connect to ground, like a building's. **Closed** (in its Edit panel, with a required reason such as "Campus A event until 5 PM") takes the whole bridge out of routing, from either side, until an admin reopens it: the map draws it grey with the reason, and when it was the only way students see "<name> is closed: <reason>." instead of a generic error. Removing a bridge also deletes the nodes on its deck and the staircases up to them (the ground routes stay). The `kind` column makes later connectors (a skywalk, a tunnel) one new value, not a new table.
 - Manage campus areas (the Campus A and Campus B outlines).
+- Furnish the campus (Campus menu → **Trees, benches, sheds and gates**), like a city builder: tap the map to place one. A tree has a height, a crown width, a form (round, spreading, tall, palm) and **New look** (a random seed that reshapes it); its shade counts in heat routing, moving with the sun through the day. Benches and sheds (with a bench inside) have a size and facing. A gate snaps onto the nearest wall and opens a gap in it that routes pass through. All of them show in 2D and in the 3D views.
 - Manage roads and walkways (bottom bar → **Add path**): draw, edit (name, type, real width in metres) and reshape them. A pathway is a route by itself: routes follow its line, so it needs no route nodes, and a covered walkway counts as sheltered in rain. **Clear route nodes along it** (in its Edit panel) removes the old route-node dots within a few metres of it, never staircase ends, nodes in buildings or on bridges, or rooms. The 2D map and the 3D views draw each one at its real width (blank = 5 m for a road, 2.4 m for a walkway).
 - Manage nodes **only on bridges** (deck nodes and the stair feet under them). Rooms, offices and routes inside buildings, and their doors, belong to each building's department staff; outdoors, routes follow roads and walkways.
 - Manage every wall, and the staircases of bridges (Connect to ground). Staircases inside buildings are the department staff's.
@@ -22,12 +23,14 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Set **opening hours** only on buildings that belong to no department or office yet; otherwise its staff set them.
 - Post **announcements** (Announcements tab): close the whole school, one campus, **every school building** (classes suspended, while office buildings stay open), every office building, one department or office, one building or one room, from a start to an end time, with a reason students see. Each ends on its own; **End now** ends it early. When the heat index is in the Danger range (41°C or more), the tab offers to fill in a class suspension; posting it is always the admin's call.
 - Manage every student course in the **Courses** tab (code, full name and the department it belongs to). A department's courses decide which students its staff see in the Activity log.
-- Manage staff accounts: create admins and faculty, assign departments, change roles, remove accounts. Nobody can remove or demote themselves, and at least one admin always remains.
+- Manage staff accounts: create admins, building heads (the **Dean** of a college, the head of an office building) and **office staff**, assign departments, change roles, remove accounts. The account list filters by **Colleges**, **Offices** or **Admins**, and shows which offices each staff member runs. Nobody can remove or demote themselves, and at least one admin always remains.
 - Manage student accounts: add, edit, reset a password (gives a one-time temporary password), remove.
 - Open the Weather Dashboard (prediction history and accuracy) and update the weather now.
 - Read the **Activity log**: every staff sign-in and change (by any admin or faculty member, so admins see each other's work), student sign-ins (name, course, year level), and what visitors open on the map (the map itself, a chosen destination, the 3D / AR view), with the visitor's IP address and device. Filter by staff, students or visitors, and search. Kept 180 days.
 
-**Faculty staff** (admin console at `/admin`; an admin must assign them a department first)
+**Building heads** (the Dean of a college, the head of an office building: admin console at `/admin`; an admin must assign them a department first). Existing department staff accounts are heads.
+- Assign **office staff** to each office or room in their building (the IT office, the CS office): the room's Edit panel → **Runs this office**.
+- **Close now** (the building's popup): closes the whole building straight away, separate from its opening hours, until they press **Reopen**. Students see it closed and routes go around it.
 - Add, edit, move and remove nodes (rooms, offices, route nodes) only inside their own department's buildings and on those buildings' floors, including nodes other people placed there. Admins do not edit these.
 - Cannot add or edit nodes outside buildings or on bridges: admins manage the outdoor network (roads, walkways, bridges).
 - Edit their own department's buildings: move, reshape, rename, change floors and height, and manage their **doors** (only department staff do; a building with no department gets none until an admin assigns one). They cannot add, remove or reassign buildings.
@@ -42,6 +45,9 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - Read the **Activity log** of the students in their department's courses only (their sign-ins), not other staff or visitors.
 - Cannot open the Weather Dashboard, Departments & accounts, or Students.
 
+**Office staff** (a department's staff who are not its head)
+- Set the **opening hours** of the offices their head assigned them, and post closures for them (out for lunch, maintenance). Everything else (rooms, doors, the building, other offices) stays the head's; the server refuses the rest.
+
 **Students** (`/map`, signed in with their school ID or school email)
 - See the full campus map: buildings, offices, rooms and floors.
 - Search for a destination and get walking directions, worked out on the phone, including stairs between floors and building doors.
@@ -50,7 +56,7 @@ ARNode helps students and visitors find buildings, offices and rooms on college 
 - School-wide announcements (classes suspended, a campus closed) show as a banner at the top of the map, for visitors too.
 - See the weather in one pill at the bottom of the map (what routing is doing right now); tap it for the details: chance of rain in the next 20 minutes and within the next hour, the heat index now and 1 to 3 hours ahead, and the UV index (sunburn risk). When no route is possible, the message says whether rain or heat closed the open-air paths.
 - Tap **"It's raining here"** (in the weather pill's details) when rain starts. When two or more students report rain within 15 minutes, everyone's routes switch to covered paths straight away, before any forecast or airport report notices.
-- Follow the route on the 2D map, in 3D, or in AR (camera view), where the route is a road on the ground with chevrons moving toward the destination. Tap **Voice** on the direction card to hear each new direction spoken, just the direction in everyday words ("Go straight.", "Turn left.", "Turn around.", "You've arrived at …"), the same words as on the card, so it stays short while walking. It uses the phone's own voices, so it also works offline.
+- Follow the **blue** route on the 2D map, in 3D, or in AR (camera view), where the route is a blue road on the ground with white chevrons moving toward the destination. On the 2D maps white chevrons along the line point the way, and a raised blue arrow at your position points where to start walking. Tap **Voice** on the direction card to hear each new direction spoken, just the direction in everyday words ("Go straight.", "Turn left.", "Turn around.", "You've arrived at …"), the same words as on the card, so it stays short while walking. It uses the phone's own voices, so it also works offline.
 - Scan a QR code on campus to set their position when GPS is weak.
 - Install ARNode on the home screen. After one online visit, the map, search and directions also work offline.
 - Change their own password (required after an admin reset).
@@ -113,8 +119,8 @@ The trained models (`ml/model.json`, `ml/model_h60.json`, `ml/heat_model.json`),
 ### Tests
 
 ```bash
-php artisan test --compact                  # 287 PHP tests
-node --test src/*.test.mjs tests/*.test.mjs # 150 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, opening hours and closures, rain, heat, UV)
+php artisan test --compact                  # 298 PHP tests
+node --test src/*.test.mjs tests/*.test.mjs # 157 JavaScript tests (routing, pathways, walls, stairs, doors, bridges, trees and gates, route arrows, opening hours and closures, rain, heat, UV)
 python ml/test_satellite.py                 # satellite, cloud-motion and cloud-phase self-check (no network)
 vendor/bin/pint --format agent              # format PHP after changes
 ```
@@ -260,7 +266,8 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
 
 | Table | Holds |
 |---|---|
-| `users` | Admins, faculty (with a department) and students (school ID, course, year level). |
+| `users` | Admins, faculty (with a department; `is_head` = the building head, else office staff) and students (school ID, course, year level). |
+| `campus_objects` | Trees (height, crown, form, seed), benches, sheds and gates placed on the campus. |
 | `nodes` | Rooms, offices and route nodes: position, floor, `inside`/`outside`, building, department, who placed it, and a place's own `opening_hours` (none = its building's). |
 | `node_links` | Staircases between two nodes on different floors (slope, direction, flights, landing). |
 | `borders` | Walls: points sharing a `group_id`; routes never cross them. |
@@ -282,7 +289,7 @@ Foreign keys and the wall `group_id` are indexed. The public static file `/stora
 
 - **Public:** `GET /api/map-data` (buildings only without a token, the full map with one), `GET /api/weather`, `POST /api/login`, `POST /api/student/login`. Sign-in counts only failed tries (10 a minute per account and address, 100 per address).
 - **Students:** `GET /api/student/me`, `POST /api/student/password`, `POST /api/student/logout`, `POST /api/weather/rain-report` (any signed-in user; once every 5 minutes; replies with the updated weather state).
-- **Staff (admin and faculty; rules per role in the controllers):** `nodes` (+ `POST /api/nodes/swap`), `node-links`, `borders` (+ `DELETE /api/borders/group/{id}`), `buildings`, `pathways` (+ `POST /api/pathways/{id}/route-nodes`), `campus-areas`, `departments`, `users`, `students` (+ `reset-password`), `GET /api/weather/history`, `POST /api/weather/refresh`.
+- **Staff (admin and faculty; rules per role in the controllers; office staff only change their own offices, `RestrictOfficeStaff`):** `nodes` (+ `POST /api/nodes/swap`), `node-links`, `borders` (+ `DELETE /api/borders/group/{id}`), `buildings`, `pathways` (+ `POST /api/pathways/{id}/route-nodes`), `campus-areas`, `campus-objects`, `closures`, `departments`, `users`, `students` (+ `reset-password`), `GET /api/weather/history`, `POST /api/weather/refresh`.
 
 ### Routing rules (`src/pathfinding.js`)
 

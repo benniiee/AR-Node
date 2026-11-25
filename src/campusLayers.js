@@ -24,6 +24,8 @@ import { doorFrames, doorGapWalls, DOOR_HEIGHT_M } from './doors.js';
 import { planFromLink, stairTreads, walkLine, footprint } from './stairGeometry.js';
 import { fromLocalMeters } from './geo.js';
 import { convexHull, clipToConvex, cutStairwells } from './planarGeometry.js';
+import { treeModel, crownFootprint, shedRoof, objectRect, gateEnds, objectShadowRings, seededRandom } from './campusObjects.js';
+import { arrowsAlong, startBearing } from './routeArrows.js';
 import {
     sunPosition, shadowRings, buildingHeightM, shadowOpacity, penumbraLayers, shadowColor,
     roofLiftM, visibleWalls, wallLight, insetPolygon, parapetShadowQuads, edgesWithNormals, roofLight,
@@ -1014,4 +1016,163 @@ export function drawPathways(layer, pathways, { popup = null, skipId = null, the
     };
     map.on('zoomend', layer._fitPathWidths);
     layer._fitPathWidths();
+}
+
+// ── Campus objects: trees, benches, sheds and gates ─────────────────
+const TREE_GREENS = ['#3f7d3a', '#467f36', '#3b7442', '#4d8a3c', '#38703a'];
+const OBJECT_TONES = { trunk: '#6b4a2e', bench: '#8b5a2b', benchSide: '#5f3c1d', shedRoof: '#8d9f96', shedEdge: '#5e6e66', post: '#5b5f63', gate: '#e6dabd', gateEdge: '#8a8170' };
+
+/**
+ * Trees, benches, sheds and gates on the map. `extrude` (the student map, like the 2.5D buildings): each
+ * stands up north-up by its real height, with the trees' and sheds' shadows on the ground for `sun`.
+ * Flat (the admin map): a top-down symbol. Objects behind a building (north of it, as the map is seen)
+ * are drawn into `layer` under the buildings, the rest into `frontLayer` over them. `onSelect(obj)` makes
+ * them clickable (the editor); `selectedId` is outlined.
+ */
+export function drawCampusObjects(layer, objects, { extrude = false, sun = null, buildings = [], frontLayer = null, onSelect = null, selectedId = null } = {}) {
+    layer.clearLayers();
+    frontLayer?.clearLayers();
+    const list = (objects || []).filter((o) => Number.isFinite(+o.latitude) && Number.isFinite(+o.longitude));
+    // Shadows first, all on the ground layer.
+    if (extrude && sun) {
+        const fill = shadowColor(sun);
+        const opacity = shadowOpacity(sun) * 0.85;
+        for (const o of list) {
+            const rings = objectShadowRings([o], sun);
+            if (rings.length) L.polygon(rings.map((r) => r.map((p) => [p.lat, p.lng])), { stroke: false, fillColor: fill, fillOpacity: opacity, fillRule: 'nonzero', interactive: false }).addTo(layer);
+        }
+    }
+    // Far (north) first, so nearer ones cover them.
+    const sorted = [...list].sort((a, b) => +b.latitude - +a.latitude);
+    for (const o of sorted) {
+        const here = { lat: +o.latitude, lng: +o.longitude };
+        const into = frontLayer && !wallBehindBuilding(here, here, buildings) ? frontLayer : layer;
+        const selected = selectedId !== null && String(o.id) === String(selectedId);
+        const hit = (shape) => {
+            if (!onSelect || !shape) return;
+            shape.options.interactive = true;
+            shape.on('click', (e) => { L.DomEvent.stopPropagation(e); onSelect(o); });
+        };
+        const outline = selected ? { color: '#22c55e', weight: 3, opacity: 1 } : null;
+        const liftM = (m) => (extrude ? roofLiftM(m) / 111320 : 0);
+        if (o.kind === 'tree') drawTree25D(into, o, liftM, hit, outline, Boolean(onSelect));
+        else if (o.kind === 'bench') {
+            const rect = objectRect(o, Number(o.width_m) || 0.5, Number(o.length_m) || 1.8);
+            const seat = liftM(Number(o.height_m) || 0.45);
+            if (seat) L.polygon(rect.map((p) => [p.lat, p.lng]), { stroke: false, fillColor: OBJECT_TONES.benchSide, fillOpacity: 0.9, interactive: false }).addTo(into);
+            const top = L.polygon(rect.map((p) => [p.lat + seat, p.lng]), { color: outline?.color || OBJECT_TONES.benchSide, weight: outline?.weight || 0.8, fillColor: OBJECT_TONES.bench, fillOpacity: 1, interactive: Boolean(onSelect) }).addTo(into);
+            hit(top);
+        } else if (o.kind === 'shed') {
+            const roof = shedRoof(o);
+            const h = liftM(Number(o.height_m) || 2.6);
+            for (const p of roof) L.polyline([[p.lat, p.lng], [p.lat + h, p.lng]], { color: OBJECT_TONES.post, weight: 2, opacity: 0.9, interactive: false }).addTo(into);
+            const top = L.polygon(roof.map((p) => [p.lat + h, p.lng]), { color: outline?.color || OBJECT_TONES.shedEdge, weight: outline?.weight || 1, fillColor: OBJECT_TONES.shedRoof, fillOpacity: 0.95, interactive: Boolean(onSelect) }).addTo(into);
+            // The roof's ridge along its length.
+            const [a, b, c, d] = roof;
+            L.polyline([[(a.lat + b.lat) / 2 + h, (a.lng + b.lng) / 2], [(c.lat + d.lat) / 2 + h, (c.lng + d.lng) / 2]], { color: OBJECT_TONES.shedEdge, weight: 1, opacity: 0.8, interactive: false }).addTo(into);
+            hit(top);
+        } else if (o.kind === 'gate') {
+            const h = liftM(Number(o.height_m) || 2.2);
+            const ends = gateEnds(o);
+            // The opening on the ground (dashed), then a pillar at each end.
+            L.polyline(ends.map((p) => [p.lat, p.lng]), { color: OBJECT_TONES.gateEdge, weight: 2, opacity: 0.8, dashArray: '3 4', interactive: false }).addTo(into);
+            for (const p of ends) {
+                const pillar = objectRect({ latitude: p.lat, longitude: p.lng, rotation_deg: o.rotation_deg }, 0.5, 0.5);
+                if (h) L.polygon([[pillar[0].lat, pillar[0].lng], [pillar[1].lat, pillar[1].lng], [pillar[1].lat + h, pillar[1].lng], [pillar[0].lat + h, pillar[0].lng]], { stroke: false, fillColor: OBJECT_TONES.gateEdge, fillOpacity: 0.95, interactive: false }).addTo(into);
+                const top = L.polygon(pillar.map((q) => [q.lat + h, q.lng]), { color: outline?.color || OBJECT_TONES.gateEdge, weight: outline?.weight || 1, fillColor: OBJECT_TONES.gate, fillOpacity: 1, interactive: Boolean(onSelect) }).addTo(into);
+                hit(top);
+            }
+        }
+    }
+}
+
+/** One tree: the trunk standing up to the crown, then the crown's puffs (or a palm's fronds), lit from above. */
+function drawTree25D(into, o, liftM, hit, outline, interactive) {
+    const m = treeModel(o);
+    const rand = seededRandom((Number(o.seed) || 1) + 3);
+    const green = TREE_GREENS[Math.floor(rand() * TREE_GREENS.length)];
+    const base = { lat: +o.latitude, lng: +o.longitude };
+    const k = Math.cos((base.lat * Math.PI) / 180) * 111320;
+    const off = (e, n, u = 0) => [base.lat + n / 111320 + liftM(u), base.lng + e / k];
+    // Trunk: a thin upright band from the ground to where the crown starts.
+    const tr = m.trunkR;
+    const topU = m.fronds.length ? m.trunkH : m.crownBase + 0.3;
+    L.polygon([off(-tr, 0, 0), off(tr, 0, 0), off(m.lean.e + tr * 0.7, m.lean.n, topU), off(m.lean.e - tr * 0.7, m.lean.n, topU)], {
+        stroke: false, fillColor: OBJECT_TONES.trunk, fillOpacity: 1, interactive: false,
+    }).addTo(into);
+    if (m.fronds.length) {
+        let lastFrond = null;
+        for (const f of m.fronds) {
+            const a = (f.dir * Math.PI) / 180;
+            const w = 0.35;
+            const tip = off(m.lean.e + Math.sin(a) * f.len, m.lean.n + Math.cos(a) * f.len, m.trunkH - f.droop * f.len);
+            const side = (s) => off(m.lean.e + Math.sin(a) * f.len * 0.45 + Math.cos(a) * w * s, m.lean.n + Math.cos(a) * f.len * 0.45 - Math.sin(a) * w * s, m.trunkH + 0.2);
+            lastFrond = L.polygon([off(m.lean.e, m.lean.n, m.trunkH + 0.2), side(1), tip, side(-1)], { color: '#2f5f2c', weight: 0.6, fillColor: green, fillOpacity: 1, interactive }).addTo(into);
+            hit(lastFrond);
+        }
+        if (outline) L.polygon(crownFootprint(o).map((p) => [p.lat + liftM(m.trunkH), p.lng]), { ...outline, fill: false, interactive: false }).addTo(into);
+        return;
+    }
+    // Crown: back puffs first (north, low), front ones last; each a disc with a lighter top-left highlight.
+    const puffs = [...m.puffs].sort((p, q) => q.n - p.n || p.u - q.u);
+    const disc = (cx, cn, u, r, sides = 14) => Array.from({ length: sides }, (_, i) => {
+        const t = (i / sides) * Math.PI * 2;
+        return off(m.lean.e + cx + Math.sin(t) * r, m.lean.n + cn + Math.cos(t) * r * 0.92, u);
+    });
+    for (const p of puffs) {
+        const puff = L.polygon(disc(p.e, p.n, p.u, p.r), { color: '#2b5a28', weight: 0.7, opacity: 0.9, fillColor: green, fillOpacity: 1, interactive }).addTo(into);
+        hit(puff);
+        L.polygon(disc(p.e - p.r * 0.25, p.n + p.r * 0.2, p.u + p.r * 0.3, p.r * 0.5, 10), { stroke: false, fillColor: '#6aa85a', fillOpacity: 0.55, interactive: false }).addTo(into);
+    }
+    if (outline) {
+        const top = (m.crownBase + m.crownTop) / 2;
+        L.polygon(crownFootprint(o).map((p) => [p.lat + liftM(top), p.lng]), { ...outline, fill: false, interactive: false }).addTo(into);
+    }
+}
+
+// ── Route direction: chevrons along the route and the arrow at your position ─────
+/** A small white chevron on the route line, pointing along `bearing`. */
+export function chevronIcon(bearing) {
+    return L.divIcon({
+        className: '',
+        html: `<div style="width:14px;height:14px;transform:rotate(${Math.round(bearing)}deg)">`
+            + '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M3 9.5 7 4.5l4 5" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+    });
+}
+
+/**
+ * The large raised arrow at your position, pointing along `bearing`: a blue arrow with a darker copy
+ * offset straight down on screen (its side, like a 3D marker lying on the map) and a soft shadow.
+ */
+export function directionArrowIcon(bearing) {
+    const arrow = (fill, stroke) => `<path d="M24 1 35 46 24 38 13 46Z" fill="${fill}" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    const rot = `rotate(${Math.round(bearing)}deg)`;
+    return L.divIcon({
+        className: '',
+        html: '<div class="route-dir-arrow" style="position:relative;width:48px;height:48px;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.45))" role="img" aria-label="Walk this way">'
+            + `<svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;inset:0;transform:translateY(4px) ${rot}" aria-hidden="true">${arrow('#0b3d91', '#0b3d91')}</svg>`
+            + `<svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;inset:0;transform:${rot}" aria-hidden="true">${arrow('#3d8bff', '#ffffff')}</svg>`
+            + '</div>',
+        iconSize: [48, 48],
+        iconAnchor: [24, 24],
+    });
+}
+
+/**
+ * Draw the chevrons along each route line and the raised arrow at its start into `layer`.
+ * `lines`: arrays of [lat, lng] (the route on the floor shown). The arrow goes on the first line's start.
+ */
+export function drawRouteDirection(layer, lines, { everyM = 14, userArrow = true } = {}) {
+    for (const line of lines || []) {
+        for (const a of arrowsAlong(line, everyM)) {
+            L.marker([a.lat, a.lng], { icon: chevronIcon(a.bearing), interactive: false, keyboard: false, zIndexOffset: 300 }).addTo(layer);
+        }
+    }
+    const first = (lines || [])[0];
+    const bearing = userArrow ? startBearing(first) : null;
+    if (bearing !== null) {
+        L.marker(first[0], { icon: directionArrowIcon(bearing), interactive: false, keyboard: false, zIndexOffset: 1200 }).addTo(layer);
+    }
 }

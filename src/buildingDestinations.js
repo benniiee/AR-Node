@@ -38,9 +38,9 @@ export function buildingDestination(b) {
     };
 }
 
-/** Buildings students can be routed to: built ones with an outline. */
+/** Buildings students can be routed to: completed ones with an outline (not planned, not under construction). */
 export function routableBuildings(buildings) {
-    return (buildings || []).filter((b) => b && b.status !== 'planned' && Array.isArray(b.polygon) && b.polygon.length >= 3);
+    return (buildings || []).filter((b) => b && b.status !== 'planned' && b.status !== 'under_construction' && Array.isArray(b.polygon) && b.polygon.length >= 3);
 }
 
 /**

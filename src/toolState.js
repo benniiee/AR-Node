@@ -20,6 +20,8 @@ export const TOOL_BRIDGE = 'bridge';
 export const TOOL_AREA = 'area';
 // Manage campus areas: the outlines are shown (and only here), tap one to edit it.
 export const TOOL_AREAS = 'areas';
+// Trees, benches, sheds and gates: pick one and tap the map to place it; tap a placed one to change it.
+export const TOOL_OBJECTS = 'objects';
 
 /** Turn tool `name` on or off. Turning one on replaces whatever was active;
  *  turning one off only matters if it is the active one. */
@@ -40,6 +42,7 @@ export function surfaceFor({ tool, hasPending, hasEditing, hasManaging = false }
     if (tool === TOOL_BUILDING || tool === TOOL_PATHWAY || tool === TOOL_BRIDGE) return 'campus';
     if (tool === TOOL_AREA) return 'area';
     if (tool === TOOL_AREAS) return 'areas';
+    if (tool === TOOL_OBJECTS) return 'objects';
     if (tool === TOOL_PIN) return 'pin';
     if (tool === TOOL_MOVE) return 'move';
     if (tool === TOOL_ADD) return hasPending ? 'add-form' : 'add-place';

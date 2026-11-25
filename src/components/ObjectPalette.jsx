@@ -4,7 +4,7 @@ import { OBJECT_KINDS, TREE_FORMS, kindLabel, newSeed } from '../campusObjects';
 import { ObjectPreview3D } from './Lazy3D';
 
 /** A number field in metres (or degrees), clamped on blur by the server's limits. */
-function NumberField({ id, label, value, onChange, step = 0.1, min = 0.2, max = 40, unit = 'm' }) {
+function NumberField({ id, label, value, onChange, step = 0.1, min = 0.2, max = 40, unit = 'm', hint = null }) {
     return (
         <div className="ui-field">
             <label className="ui-label" htmlFor={id}>{label}</label>
@@ -16,6 +16,7 @@ function NumberField({ id, label, value, onChange, step = 0.1, min = 0.2, max = 
                 />
                 <span className="ui-hint" style={{ margin: 0 }}>{unit}</span>
             </div>
+            {hint && <span className="ui-hint">{hint}</span>}
         </div>
     );
 }
@@ -25,15 +26,35 @@ function NumberField({ id, label, value, onChange, step = 0.1, min = 0.2, max = 
  * buildings in a city-builder game. A placed object, when tapped, opens here to change its size and look;
  * dragging its green handle or tapping the map moves it.
  */
-export default function ObjectPalette({ count, placeKind, onPlaceKind, selected, onChange, onSave, onDelete, onDeselect, onDone, saving = false, note = null, campus = null }) {
+const BAR_CSS = `
+    .obj-bar { display: flex; flex-direction: column; gap: 8px; flex: 1 1 100%; min-width: 0; }
+    .obj-bar .seg { width: 100%; }
+    .obj-bar-actions { display: flex; gap: 8px; }
+    .obj-bar-actions > .ui-btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 8px; font-size: 13px; }
+`;
+
+export default function ObjectPalette({
+    count, placeKind, onPlaceKind, selected, onChange, onSave, onDelete, onDeselect, onDone, saving = false, note = null, campus = null,
+    // Placed since the tool opened: Undo takes the last one off, Cancel all of them (and closes the tool).
+    placedCount = 0, onUndo = null, onCancel = null,
+}) {
     if (!selected) {
         return (
             <ActionBar
-                title={`Trees, benches, sheds and gates (${count} placed)`}
+                title={`Place objects (${count} on the map)`}
                 hint={note || `Tap the map to place a ${kindLabel(placeKind).toLowerCase()}${placeKind === 'gate' ? ' on a wall (it snaps onto the nearest one and opens it)' : ''}. Tap a placed one to change it.`}
             >
-                <Segmented label="What to place" value={placeKind} onChange={onPlaceKind} options={OBJECT_KINDS.map((k) => ({ value: k.value, label: k.label }))} />
-                <button className="ui-btn ui-btn-primary" onClick={onDone}>Done</button>
+                <style>{BAR_CSS}</style>
+                <div className="obj-bar">
+                    <Segmented label="What to place" value={placeKind} onChange={onPlaceKind} options={OBJECT_KINDS.map((k) => ({ value: k.value, label: k.label }))} />
+                    <div className="obj-bar-actions">
+                        <button className="ui-btn ui-btn-secondary" onClick={onUndo} disabled={!placedCount} title="Take the last one you placed off the map">Undo</button>
+                        <button className="ui-btn ui-btn-secondary" onClick={onCancel} title="Take everything you placed off the map and close">
+                            {placedCount ? `Cancel (${placedCount})` : 'Cancel'}
+                        </button>
+                        <button className="ui-btn ui-btn-primary" onClick={onDone}>Done</button>
+                    </div>
+                </div>
             </ActionBar>
         );
     }
@@ -42,7 +63,11 @@ export default function ObjectPalette({ count, placeKind, onPlaceKind, selected,
     return (
         <Sheet
             title={kindLabel(kind)}
-            subtitle={note || 'Drag the green handle, or tap the map, to move it. Save keeps the new spot.'}
+            subtitle={note || (kind === 'gate'
+                ? 'Drag the green handle, or tap the map, to move it. Save keeps the new spot.'
+                : kind === 'tree'
+                    ? 'On the map: drag the middle to move it, a corner or edge to widen the crown, the round arrow to turn it, the up-down handle for its height. Save keeps it.'
+                    : 'On the map: drag the middle to move it, a corner or edge to resize, the round arrow to rotate. Save keeps it.')}
             onClose={onDeselect}
             footer={(
                 <div className="mt-sheet-foot">
@@ -84,6 +109,14 @@ export default function ObjectPalette({ count, placeKind, onPlaceKind, selected,
                     <NumberField id="obj-l" label="Length" value={selected.length_m} onChange={set('length_m')} />
                     <NumberField id="obj-h" label="Roof height" value={selected.height_m} onChange={set('height_m')} />
                     <NumberField id="obj-r" label="Facing" value={selected.rotation_deg} onChange={set('rotation_deg')} step={5} min={0} max={360} unit="°" />
+                </>
+            )}
+            {kind === 'parking' && (
+                <>
+                    <NumberField id="obj-w" label="Width" value={selected.width_m} onChange={set('width_m')} step={0.5} max={100} hint="16 m or wider: two rows of stalls facing a driveway." />
+                    <NumberField id="obj-l" label="Length" value={selected.length_m} onChange={set('length_m')} step={0.5} max={100} />
+                    <NumberField id="obj-r" label="Facing (along the stall rows)" value={selected.rotation_deg} onChange={set('rotation_deg')} step={5} min={0} max={360} unit="°" />
+                    <p className="ui-hint" style={{ margin: 0 }}>Stalls are 2.5 m wide and 5 m deep. Shown with a P sign on the map; routes cross it like open ground.</p>
                 </>
             )}
             {kind === 'gate' && (

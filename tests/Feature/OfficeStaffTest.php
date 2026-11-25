@@ -72,6 +72,28 @@ class OfficeStaffTest extends TestCase
         $this->getJson('/api/user')->assertOk()->assertJsonPath('is_head', false)->assertJsonPath('places', [$itOffice->id]);
     }
 
+    public function test_once_an_office_is_assigned_its_hours_and_closures_are_its_staffs_not_the_deans(): void
+    {
+        $office = $this->place('IT Office');
+        $now = ['starts_at' => now()->toIso8601String(), 'ends_at' => now()->addHours(2)->toIso8601String()];
+        Sanctum::actingAs($this->dean);
+
+        // Unassigned: the Dean sets its hours.
+        $this->putJson("/api/nodes/{$office->id}", $this->weekdays())->assertOk();
+
+        $office->forceFill(['manager_id' => $this->officeStaff->id])->save();
+        $this->putJson("/api/nodes/{$office->id}", ['opening_hours' => ['tue' => [['09:00', '12:00']]]])->assertForbidden();
+        $this->postJson('/api/closures', ['node_id' => $office->id, 'reason' => 'Meeting'] + $now)->assertForbidden();
+        // Renaming it, or re-sending its current hours (the form keeps them), is still the Dean's.
+        $this->putJson("/api/nodes/{$office->id}", ['name' => 'IT Department Office'] + $this->weekdays())->assertOk();
+        // The whole building is still the Dean's to close.
+        $this->postJson('/api/closures', ['building_id' => $this->building->id, 'reason' => 'Event'] + $now)->assertCreated();
+
+        Sanctum::actingAs($this->officeStaff);
+        $this->putJson("/api/nodes/{$office->id}", ['opening_hours' => ['tue' => [['09:00', '12:00']]]])->assertOk();
+        $this->postJson('/api/closures', ['node_id' => $office->id, 'reason' => 'Meeting'] + $now)->assertCreated();
+    }
+
     public function test_the_dean_lists_their_own_departments_staff_to_pick_from(): void
     {
         User::factory()->create(['role' => 'faculty', 'department_id' => Department::factory()->create()->id]);

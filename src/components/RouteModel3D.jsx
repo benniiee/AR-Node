@@ -9,7 +9,7 @@ import { planFromLink, stairTreads, walkLine, footprint } from '../stairGeometry
 import { makeLabel, disposeTree } from './StairPreview3D';
 import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
 import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
-import { treeModel, seededRandom, shedRoof, gateEnds, objectRect } from '../campusObjects';
+import { treeModel, seededRandom, shedRoof, gateEnds, objectRect, parkingLayout } from '../campusObjects';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -551,6 +551,8 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
     // Trees, benches, sheds and gates (campus objects), each from the same shape as the 2D map.
     if (objects?.length) {
         const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.95 });
+        const bananaStemMat = new THREE.MeshStandardMaterial({ color: 0xa9b356, roughness: 0.9 });
+        const bananaLeafMat = new THREE.MeshStandardMaterial({ color: 0x7cb342, roughness: 0.8, side: THREE.DoubleSide });
         const leafMats = [0x3f7d3a, 0x467f36, 0x3b7442, 0x4d8a3c, 0x38703a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }));
         const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.85 });
         const shedMat = new THREE.MeshStandardMaterial({ color: 0x8d9f96, roughness: 0.6, metalness: 0.2, side: THREE.DoubleSide });
@@ -571,21 +573,41 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
                 const m = treeModel(o);
                 const leaf = leafMats[Math.floor(seededRandom((Number(o.seed) || 1) + 3)() * leafMats.length)];
                 const topU = m.fronds.length || m.limbs.length ? m.trunkH : m.crownBase + 0.3;
-                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(m.trunkR * 0.7, m.trunkR, topU, 8), trunkMat);
-                trunk.position.set(base.x + m.lean.e / 2, topU / 2, base.z - m.lean.n / 2);
-                trunk.rotation.z = -Math.atan2(m.lean.e, topU);
-                trunk.rotation.x = Math.atan2(-m.lean.n, topU) * -1;
-                group.add(trunk);
+                if (m.stems.length) {
+                    // A banana plant: its clumped yellow-green stems.
+                    for (const s of m.stems) {
+                        // From its foot to its top, which the outer stems lean out to.
+                        const foot = new THREE.Vector3(base.x + s.e, 0, base.z - s.n);
+                        const d = new THREE.Vector3(base.x + s.te, s.h, base.z - s.tn).sub(foot);
+                        const stem = new THREE.Mesh(new THREE.CylinderGeometry(s.r * 0.75, s.r, d.length(), 8), bananaStemMat);
+                        stem.position.copy(foot).addScaledVector(d, 0.5);
+                        stem.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+                        group.add(stem);
+                    }
+                } else {
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(m.trunkR * 0.7, m.trunkR, topU, 8), trunkMat);
+                    trunk.position.set(base.x + m.lean.e / 2, topU / 2, base.z - m.lean.n / 2);
+                    trunk.rotation.z = -Math.atan2(m.lean.e, topU);
+                    trunk.rotation.x = Math.atan2(-m.lean.n, topU) * -1;
+                    group.add(trunk);
+                }
                 if (m.fronds.length) {
                     for (const f of m.fronds) {
                         const a = (f.dir * Math.PI) / 180;
-                        const frond = new THREE.Mesh(new THREE.ConeGeometry(0.4, f.len, 4), leaf);
-                        // Lay each frond out from the top, drooping towards its tip.
-                        frond.position.set(base.x + m.lean.e + Math.sin(a) * f.len * 0.45, m.trunkH - f.droop * f.len * 0.4, base.z - m.lean.n - Math.cos(a) * f.len * 0.45);
+                        // A palm frond is a flattened cone; a banana leaf a flat paddle.
+                        const frond = f.wide
+                            ? new THREE.Mesh(new THREE.SphereGeometry(1, 12, 6), bananaLeafMat)
+                            : new THREE.Mesh(new THREE.ConeGeometry(0.4, f.len, 4), leaf);
+                        const oe = f.e ?? m.lean.e;
+                        const on = f.n ?? m.lean.n;
+                        const oh = f.h ?? m.trunkH;
+                        // Lay each frond out from the top, drooping (or rising) towards its tip.
+                        frond.position.set(base.x + oe + Math.sin(a) * f.len * 0.45, oh - f.droop * f.len * 0.4, base.z - on - Math.cos(a) * f.len * 0.45);
                         frond.rotation.order = 'YXZ';
                         frond.rotation.y = -a;
                         frond.rotation.x = Math.PI / 2 + f.droop * 0.8;
-                        frond.scale.set(1, 1, 0.25);
+                        if (f.wide) { frond.scale.set(f.wide / 2, f.len / 2, 0.04); frond.rotation.z = f.tilt || 0; }
+                        else frond.scale.set(1, 1, 0.25);
                         group.add(frond);
                     }
                 } else {
@@ -607,6 +629,21 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
                         group.add(puff);
                     }
                 }
+            } else if (o.kind === 'parking') {
+                // Asphalt a little above the ground, with the stall lines painted on it.
+                const lot = parkingLayout(o);
+                const shape = new THREE.Shape(lot.outline.map((p) => { const q = xz(p.lat, p.lng); return new THREE.Vector2(q.x, -q.z); }));
+                const pad = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshStandardMaterial({ color: 0x3f4047, roughness: 1 }));
+                pad.rotation.x = -Math.PI / 2;
+                pad.position.y = 0.015;
+                group.add(pad);
+                const pts = [];
+                for (const [a, b] of lot.lines) {
+                    const p = xz(a.lat, a.lng);
+                    const q = xz(b.lat, b.lng);
+                    pts.push(new THREE.Vector3(p.x, 0.03, p.z), new THREE.Vector3(q.x, 0.03, q.z));
+                }
+                group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xf4f4f5 })));
             } else if (o.kind === 'bench') {
                 const len = Number(o.length_m) || 1.8;
                 const wid = Number(o.width_m) || 0.5;

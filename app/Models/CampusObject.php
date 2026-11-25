@@ -28,10 +28,10 @@ class CampusObject extends Model
     use HasFactory;
 
     /** The kinds of object (src/campusObjects.js OBJECT_KINDS). */
-    public const KINDS = ['tree', 'bench', 'shed', 'gate'];
+    public const KINDS = ['tree', 'bench', 'shed', 'gate', 'parking'];
 
     /** A tree's shape (src/campusObjects.js TREE_FORMS). */
-    public const TREE_FORMS = ['round', 'spreading', 'canopy', 'tall', 'palm'];
+    public const TREE_FORMS = ['round', 'spreading', 'canopy', 'tall', 'palm', 'banana'];
 
     protected $fillable = ['kind', 'latitude', 'longitude', 'rotation_deg', 'height_m', 'width_m', 'length_m', 'form', 'seed'];
 

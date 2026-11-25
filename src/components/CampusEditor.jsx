@@ -128,6 +128,8 @@ export default function CampusEditor({
     // Department staff edit their own department's buildings but cannot
     // file a building under another department (the server enforces it too).
     canChangeDepartment = true,
+    // The building head's "Close now" (an event, maintenance, an emergency): the closure in force now (or null), and the actions.
+    closedNow = null, onCloseNow = null, onReopen = null,
 }) {
     const THEME = theme;
     const candidateColor = CANDIDATE[theme] || CANDIDATE.light;
@@ -231,6 +233,8 @@ export default function CampusEditor({
     const [hours, setHours] = useState(() => record?.opening_hours ?? null);
     // School or office building: follows the chosen department's kind; an admin labels unowned ones.
     const [category, setCategory] = useState(record?.category || 'school');
+    // Why it is closed, shown to students ("Closed · Power outage"); optional.
+    const [closeReason, setCloseReason] = useState('');
     const ownerKind = departmentId !== '' ? departments.find((d) => String(d.id) === String(departmentId))?.kind : null;
     const shownCategory = ownerKind ? (ownerKind === 'office' ? 'office' : 'school') : category;
     const canEditHours = isBuilding && (manageDoors || (canChangeDepartment && !record?.department_id && departmentId === ''));
@@ -1083,6 +1087,38 @@ export default function CampusEditor({
                         The {nodesInside.length} {nodesInside.length === 1 ? 'room' : 'rooms'} inside move with the building and keep their spots in it.
                     </p>
                 )}
+                        {record && onCloseNow && (
+                            <section className="mt-pathnodes" aria-labelledby="cf-close-title">
+                                <span className="ui-label" id="cf-close-title">Close now</span>
+                                {closedNow ? (
+                                    <>
+                                        <p className="ui-hint" style={{ margin: 0 }} role="status">
+                                            <strong>Closed now</strong>{closedNow.reason && closedNow.reason !== 'Closed now' ? `: ${closedNow.reason}` : ''}.
+                                            {' '}Students see it closed and routes go around it until you reopen it.
+                                        </p>
+                                        <button type="button" className="ui-btn ui-btn-primary ui-btn-block" onClick={onReopen} disabled={saving}>
+                                            Reopen (follow the opening hours again)
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="ui-field">
+                                            <label className="ui-label" htmlFor="cf-close-reason">Reason students see (optional)</label>
+                                            <input
+                                                id="cf-close-reason" className="ui-input" value={closeReason} maxLength={160}
+                                                onChange={(e) => setCloseReason(e.target.value)} placeholder="e.g. Closed for an event"
+                                            />
+                                        </div>
+                                        <button type="button" className="ui-btn ui-btn-danger ui-btn-block" onClick={() => onCloseNow(closeReason)} disabled={saving}>
+                                            Close the building now
+                                        </button>
+                                        <p className="ui-hint" style={{ margin: 0 }}>
+                                            For an event, maintenance or an emergency: it closes the whole building right away, whatever the opening hours say, until you reopen it. The hours stay as they are. To plan a closure for later dates, use Announcements.
+                                        </p>
+                                    </>
+                                )}
+                            </section>
+                        )}
                         <section className="mt-pathnodes" aria-labelledby="cf-hours-title">
                             <span className="ui-label" id="cf-hours-title">Opening hours</span>
                             {canEditHours ? (

@@ -13,7 +13,9 @@ const SHOW_DEMO = import.meta.env.DEV || import.meta.env.VITE_DEMO_ACCOUNTS === 
 const DEMO_PASSWORD = SHOW_DEMO ? 'password' : '';
 const DEMO_ACCOUNTS = !SHOW_DEMO ? [] : [
     { email: 'admin@campus.test', tag: 'Admin', name: 'Campus admin' },
-    { email: 'ccs.staff@campus.test', tag: 'CCS', name: 'CCS department staff' },
+    { email: 'ccs.dean@campus.test', tag: 'CCS', name: 'CCS Dean (building head)' },
+    { email: 'ccs.it@campus.test', tag: 'CCS', name: 'CCS IT office staff' },
+    { email: 'ccs.cs@campus.test', tag: 'CCS', name: 'CCS CS office staff' },
     { email: 'csm.staff@campus.test', tag: 'CSM', name: 'CSM department staff' },
     { email: 'ccje@campus.test', tag: 'CCJE', name: 'CCJE department staff' },
     { email: 'nursing@campus.test', tag: 'BSN', name: 'Nursing department staff' },

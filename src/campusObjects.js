@@ -1,4 +1,4 @@
-// Campus objects: trees, benches, sheds and gates (app/Models/CampusObject.php), placed by an admin
+// Campus objects: trees, benches, sheds, gates and parking lots (app/Models/CampusObject.php), placed by an admin
 // like buildings in a city-builder game. Shared by the 2D map, the 3D views, shade routing and the
 // router (a gate is an opening in a wall).
 //
@@ -13,7 +13,13 @@ export const OBJECT_KINDS = [
     { value: 'bench', label: 'Bench', defaults: { length_m: 1.8, width_m: 0.5, height_m: 0.45 } },
     { value: 'shed', label: 'Shed', defaults: { width_m: 3, length_m: 4, height_m: 2.6 } },
     { value: 'gate', label: 'Gate', defaults: { width_m: 3, height_m: 2.2 } },
+    { value: 'parking', label: 'Parking', defaults: { width_m: 16, length_m: 20 } },
 ];
+
+/** Parking stalls: 2.5 m wide and 5 m deep; a lot this wide or more gets two rows facing a driveway. */
+export const STALL_W = 2.5;
+export const STALL_D = 5;
+export const TWO_ROWS_M = 16;
 
 /** A tree's overall shape (CampusObject::TREE_FORMS). */
 export const TREE_FORMS = [
@@ -22,6 +28,7 @@ export const TREE_FORMS = [
     { value: 'canopy', label: 'Wide shade tree (like an acacia or rain tree)' },
     { value: 'tall', label: 'Tall and narrow' },
     { value: 'palm', label: 'Palm' },
+    { value: 'banana', label: 'Banana (clumped stems, big leaves)' },
 ];
 
 /** A gate dropped within this distance (metres) of a wall sits on it and opens it. */
@@ -57,11 +64,31 @@ const num = (v, fallback) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Numb
  * trunk out to clumps of leaves). Same object, same shape. Puffs and limb ends are relative to the trunk's
  * top (`lean`).
  *
+ * A banana plant has several stems (`stems`), each with its own big leaves (fronds with an origin `e, n, h`
+ * and a `wide` paddle shape). The whole tree is turned by its `rotation_deg` (which way it leans).
+ *
  * @returns {{ trunkH: number, trunkR: number, lean: {e:number,n:number}, crownR: number, crownBase: number,
- *   crownTop: number, puffs: Array<{e:number,n:number,u:number,r:number}>, fronds: Array<{dir:number,len:number,droop:number}>,
- *   limbs: Array<{e:number,n:number,u:number}> }}
+ *   crownTop: number, puffs: Array<{e:number,n:number,u:number,r:number}>,
+ *   fronds: Array<{dir:number,len:number,droop:number,e?:number,n?:number,h?:number,wide?:number}>,
+ *   limbs: Array<{e:number,n:number,u:number}>, stems: Array<{e:number,n:number,te:number,tn:number,h:number,r:number}> }}
  */
 export function treeModel(obj) {
+    const m = treeShape(obj);
+    const rot = ((Number(obj.rotation_deg) || 0) * Math.PI) / 180;
+    if (!rot) return m;
+    // Turn every point round the trunk, clockwise as a compass bearing.
+    const turn = (p) => ({ ...p, e: p.e * Math.cos(rot) + p.n * Math.sin(rot), n: -p.e * Math.sin(rot) + p.n * Math.cos(rot) });
+    return {
+        ...m,
+        lean: turn(m.lean),
+        puffs: m.puffs.map(turn),
+        limbs: m.limbs.map(turn),
+        stems: m.stems.map((s) => { const top = turn({ e: s.te, n: s.tn }); return { ...turn(s), te: top.e, tn: top.n }; }),
+        fronds: m.fronds.map((f) => ({ ...(f.e === undefined ? f : turn(f)), dir: f.dir + (Number(obj.rotation_deg) || 0) })),
+    };
+}
+
+function treeShape(obj) {
     const rand = seededRandom(obj.seed);
     const h = num(obj.height_m, 6);
     const w = num(obj.width_m, 5);
@@ -78,9 +105,10 @@ export function treeModel(obj) {
         for (let i = 0; i < count; i += 1) {
             fronds.push({ dir: (i / count) * 360 + rand() * 20, len: crownR * (0.75 + rand() * 0.3), droop: 0.35 + rand() * 0.3 });
         }
-        return { trunkH, trunkR: 0.16, lean, crownR, crownBase: trunkH - 0.6, crownTop: h, puffs, fronds, limbs: [] };
+        return { trunkH, trunkR: 0.16, lean, crownR, crownBase: trunkH - 0.6, crownTop: h, puffs, fronds, limbs: [], stems: [] };
     }
     if (form === 'canopy') return canopyModel(h, w, rand);
+    if (form === 'banana') return bananaModel(h, w, rand);
     if (form === 'tall') {
         crownR = Math.min(w / 2, h * 0.18);
         trunkH = h * 0.3;
@@ -111,7 +139,44 @@ export function treeModel(obj) {
     }
     const crownBase = Math.min(...puffs.map((p) => p.u - p.r));
     const crownTop = Math.max(...puffs.map((p) => p.u + p.r));
-    return { trunkH, trunkR: Math.max(0.12, Math.min(0.35, h * 0.03)), lean, crownR, crownBase, crownTop, puffs, fronds, limbs: [] };
+    return { trunkH, trunkR: Math.max(0.12, Math.min(0.35, h * 0.03)), lean, crownR, crownBase, crownTop, puffs, fronds, limbs: [], stems: [] };
+}
+
+/**
+ * A banana plant: two or three stems growing together, the tallest about 80% of its height, each with a
+ * fan of big paddle leaves (the younger ones upright, the older ones drooping) out to the crown's width.
+ */
+function bananaModel(h, w, rand) {
+    const crownR = w / 2;
+    const stems = [];
+    const count = 2 + Math.floor(rand() * 2);
+    for (let i = 0; i < count; i += 1) {
+        const a = rand() * Math.PI * 2;
+        const d = i === 0 ? 0 : 0.45 + rand() * 0.3;
+        // The outer stems lean out from the clump, so the plant opens like a V.
+        const out = i === 0 ? 0 : 0.5 + rand() * 0.4;
+        stems.push({
+            e: Math.sin(a) * d, n: Math.cos(a) * d, te: Math.sin(a) * (d + out), tn: Math.cos(a) * (d + out),
+            h: h * (i === 0 ? 0.8 : 0.62 + rand() * 0.15), r: 0.14 + rand() * 0.06,
+        });
+    }
+    const fronds = [];
+    for (const s of stems) {
+        const leaves = 6 + Math.floor(rand() * 3);
+        const start = rand() * 360;
+        for (let j = 0; j < leaves; j += 1) {
+            const len = Math.min(crownR, 2.6) * (0.75 + rand() * 0.3);
+            // From upright (negative droop: the leaf rises) to hanging.
+            // Each blade also rolls to one side (`tilt`), as banana leaves do, so it shows its face from the side.
+            fronds.push({ e: s.te, n: s.tn, h: s.h, dir: start + (j / leaves) * 360 + rand() * 25, len, droop: -0.35 + rand() * 0.95, wide: 0.6 + rand() * 0.2, tilt: (rand() - 0.5) * 1.8 });
+        }
+    }
+    const trunkH = Math.max(...stems.map((s) => s.h));
+    const top = Math.max(...fronds.map((f) => f.h - f.droop * f.len));
+    return {
+        trunkH, trunkR: 0.14, lean: { e: 0, n: 0 }, crownR, crownBase: Math.min(...stems.map((s) => s.h)) - 1,
+        crownTop: Math.min(h, top), puffs: [], fronds, limbs: [], stems,
+    };
 }
 
 /**
@@ -150,13 +215,119 @@ function canopyModel(h, w, rand) {
     clump(mid.e * 0.6, mid.n * 0.6, h - crownR * 0.3, crownR * 0.4);
     const crownBase = Math.min(...puffs.map((p) => p.u - p.r));
     const crownTop = Math.max(...puffs.map((p) => p.u + p.r));
-    return { trunkH, trunkR: Math.max(0.22, Math.min(0.55, h * 0.045)), lean, crownR, crownBase, crownTop, puffs, fronds: [], limbs };
+    return { trunkH, trunkR: Math.max(0.22, Math.min(0.55, h * 0.045)), lean, crownR, crownBase, crownTop, puffs, fronds: [], limbs, stems: [] };
 }
 
 /** Point `east`/`north` metres from the object, as {lat, lng}. */
 function offset(obj, east, north) {
     const p = fromLocalMeters(Number(obj.latitude), Number(obj.longitude), east, north);
     return { lat: p.latitude, lng: p.longitude };
+}
+
+// ── Transform frame (admin editor), like a design tool's: corners, edges and a rotate handle ──
+
+/** The object's own frame: x across its facing, y along it, in metres from its middle. */
+export function toObjectFrame(obj, lat, lng) {
+    const [e, n] = toLocalMeters(lat, lng, Number(obj.latitude), Number(obj.longitude));
+    const rot = ((Number(obj.rotation_deg) || 0) * Math.PI) / 180;
+    return { x: e * Math.cos(rot) - n * Math.sin(rot), y: e * Math.sin(rot) + n * Math.cos(rot) };
+}
+
+/** Back from the object's frame to {lat, lng}. */
+export function fromObjectFrame(obj, x, y) {
+    const rot = ((Number(obj.rotation_deg) || 0) * Math.PI) / 180;
+    return offset(obj, x * Math.cos(rot) + y * Math.sin(rot), -x * Math.sin(rot) + y * Math.cos(rot));
+}
+
+/** A rectangular object's size in metres (width across its facing, length along it), and its limits. */
+export function objectSize(obj) {
+    const d = OBJECT_KINDS.find((k) => k.value === obj.kind)?.defaults || {};
+    // A tree's frame is the square round its crown.
+    if (obj.kind === 'tree') {
+        const w = num(obj.width_m, d.width_m || 5);
+        return { w, l: w, min: 1, max: 40 };
+    }
+    return {
+        w: num(obj.width_m, d.width_m || 1), l: num(obj.length_m, d.length_m || 1),
+        min: obj.kind === 'bench' ? 0.3 : 1, max: obj.kind === 'parking' ? 100 : 40,
+    };
+}
+
+/** The resize handles: four corners and the middle of each edge, as signs along x (across) and y (along). */
+export const RESIZE_HANDLES = [
+    { sx: -1, sy: -1 }, { sx: 1, sy: -1 }, { sx: 1, sy: 1 }, { sx: -1, sy: 1 },
+    { sx: 0, sy: -1 }, { sx: 1, sy: 0 }, { sx: 0, sy: 1 }, { sx: -1, sy: 0 },
+];
+
+const round1 = (v) => Math.round(v * 10) / 10;
+
+/**
+ * Dragging resize handle (sx, sy) to lat/lng: the opposite corner or edge stays where it is, so the middle
+ * moves with the handle; an edge handle changes one side only. Never flips or shrinks below the minimum.
+ * @returns {{ width_m: number, length_m: number, latitude: number, longitude: number }}
+ */
+export function resizeFrom(obj, sx, sy, lat, lng) {
+    const { w, l, min, max } = objectSize(obj);
+    const p = toObjectFrame(obj, lat, lng);
+    const clamp = (v) => Math.min(max, Math.max(min, v));
+    const nw = sx ? round1(clamp(sx * p.x + w / 2)) : w;
+    const nl = sy ? round1(clamp(sy * p.y + l / 2)) : l;
+    // The opposite side stays put: the new middle is half the new size in from it.
+    const cx = sx ? -sx * (w / 2) + sx * (nw / 2) : 0;
+    const cy = sy ? -sy * (l / 2) + sy * (nl / 2) : 0;
+    const c = fromObjectFrame(obj, cx, cy);
+    return { width_m: nw, length_m: nl, latitude: c.lat, longitude: c.lng };
+}
+
+/** How far behind the back edge the rotate handle sits (metres). */
+export const rotateGapM = (l) => Math.max(1.5, l * 0.15);
+
+/** Where the rotate handle is: behind the back edge, as the handle under a box in a design tool. */
+export const rotateHandleAt = (obj) => fromObjectFrame(obj, 0, -(objectSize(obj).l / 2 + rotateGapM(objectSize(obj).l)));
+
+/**
+ * Dragging the rotate handle to lat/lng: the object turns so its back points at the handle. Whole degrees,
+ * snapping to every 45 degrees within 4 degrees (square to the map, or diagonal).
+ */
+export function rotateTo(obj, lat, lng) {
+    const [e, n] = toLocalMeters(lat, lng, Number(obj.latitude), Number(obj.longitude));
+    let deg = ((Math.atan2(e, n) * 180) / Math.PI + 180 + 360) % 360;
+    const snap = Math.round(deg / 45) * 45;
+    if (Math.abs(deg - snap) <= 4) deg = snap % 360;
+    return Math.round(deg) % 360;
+}
+
+/**
+ * Dragging a handle of a tree's crown frame: the trunk stays put and the crown grows evenly, to twice the
+ * handle's distance from it along the frame (a corner or an edge alike), 1 to 40 m.
+ */
+export function crownFromFrame(obj, lat, lng) {
+    const p = toObjectFrame(obj, lat, lng);
+    return round1(Math.min(40, Math.max(1, 2 * Math.max(Math.abs(p.x), Math.abs(p.y)))));
+}
+
+/** How far north of the crown's frame the height handle sits, beyond the tree's own on-screen rise. */
+const HEIGHT_HANDLE_GAP_M = 1.5;
+
+/**
+ * The tree's height handle: above the crown's frame (north of it) by the tree's height, so dragging it a
+ * metre north makes the tree a metre taller, the same feel as resizing the crown.
+ */
+export function heightHandleAt(obj) {
+    const w = num(obj.width_m, 5);
+    return offset(obj, 0, w / 2 + HEIGHT_HANDLE_GAP_M + num(obj.height_m, 6));
+}
+
+export function heightTo(obj, lat, lng) {
+    const [, n] = toLocalMeters(lat, lng, Number(obj.latitude), Number(obj.longitude));
+    const w = num(obj.width_m, 5);
+    return round1(Math.min(40, Math.max(1, n - w / 2 - HEIGHT_HANDLE_GAP_M)));
+}
+
+/** Dragging a tree's crown handle: its crown width is twice the distance from the trunk (1 to 40 m). */
+export function crownWidthTo(obj, lat, lng) {
+    const [e, n] = toLocalMeters(lat, lng, Number(obj.latitude), Number(obj.longitude));
+    return round1(Math.min(40, Math.max(1, 2 * Math.hypot(e, n))));
 }
 
 /**
@@ -168,11 +339,16 @@ export function crownFootprint(obj, sides = 16) {
     const rand = seededRandom((Number(obj.seed) || 1) + 7);
     if (m.fronds.length) {
         const pts = [];
-        m.fronds.forEach((f) => {
+        // Each leaf's tip, round the plant (a banana's from its own stem), as a star.
+        const tips = m.fronds.map((f) => {
             const a = (f.dir * Math.PI) / 180;
-            pts.push(offset(obj, m.lean.e + Math.sin(a) * f.len, m.lean.n + Math.cos(a) * f.len));
-            const b = a + Math.PI / m.fronds.length;
-            pts.push(offset(obj, m.lean.e + Math.sin(b) * f.len * 0.35, m.lean.n + Math.cos(b) * f.len * 0.35));
+            const reach = f.len * Math.cos(Math.max(0, f.droop) * 0.8);
+            return { e: (f.e ?? m.lean.e) + Math.sin(a) * reach, n: (f.n ?? m.lean.n) + Math.cos(a) * reach };
+        }).sort((p, q) => Math.atan2(p.e, p.n) - Math.atan2(q.e, q.n));
+        tips.forEach((t, i) => {
+            const next = tips[(i + 1) % tips.length];
+            pts.push(offset(obj, t.e, t.n));
+            pts.push(offset(obj, (t.e + next.e) * 0.3, (t.n + next.n) * 0.3));
         });
         return pts;
     }
@@ -201,6 +377,36 @@ export function objectRect(obj, widthM, lengthM) {
     const hl = lengthM / 2;
     return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => offset(obj,
         across.e * hw * x + along.e * hl * y, across.n * hw * x + along.n * hl * y));
+}
+
+/**
+ * A parking lot: its outline (width across its facing, length along it), the painted lines between the
+ * stalls ([a, b] pairs of {lat, lng}), how many stalls, and where its "P" sign goes.
+ * One row of stalls along one side; from TWO_ROWS_M wide, a second row along the other side, with the
+ * driveway between them.
+ */
+export function parkingLayout(obj) {
+    const w = num(obj.width_m, 16);
+    const l = num(obj.length_m, 20);
+    const rot = ((Number(obj.rotation_deg) || 0) * Math.PI) / 180;
+    const along = { e: Math.sin(rot), n: Math.cos(rot) };
+    const across = { e: Math.cos(rot), n: -Math.sin(rot) };
+    const at = (x, y) => offset(obj, across.e * x + along.e * y, across.n * x + along.n * y);
+    const depth = Math.min(STALL_D, w / 2);
+    const rows = w >= TWO_ROWS_M ? [[-w / 2, -w / 2 + depth], [w / 2 - depth, w / 2]] : [[-w / 2, -w / 2 + depth]];
+    const perRow = Math.floor(l / STALL_W);
+    const start = -(perRow * STALL_W) / 2;
+    const lines = [];
+    for (const [x0, x1] of rows) {
+        for (let i = 0; i <= perRow; i += 1) {
+            const y = start + i * STALL_W;
+            lines.push([at(x0, y), at(x1, y)]);
+        }
+        // The stalls' open end, along the driveway.
+        const front = x0 === -w / 2 ? x1 : x0;
+        lines.push([at(front, start), at(front, -start)]);
+    }
+    return { outline: objectRect(obj, w, l), lines, stalls: perRow * rows.length, sign: at(0, 0) };
 }
 
 /** A shed's roof (width across its facing, length along it). */

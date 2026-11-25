@@ -69,8 +69,9 @@ class CampusObjectController extends Controller
             'longitude' => [$required, 'numeric', 'between:-180,180'],
             'rotation_deg' => ['sometimes', 'numeric', 'between:0,360'],
             'height_m' => ['sometimes', 'nullable', 'numeric', 'between:0.2,40'],
-            'width_m' => ['sometimes', 'nullable', 'numeric', 'between:0.2,40'],
-            'length_m' => ['sometimes', 'nullable', 'numeric', 'between:0.2,40'],
+            // A parking lot can be much larger than a tree or a shed.
+            'width_m' => ['sometimes', 'nullable', 'numeric', 'between:0.2,100'],
+            'length_m' => ['sometimes', 'nullable', 'numeric', 'between:0.2,100'],
             'form' => ['sometimes', 'nullable', Rule::in(CampusObject::TREE_FORMS)],
             'seed' => ['sometimes', 'integer', 'between:1,2147483647'],
         ]);

@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { treeModel, crownFootprint, bordersWithGates, snapGateToWall, objectShadowRings, objectDefaults } from './campusObjects.js';
+import {
+    treeModel, crownFootprint, bordersWithGates, snapGateToWall, objectShadowRings, objectDefaults, parkingLayout,
+    toObjectFrame, fromObjectFrame, resizeFrom, rotateTo, rotateHandleAt, crownWidthTo,
+    crownFromFrame, heightHandleAt, heightTo,
+} from './campusObjects.js';
 import { shadeMap } from './shadeRouting.js';
 import { computeRoute, segmentCrossesBorder } from './pathfinding.js';
 import { fromLocalMeters } from './geo.js';
@@ -14,7 +18,7 @@ test('a tree looks the same every time from the same seed, and different from an
     assert.notDeepEqual(treeModel(tree()).puffs, treeModel(tree({ seed: 99 })).puffs);
     const m = treeModel(tree());
     assert.ok(m.crownTop <= 8 * 1.15 && m.crownTop > m.crownBase && m.crownBase > 0, 'the crown sits up the trunk, about the tree\'s height');
-    for (const form of ['round', 'spreading', 'canopy', 'tall', 'palm']) {
+    for (const form of ['round', 'spreading', 'canopy', 'tall', 'palm', 'banana']) {
         assert.ok(crownFootprint(tree({ form })).length >= 8, `${form} has a crown outline`);
     }
     assert.equal(treeModel(tree({ form: 'palm' })).fronds.length >= 7, true, 'a palm has fronds');
@@ -34,6 +38,70 @@ test('a wide shade tree has limbs and a crown wider than tall, leaning out to on
     const mid = { e: xs.reduce((a, b) => a + b, 0) / xs.length, n: ns.reduce((a, b) => a + b, 0) / ns.length };
     assert.ok(Math.hypot(mid.e, mid.n) > 1, 'the crown leans out');
     assert.deepEqual(treeModel(tree({ form: 'round' })).limbs, [], 'other trees have no separate limbs');
+});
+
+test('a parking lot is painted with 2.5 m stalls, in two rows once it is wide enough', () => {
+    const lot = (extra) => ({ kind: 'parking', latitude: O.lat, longitude: O.lng, width_m: 16, length_m: 20, ...extra });
+    assert.equal(parkingLayout(lot()).stalls, 16, 'two rows of 8 (20 m / 2.5 m)');
+    assert.equal(parkingLayout(lot({ width_m: 10 })).stalls, 8, 'narrower: one row');
+    assert.equal(parkingLayout(lot()).lines.length, 2 * (8 + 1) + 2, 'a line between every stall, plus each row\'s open end');
+    assert.equal(parkingLayout(lot()).outline.length, 4);
+    assert.equal(objectShadowRings([lot()], { altitudeDeg: 60, azimuthDeg: 90 }).length, 0, 'flat: no shade');
+});
+
+test('the transform frame resizes from the opposite side and rotates like a design tool', () => {
+    const lot = { kind: 'parking', latitude: O.lat, longitude: O.lng, width_m: 16, length_m: 20, rotation_deg: 30 };
+    const near = (a, b, tol = 0.05) => Math.abs(a - b) <= tol;
+    // The frame round-trips.
+    const p = fromObjectFrame(lot, 3, -4);
+    const back = toObjectFrame(lot, p.lat, p.lng);
+    assert.ok(near(back.x, 3) && near(back.y, -4));
+    // Front-right corner (+8, +10) dragged to (+10, +14): 18 x 24, the back-left corner (-8, -10) stays put.
+    const to = fromObjectFrame(lot, 10, 14);
+    const r = resizeFrom(lot, 1, 1, to.lat, to.lng);
+    assert.ok(near(r.width_m, 18) && near(r.length_m, 24));
+    const moved = { ...lot, ...r };
+    const fixed = toObjectFrame(lot, ...Object.values(fromObjectFrame(moved, -r.width_m / 2, -r.length_m / 2)));
+    assert.ok(near(fixed.x, -8, 0.1) && near(fixed.y, -10, 0.1), 'the opposite corner did not move');
+    // An edge handle changes one side only.
+    const side = fromObjectFrame(lot, 12, 3);
+    const e = resizeFrom(lot, 1, 0, side.lat, side.lng);
+    assert.ok(near(e.width_m, 20) && e.length_m === 20);
+    // Dragging past the opposite side never flips it: it stops at the minimum.
+    const past = fromObjectFrame(lot, -30, 0);
+    assert.equal(resizeFrom(lot, 1, 0, past.lat, past.lng).width_m, 1);
+    // Rotate: the handle starts behind the back edge, so dropping it there keeps the facing.
+    const h = rotateHandleAt(lot);
+    assert.equal(rotateTo(lot, h.lat, h.lng), 30);
+    // Straight south of the middle: facing north (0); 3 degrees off snaps to it.
+    const south = fromObjectFrame({ ...lot, rotation_deg: 0 }, 0.5, -10);
+    assert.equal(rotateTo(lot, south.lat, south.lng), 0);
+    // A tree's crown handle: twice the distance from the trunk.
+    const east = fromObjectFrame({ latitude: O.lat, longitude: O.lng }, 4, 0);
+    assert.ok(near(crownWidthTo({ latitude: O.lat, longitude: O.lng }, east.lat, east.lng), 8));
+});
+
+test('a banana plant has two or three stems, each with a fan of big leaves', () => {
+    const m = treeModel(tree({ form: 'banana', height_m: 5, width_m: 5 }));
+    assert.ok(m.stems.length >= 2 && m.stems.length <= 3, 'clumped stems');
+    assert.ok(m.fronds.length >= 12, 'big leaves on every stem');
+    assert.ok(m.fronds.every((f) => f.wide > 0 && m.stems.some((s) => s.te === f.e && s.tn === f.n)), 'each leaf grows from the top of a stem');
+    assert.ok(m.stems.slice(1).every((s) => Math.hypot(s.te, s.tn) > Math.hypot(s.e, s.n)), 'the outer stems lean out');
+    assert.ok(m.crownTop <= 5 + 1e-9 && m.trunkH < 5, 'leaves reach about its height, above the stems');
+    assert.deepEqual(treeModel(tree({ form: 'banana' })), treeModel(tree({ form: 'banana' })), 'same seed, same plant');
+});
+
+test('a tree turns with its rotation, and its frame resizes the crown and sets the height', () => {
+    const lean = (deg) => treeModel(tree({ form: 'canopy', height_m: 10, width_m: 14, rotation_deg: deg }));
+    const a = lean(0);
+    const b = lean(90);
+    // A quarter turn clockwise: what pointed north now points east.
+    assert.ok(Math.abs(b.puffs[0].e - a.puffs[0].n) < 1e-9 && Math.abs(b.puffs[0].n + a.puffs[0].e) < 1e-9);
+    const t = tree({ width_m: 6, height_m: 8, rotation_deg: 30 });
+    const corner = fromObjectFrame(t, 5, 5);
+    assert.equal(crownFromFrame(t, corner.lat, corner.lng), 10, 'a corner 5 m out: a 10 m crown');
+    const h = heightHandleAt(t);
+    assert.equal(heightTo(t, h.lat, h.lng), 8, 'the height handle sits where the height is');
 });
 
 test('a tree shades the ground away from the sun, and only while the sun is up', () => {

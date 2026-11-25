@@ -22,9 +22,13 @@ import { polygonCentroid, floorCountLabel, statusLabel, interiorPoint, bridgeKin
 import { floorAria, floorOf } from './floors.js';
 import { doorFrames, doorGapWalls, DOOR_HEIGHT_M } from './doors.js';
 import { planFromLink, stairTreads, walkLine, footprint } from './stairGeometry.js';
-import { fromLocalMeters } from './geo.js';
+import { fromLocalMeters, toLocalMeters } from './geo.js';
 import { convexHull, clipToConvex, cutStairwells } from './planarGeometry.js';
-import { treeModel, crownFootprint, shedRoof, objectRect, gateEnds, objectShadowRings, seededRandom } from './campusObjects.js';
+import {
+    treeModel, crownFootprint, shedRoof, objectRect, gateEnds, objectShadowRings, seededRandom, parkingLayout,
+    objectSize, RESIZE_HANDLES, fromObjectFrame, resizeFrom, rotateTo, rotateHandleAt,
+    crownFromFrame, heightHandleAt, heightTo,
+} from './campusObjects.js';
 import { arrowsAlong, startBearing } from './routeArrows.js';
 import {
     sunPosition, shadowRings, buildingHeightM, shadowOpacity, penumbraLayers, shadowColor,
@@ -1064,10 +1068,32 @@ const OBJECT_TONES = { trunk: '#6b4a2e', bench: '#8b5a2b', benchSide: '#5f3c1d',
  * are drawn into `layer` under the buildings, the rest into `frontLayer` over them. `onSelect(obj)` makes
  * them clickable (the editor); `selectedId` is outlined.
  */
-export function drawCampusObjects(layer, objects, { extrude = false, sun = null, buildings = [], frontLayer = null, onSelect = null, selectedId = null, onMove = null } = {}) {
+export function drawCampusObjects(layer, objects, { extrude = false, sun = null, buildings = [], frontLayer = null, onSelect = null, selectedId = null, onMove = null, onTransform = null } = {}) {
+    // The selected one's frame: resize and rotate handles (or a tree's crown handle), drawn last, on top.
+    const framed = onTransform && selectedId !== null ? (objects || []).find((o) => String(o.id) === String(selectedId)) : null;
     layer.clearLayers();
     frontLayer?.clearLayers();
-    const list = (objects || []).filter((o) => Number.isFinite(+o.latitude) && Number.isFinite(+o.longitude));
+    const placed = (objects || []).filter((o) => Number.isFinite(+o.latitude) && Number.isFinite(+o.longitude));
+    // Parking lots first: painted on the ground, under the trees and the shadows.
+    for (const o of placed.filter((p) => p.kind === 'parking')) {
+        const lot = parkingLayout(o);
+        const selected = selectedId !== null && String(o.id) === String(selectedId);
+        const ground = L.polygon(lot.outline.map((p) => [p.lat, p.lng]), {
+            color: selected ? '#22c55e' : '#d4d4d8', weight: selected ? 3 : 1, opacity: 0.9,
+            fillColor: '#3f4047', fillOpacity: 0.92, interactive: Boolean(onSelect),
+        }).addTo(layer);
+        if (onSelect) ground.on('click', (e) => { L.DomEvent.stopPropagation(e); onSelect(o); });
+        L.polyline(lot.lines.map(([a, b]) => [[a.lat, a.lng], [b.lat, b.lng]]), { color: '#f4f4f5', weight: 1.4, opacity: 0.85, interactive: false }).addTo(layer);
+        // In the lot's own pane, so a building in front of the lot covers its sign too.
+        L.marker([lot.sign.lat, lot.sign.lng], { icon: PARKING_SIGN_ICON, interactive: false, keyboard: false, pane: layer.campusPane || 'markerPane' }).addTo(layer);
+        if (selected && onMove) {
+            const handle = L.marker([+o.latitude, +o.longitude], { icon: MOVE_HANDLE_ICON, draggable: true, zIndexOffset: 2000, keyboard: false, title: 'Drag to move' });
+            handle.on('dragend', () => { const p = handle.getLatLng(); onMove(p.lat, p.lng); });
+            handle.on('click', (e) => L.DomEvent.stopPropagation(e));
+            handle.addTo(frontLayer || layer);
+        }
+    }
+    const list = placed.filter((o) => o.kind !== 'parking');
     // Shadows first, all on the ground layer.
     if (extrude && sun) {
         const fill = shadowColor(sun);
@@ -1077,13 +1103,18 @@ export function drawCampusObjects(layer, objects, { extrude = false, sun = null,
             if (rings.length) L.polygon(rings.map((r) => r.map((p) => [p.lat, p.lng])), { stroke: false, fillColor: fill, fillOpacity: opacity, fillRule: 'nonzero', interactive: false }).addTo(layer);
         }
     }
-    // Far (north) first, so nearer ones cover them.
-    const sorted = [...list].sort((a, b) => +b.latitude - +a.latitude);
+    // Lowest first, so what stands taller covers it: benches, then gates, sheds, and the tree crowns over them;
+    // within each, far (north) first, so nearer ones cover them.
+    const RANK = { bench: 0, gate: 1, shed: 2, tree: 3 };
+    const sorted = [...list].sort((a, b) => (RANK[a.kind] ?? 2) - (RANK[b.kind] ?? 2) || +b.latitude - +a.latitude);
+    // In front of the buildings or behind them; a tree's crown reaches out over its width.
+    const behind = (o) => wallBehindBuilding({ lat: +o.latitude, lng: +o.longitude }, { lat: +o.latitude, lng: +o.longitude }, buildings, o.kind === 'tree' ? (Number(o.width_m) || 4) / 2 : 1);
+    const trees = list.filter((t) => t.kind === 'tree');
     for (const o of sorted) {
         const here = { lat: +o.latitude, lng: +o.longitude };
-        // A tree's crown reaches out over its width; benches, sheds and gates are about a metre.
-        const reach = o.kind === 'tree' ? (Number(o.width_m) || 4) / 2 : 1;
-        const into = frontLayer && !wallBehindBuilding(here, here, buildings, reach) ? frontLayer : layer;
+        // A bench, shed or gate under a tree's crown goes where that tree goes, so the crown always covers it.
+        const under = o.kind === 'tree' ? null : trees.find((t) => Math.hypot(...toLocalMeters(+o.latitude, +o.longitude, +t.latitude, +t.longitude)) < (Number(t.width_m) || 4) / 2);
+        const into = frontLayer && !behind(under || o) ? frontLayer : layer;
         const selected = selectedId !== null && String(o.id) === String(selectedId);
         const hit = (shape) => {
             if (!onSelect || !shape) return;
@@ -1128,7 +1159,102 @@ export function drawCampusObjects(layer, objects, { extrude = false, sun = null,
             handle.addTo(frontLayer || layer);
         }
     }
+    if (framed && framed.kind !== 'gate') drawTransformFrame(frontLayer || layer, framed, onTransform);
 }
+
+/**
+ * The transform frame of the selected tree, bench, shed or parking lot, like a design tool's: an outline,
+ * round corner handles and edge bars to resize (the opposite side stays put), and a round rotate handle
+ * behind it; a tree gets one handle on its crown's edge for the crown width. While a handle is dragged a
+ * dashed outline shows the result; it is applied (onTransform(patch)) when the handle is let go.
+ */
+function drawTransformFrame(into, o, onTransform) {
+    const ll = (p) => [p.lat, p.lng];
+    const ghost = L.polygon([[0, 0]], { color: '#22c55e', weight: 2, dashArray: '6 5', fill: false, opacity: 0, interactive: false }).addTo(into);
+    const handle = (at, icon, title, onDrag, onDrop) => {
+        const m = L.marker(ll(at), { icon, draggable: true, zIndexOffset: 2100, keyboard: false, title });
+        m.on('drag', () => { const p = m.getLatLng(); ghost.setLatLngs(onDrag(p.lat, p.lng)); ghost.setStyle({ opacity: 1 }); });
+        m.on('dragend', () => { const p = m.getLatLng(); onDrop(p.lat, p.lng); });
+        m.on('click', (e) => L.DomEvent.stopPropagation(e));
+        return m.addTo(into);
+    };
+    const { w, l } = objectSize(o);
+    if (o.kind === 'tree') {
+        // A tree: a square round its crown. Corners and edges widen the crown from the trunk (which stays
+        // put), the round arrow turns it, and the up-down handle above sets its height.
+        const square = (width) => objectRect(o, width, width).map(ll);
+        L.polygon(square(w), { color: '#22c55e', weight: 1.5, fill: false, interactive: false }).addTo(into);
+        for (const { sx, sy } of RESIZE_HANDLES) {
+            const corner = sx !== 0 && sy !== 0;
+            const icon = corner ? FRAME_CORNER_ICON : frameEdgeIcon((Number(o.rotation_deg) || 0) + (sy !== 0 ? 90 : 0));
+            handle(fromObjectFrame(o, (sx * w) / 2, (sy * w) / 2), icon, 'Drag to change the crown width',
+                (lat, lng) => square(crownFromFrame(o, lat, lng)), (lat, lng) => onTransform({ width_m: crownFromFrame(o, lat, lng) }));
+        }
+        const knob = rotateHandleAt(o);
+        L.polyline([ll(fromObjectFrame(o, 0, -w / 2)), ll(knob)], { color: '#22c55e', weight: 1.5, interactive: false }).addTo(into);
+        handle(knob, FRAME_ROTATE_ICON, 'Drag to turn the tree',
+            (lat, lng) => objectRect({ ...o, rotation_deg: rotateTo(o, lat, lng) }, w, w).map(ll), (lat, lng) => onTransform({ rotation_deg: rotateTo(o, lat, lng) }));
+        const top = heightHandleAt(o);
+        L.polyline([[+o.latitude, +o.longitude], ll(top)], { color: '#22c55e', weight: 1, dashArray: '2 4', interactive: false }).addTo(into);
+        handle(top, FRAME_HEIGHT_ICON, 'Drag up or down to change the height',
+            (lat) => [[+o.latitude, +o.longitude], [lat, +o.longitude]], (lat, lng) => onTransform({ height_m: heightTo(o, lat, lng) }));
+        return;
+    }
+    L.polygon(objectRect(o, w, l).map(ll), { color: '#22c55e', weight: 1.5, fill: false, interactive: false }).addTo(into);
+    const rectOf = (patch) => { const n = { ...o, ...patch }; return objectRect(n, objectSize(n).w, objectSize(n).l).map(ll); };
+    for (const { sx, sy } of RESIZE_HANDLES) {
+        const corner = sx !== 0 && sy !== 0;
+        // An edge bar lies along its edge: across the facing on the front and back, along it on the sides.
+        const icon = corner ? FRAME_CORNER_ICON : frameEdgeIcon((Number(o.rotation_deg) || 0) + (sy !== 0 ? 90 : 0));
+        handle(fromObjectFrame(o, (sx * w) / 2, (sy * l) / 2), icon, corner ? 'Drag to resize' : 'Drag to stretch this side',
+            (lat, lng) => rectOf(resizeFrom(o, sx, sy, lat, lng)), (lat, lng) => onTransform(resizeFrom(o, sx, sy, lat, lng)));
+    }
+    // The rotate handle, joined to the back edge by a short line.
+    const knob = rotateHandleAt(o);
+    L.polyline([ll(fromObjectFrame(o, 0, -l / 2)), ll(knob)], { color: '#22c55e', weight: 1.5, interactive: false }).addTo(into);
+    handle(knob, FRAME_ROTATE_ICON, 'Drag to rotate',
+        (lat, lng) => rectOf({ rotation_deg: rotateTo(o, lat, lng) }), (lat, lng) => onTransform({ rotation_deg: rotateTo(o, lat, lng) }));
+}
+
+const FRAME_CORNER_ICON = L.divIcon({
+    className: '',
+    html: '<div style="width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #22c55e;box-shadow:0 1px 4px rgba(0,0,0,0.45);cursor:nwse-resize"></div>',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+});
+/** An edge bar, turned to lie along its edge (bearing of the edge, degrees). */
+const frameEdgeIcon = (bearing) => L.divIcon({
+    className: '',
+    html: `<div style="width:18px;height:18px;display:flex;align-items:center;justify-content:center;transform:rotate(${Math.round(bearing) - 90}deg)">`
+        + '<div style="width:16px;height:6px;border-radius:3px;background:#fff;border:2px solid #22c55e;box-shadow:0 1px 4px rgba(0,0,0,0.45)"></div></div>',
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+});
+// The height handle: an up-down arrow in a pill, above the tree's crown.
+const FRAME_HEIGHT_ICON = L.divIcon({
+    className: '',
+    html: '<div style="width:24px;height:30px;border-radius:12px;background:#fff;border:2px solid #22c55e;box-shadow:0 2px 6px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;cursor:ns-resize" role="img" aria-label="Height">'
+        + '<svg width="14" height="20" viewBox="0 0 14 20" fill="none" stroke="#15803d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M7 2v16M3 6l4-4 4 4M3 14l4 4 4-4"/></svg></div>',
+    iconSize: [24, 30],
+    iconAnchor: [12, 15],
+});
+const FRAME_ROTATE_ICON = L.divIcon({
+    className: '',
+    html: '<div style="width:28px;height:28px;border-radius:50%;background:#22c55e;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;cursor:grab" role="img" aria-label="Rotate">'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+});
+
+// The parking lot's sign: a blue square with a white P, as on road signs.
+const PARKING_SIGN_ICON = L.divIcon({
+    className: '',
+    html: '<div style="width:20px;height:20px;border-radius:4px;background:#1d4ed8;border:2px solid #fff;color:#fff;font:700 13px/16px system-ui,sans-serif;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.4)" role="img" aria-label="Parking">P</div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+});
 
 // A round green grip with four arrows, on the selected campus object's base point.
 const MOVE_HANDLE_ICON = L.divIcon({
@@ -1151,9 +1277,18 @@ function drawTree25D(into, o, liftM, hit, outline, interactive) {
     // Trunk: a thin upright band from the ground to where the crown starts.
     const tr = m.trunkR;
     const topU = m.fronds.length || m.limbs.length ? m.trunkH : m.crownBase + 0.3;
-    L.polygon([off(-tr, 0, 0), off(tr, 0, 0), off(m.lean.e + tr * 0.7, m.lean.n, topU), off(m.lean.e - tr * 0.7, m.lean.n, topU)], {
-        stroke: false, fillColor: OBJECT_TONES.trunk, fillOpacity: 1, interactive: false,
-    }).addTo(into);
+    if (m.stems.length) {
+        // A banana plant: its clumped stems, yellow-green.
+        for (const s of m.stems) {
+            L.polygon([off(s.e - s.r, s.n, 0), off(s.e + s.r, s.n, 0), off(s.te + s.r * 0.75, s.tn, s.h), off(s.te - s.r * 0.75, s.tn, s.h)], {
+                color: '#6f7a2e', weight: 0.6, fillColor: '#a9b356', fillOpacity: 1, interactive: false,
+            }).addTo(into);
+        }
+    } else {
+        L.polygon([off(-tr, 0, 0), off(tr, 0, 0), off(m.lean.e + tr * 0.7, m.lean.n, topU), off(m.lean.e - tr * 0.7, m.lean.n, topU)], {
+            stroke: false, fillColor: OBJECT_TONES.trunk, fillOpacity: 1, interactive: false,
+        }).addTo(into);
+    }
     // A shade tree's limbs, from the top of the trunk out to its clumps (drawn first: the leaves cover their ends).
     for (const l of m.limbs) {
         const len = Math.hypot(l.e, l.n) || 1;
@@ -1168,8 +1303,29 @@ function drawTree25D(into, o, liftM, hit, outline, interactive) {
     }
     if (m.fronds.length) {
         let lastFrond = null;
-        for (const f of m.fronds) {
+        // Back leaves (north) first, so the near ones cover them.
+        for (const f of [...m.fronds].sort((p, q) => Math.cos((q.dir * Math.PI) / 180) - Math.cos((p.dir * Math.PI) / 180))) {
             const a = (f.dir * Math.PI) / 180;
+            if (f.wide) {
+                // A banana leaf: a long paddle from its stem's top, rising or drooping towards its tip.
+                const oe = f.e ?? m.lean.e;
+                const on = f.n ?? m.lean.n;
+                const oh = f.h ?? m.trunkH;
+                const at = (t, side) => off(
+                    oe + Math.sin(a) * f.len * t + Math.cos(a) * side,
+                    on + Math.cos(a) * f.len * t - Math.sin(a) * side,
+                    oh + 0.15 - f.droop * f.len * t * t,
+                );
+                const hw = f.wide / 2;
+                const leaf = L.polygon([at(0.05, 0), at(0.22, hw * 0.8), at(0.55, hw), at(0.88, hw * 0.65), at(1, 0), at(0.88, -hw * 0.65), at(0.55, -hw), at(0.22, -hw * 0.8)], {
+                    color: '#3f7a2a', weight: 0.6, fillColor: f.droop > 0.3 ? '#6aa63d' : '#86c04f', fillOpacity: 1, interactive,
+                }).addTo(into);
+                // The midrib, a lighter line down the leaf.
+                L.polyline([at(0.05, 0), at(1, 0)], { color: '#c7e39a', weight: 0.8, opacity: 0.8, interactive: false }).addTo(into);
+                hit(leaf);
+                lastFrond = leaf;
+                continue;
+            }
             const w = 0.35;
             const tip = off(m.lean.e + Math.sin(a) * f.len, m.lean.n + Math.cos(a) * f.len, m.trunkH - f.droop * f.len);
             const side = (s) => off(m.lean.e + Math.sin(a) * f.len * 0.45 + Math.cos(a) * w * s, m.lean.n + Math.cos(a) * f.len * 0.45 - Math.sin(a) * w * s, m.trunkH + 0.2);

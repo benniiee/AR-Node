@@ -96,6 +96,7 @@ class ClosureController extends Controller
             'Only an admin can close the whole school, a campus, or every school or office building.',
         );
         abort_unless($this->withinDepartment($user, $closure), 403, 'You can only close your own department, its buildings and places.');
+        abort_if($this->runByOthers($user, $closure), 403, 'The office staff who run this office post its closures.');
     }
 
     private function canManage(User $user, Closure $closure): bool
@@ -107,7 +108,14 @@ class ClosureController extends Controller
         return $user->isAdmin()
             || ($user->department_id !== null && ! $closure->isSchoolLevel()
                 && $closure->campus === null && $closure->building_category === null
-                && $this->withinDepartment($user, $closure));
+                && $this->withinDepartment($user, $closure) && ! $this->runByOthers($user, $closure));
+    }
+
+    /** A closure of an office that office staff other than this user run (theirs to post and remove). */
+    private function runByOthers(User $user, Closure $closure): bool
+    {
+        return $closure->node_id !== null
+            && Node::whereKey($closure->node_id)->whereNotNull('manager_id')->where('manager_id', '!=', $user->id)->exists();
     }
 
     /** A closure of one of the places this office staff member runs. */

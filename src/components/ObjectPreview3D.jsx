@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { C, RADIUS } from '../uiTokens';
 import { disposeTree } from './StairPreview3D';
 import { buildScene, person } from './RouteModel3D';
-import { treeModel, kindLabel } from '../campusObjects';
+import { treeModel, kindLabel, parkingLayout } from '../campusObjects';
 
 // ── 3D preview of one campus object (admin: Trees, benches, sheds and gates) ──
 // The object where it stands, among the campus as the 3D views draw it (buildings at their real
@@ -190,7 +190,9 @@ export default function ObjectPreview3D({ object, objects = [], buildings = [], 
             <span className="obj3d-hint" aria-hidden="true">
                 {object.kind === 'tree'
                     ? `Tree: ${Number(object.height_m) || '?'} m tall, ${Number(object.width_m) || '?'} m crown`
-                    : `${label}: ${size.h.toFixed(1)} m tall`} · person 1.7 m
+                    : object.kind === 'parking'
+                        ? `Parking: ${Number(object.width_m) || '?'} × ${Number(object.length_m) || '?'} m, ${parkingLayout(object).stalls} stalls`
+                        : `${label}: ${size.h.toFixed(1)} m tall`} · person 1.7 m
             </span>
         </div>
     );

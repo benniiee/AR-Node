@@ -23,8 +23,12 @@ class DemoStaffSeederTest extends TestCase
         $this->seed(DemoStaffSeeder::class);
 
         $this->assertSame(count(DemoStaffSeeder::STAFF), User::where('role', 'faculty')->count());
-        $this->assertSame(count(DemoStaffSeeder::STAFF), Department::count());
-        $this->assertSame($ccs->id, User::where('email', 'ccs.staff@campus.test')->value('department_id'));
+        $this->assertSame(count(array_unique(array_column(DemoStaffSeeder::STAFF, 'department'))), Department::count());
+        $this->assertSame($ccs->id, User::where('email', 'ccs.dean@campus.test')->value('department_id'));
+        // CCS: the Dean heads it; the IT and CS office staff are not heads.
+        $this->assertTrue(User::where('email', 'ccs.dean@campus.test')->firstOrFail()->is_head);
+        $this->assertSame([false, false], User::whereIn('email', ['ccs.it@campus.test', 'ccs.cs@campus.test'])->get()->pluck('is_head')->all());
+        $this->assertSame([$ccs->id, $ccs->id], User::whereIn('email', ['ccs.it@campus.test', 'ccs.cs@campus.test'])->pluck('department_id')->all());
         $this->assertNotNull(User::where('email', 'csm.staff@campus.test')->value('department_id'));
         $this->assertSame('office', Department::where('name', 'Canteen')->value('kind'));
     }
@@ -49,10 +53,10 @@ class DemoStaffSeederTest extends TestCase
     public function test_a_seeded_staff_account_can_sign_in_and_edit_its_departments_building(): void
     {
         $this->seed(DemoStaffSeeder::class);
-        $staff = User::where('email', 'ccs.staff@campus.test')->firstOrFail();
+        $staff = User::where('email', 'ccs.dean@campus.test')->firstOrFail();
         $building = Building::factory()->create(['department_id' => $staff->department_id]);
 
-        $token = $this->postJson('/api/login', ['email' => 'ccs.staff@campus.test', 'password' => 'password'])
+        $token = $this->postJson('/api/login', ['email' => 'ccs.dean@campus.test', 'password' => 'password'])
             ->assertOk()
             ->json('token');
 
@@ -60,6 +64,17 @@ class DemoStaffSeederTest extends TestCase
             ->putJson("/api/buildings/{$building->id}", ['name' => 'CCS Annex'])
             ->assertOk()
             ->assertJsonPath('name', 'CCS Annex');
+    }
+
+    public function test_the_old_ccs_staff_account_becomes_the_dean(): void
+    {
+        $old = User::factory()->create(['email' => 'ccs.staff@campus.test', 'name' => 'CCS Staff', 'role' => 'faculty']);
+
+        $this->seed(DemoStaffSeeder::class);
+
+        $this->assertSame('ccs.dean@campus.test', $old->fresh()->email);
+        $this->assertSame('CCS Dean', $old->fresh()->name);
+        $this->assertFalse(User::where('email', 'ccs.staff@campus.test')->exists());
     }
 
     public function test_no_seeder_creates_demo_accounts_in_production(): void

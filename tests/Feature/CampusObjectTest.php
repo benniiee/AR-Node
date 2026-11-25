@@ -28,6 +28,16 @@ class CampusObjectTest extends TestCase
         $this->assertDatabaseMissing('campus_objects', ['id' => $id]);
     }
 
+    public function test_a_parking_lot_can_be_large(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        $this->postJson('/api/campus-objects', ['kind' => 'parking', 'latitude' => 6.91, 'longitude' => 122.07, 'width_m' => 30, 'length_m' => 60, 'rotation_deg' => 45])
+            ->assertCreated()->assertJsonPath('kind', 'parking');
+        $this->postJson('/api/campus-objects', ['kind' => 'parking', 'latitude' => 6.91, 'longitude' => 122.07, 'width_m' => 120])
+            ->assertUnprocessable()->assertJsonValidationErrors('width_m');
+    }
+
     public function test_only_a_tree_keeps_a_form(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));

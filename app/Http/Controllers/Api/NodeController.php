@@ -191,6 +191,11 @@ class NodeController extends Controller
         }
         if (array_key_exists('opening_hours', $validated)) {
             $validated['opening_hours'] = OpeningHours::normalize($validated['opening_hours']);
+            // An office's hours are set by the office staff who run it, not by the building head.
+            abort_if(
+                $node->manager_id !== null && $node->manager_id !== $request->user()->id && $validated['opening_hours'] != $node->opening_hours,
+                403, 'The office staff who run this office set its hours.',
+            );
         }
 
         // Staff moving or re-filing a node must keep it inside one of their

@@ -27,7 +27,10 @@ class DemoStaffSeeder extends Seeder
      * @var list<array{email: string, name: string, department: string, kind: string, color: string, buildings: list<string>}>
      */
     public const STAFF = [
-        ['email' => 'ccs.staff@campus.test', 'name' => 'CCS Staff', 'department' => 'CCS', 'kind' => 'college', 'color' => '#2563eb', 'buildings' => ['College of Computing Studies']],
+        // CCS: the Dean runs the building; the IT and CS office staff run the office the Dean assigns them.
+        ['email' => 'ccs.dean@campus.test', 'name' => 'CCS Dean', 'department' => 'CCS', 'kind' => 'college', 'color' => '#2563eb', 'buildings' => ['College of Computing Studies']],
+        ['email' => 'ccs.it@campus.test', 'name' => 'CCS IT Office', 'department' => 'CCS', 'kind' => 'college', 'color' => '#2563eb', 'buildings' => [], 'head' => false],
+        ['email' => 'ccs.cs@campus.test', 'name' => 'CCS CS Office', 'department' => 'CCS', 'kind' => 'college', 'color' => '#2563eb', 'buildings' => [], 'head' => false],
         ['email' => 'csm.staff@campus.test', 'name' => 'CSM Staff', 'department' => 'CSM', 'kind' => 'college', 'color' => '#16a34a', 'buildings' => ['College of Science and Mathematics']],
         ['email' => 'ccje@campus.test', 'name' => 'CCJE Staff', 'department' => 'CCJE', 'kind' => 'college', 'color' => '#7c3aed', 'buildings' => ['College of Criminology Justice Education']],
         ['email' => 'nursing@campus.test', 'name' => 'Nursing Staff', 'department' => 'Nursing', 'kind' => 'college', 'color' => '#db2777', 'buildings' => ['College of Nursing']],
@@ -50,6 +53,11 @@ class DemoStaffSeeder extends Seeder
             return;
         }
 
+        // The old CCS staff account is now the Dean: same account, so what it added keeps its owner.
+        if (! User::where('email', 'ccs.dean@campus.test')->exists()) {
+            User::where('email', 'ccs.staff@campus.test')->update(['email' => 'ccs.dean@campus.test', 'name' => 'CCS Dean']);
+        }
+
         foreach (self::STAFF as $staff) {
             $department = Department::firstOrCreate(
                 ['name' => $staff['department']],
@@ -66,7 +74,10 @@ class DemoStaffSeeder extends Seeder
 
             $user = User::firstOrCreate(['email' => $staff['email']], ['name' => $staff['name'], 'password' => 'password']);
             // No forced password change on a demo account.
-            $user->forceFill(['role' => 'faculty', 'department_id' => $department->id, 'password' => 'password', 'must_change_password' => false])->save();
+            $user->forceFill([
+                'role' => 'faculty', 'department_id' => $department->id, 'is_head' => $staff['head'] ?? true,
+                'password' => 'password', 'must_change_password' => false,
+            ])->save();
         }
 
         User::where('email', self::ADMIN_EMAIL)->first()?->forceFill(['password' => 'password', 'must_change_password' => false])->save();

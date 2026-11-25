@@ -313,6 +313,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const [campusObjects, setCampusObjects] = useState([]);
     const [objectKind, setObjectKind] = useState('tree');
     const [objectDraft, setObjectDraft] = useState(null);
+    // What was placed since the tool was opened, newest last: Undo removes the last one, Cancel all of them.
+    const [placedIds, setPlacedIds] = useState([]);
+    // When the last one was placed: a second tap right after (a double-click) must not place a second one.
+    const lastPlacedAtRef = useRef(0);
     const [objectSaving, setObjectSaving] = useState(false);
     const [objectNote, setObjectNote] = useState(null);
     // The walls with each gate's opening cut out (routing and the drawn walls), the draft included.
@@ -379,6 +383,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const [editPublic, setEditPublic] = useState(false);
     // Office staff who run the place being edited ('' = the building head).
     const [editManager, setEditManager] = useState('');
+    // An office's hours and closures belong to whoever runs it: the building head sets them only while nobody does.
+    const hoursLockedFor = (managerId) => !isAdmin && !isOfficeStaff && managerId !== '' && String(managerId) !== String(myId);
     const [editType, setEditType] = useState('route');
     const [editElevation, setEditElevation] = useState('0');
     const [editFloor, setEditFloor] = useState('0');
@@ -466,6 +472,37 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     // overrides the opening hours without changing them (a closure, like the Announcements ones).
     const closedNowOf = (b) => closures.find((c) => c.building_id === b.id && c.kind !== 'open' && c.can_manage
         && new Date(c.starts_at) <= new Date() && new Date(c.ends_at) > new Date());
+    // The building head's "Close now" (the Dean of a college), for an event, maintenance or an emergency: closes the
+    // whole building now, whatever its hours say, until reopened. Admins close buildings from Announcements instead.
+    const canCloseNow = (b) => !isAdmin && canEditBuilding(b) && b?.status !== 'under_construction';
+    const closeBuildingNow = async (b, reason = '') => {
+        if (!b || !(await confirmAction({
+            title: `Close ${b.short_name || b.name} now?`,
+            message: 'Students see it as closed and routes go around it until you reopen it. Its opening hours stay as they are.',
+            confirmLabel: 'Close now', tone: 'danger',
+        }))) return;
+        try {
+            const now = new Date();
+            // shortcut: "until reopened" is a closure ending in a year; a forgotten one shows as Closed now on the map.
+            await api.createClosure({
+                building_id: b.id, reason: reason.trim() || 'Closed now', starts_at: now.toISOString(),
+                ends_at: new Date(now.getTime() + 365 * 86400000).toISOString(),
+            });
+            mapInstance.current?.closePopup();
+            setClosures(await api.getClosures());
+            showToast(`${b.short_name || b.name} is closed until you reopen it`);
+        } catch (err) { onError(err.message); }
+    };
+    const reopenBuilding = async (b) => {
+        const closure = b && closedNowOf(b);
+        if (!closure) return;
+        try {
+            await api.deleteClosure(closure.id);
+            mapInstance.current?.closePopup();
+            setClosures(await api.getClosures());
+            showToast(`${b.short_name || b.name} follows its opening hours again`);
+        } catch (err) { onError(err.message); }
+    };
     // Where this account may place nodes: admins anywhere; staff only inside
     // their department's buildings (NodeController enforces the same rule).
     const ownBuildings = isAdmin ? buildings : buildings.filter(canEditBuilding);
@@ -1027,6 +1064,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     return spot ? { ...d, ...spot } : d;
                 });
             } : null,
+            // Resize and rotate on the map (corner, edge and rotate handles; a tree's crown handle).
+            onTransform: tool === TOOL_OBJECTS ? (patch) => setObjectDraft((d) => (d ? { ...d, ...patch } : d)) : null,
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [shownObjects, isStudentView, sunWallsKey, buildings, tool, objectDraft?.id, borders]);
@@ -1050,8 +1089,11 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             if (!spot) return;
             if (objectDraft) { setObjectDraft((d) => ({ ...d, ...spot })); return; }
             try {
+                if (Date.now() - lastPlacedAtRef.current < 600) return;
+                lastPlacedAtRef.current = Date.now();
                 const created = await api.createCampusObject({ ...objectDefaults(kind), ...spot });
                 setCampusObjects((list) => [...list, created]);
+                setPlacedIds((ids) => [...ids, created.id]);
                 setObjectNote(`${objectKindLabel(kind)} placed. Tap it to change its size or look.`);
             } catch (err) {
                 onError(err.message);
@@ -1072,8 +1114,39 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         setCampusOpen(false);
         setObjectDraft(null);
         setObjectNote(null);
+        setPlacedIds([]);
         mapInstance.current?.closePopup();
         setTool(TOOL_OBJECTS);
+    };
+    // Remove placed objects (ids) from the map and the database.
+    const unplace = async (ids) => {
+        for (const id of ids) await api.deleteCampusObject(id);
+        setCampusObjects((list) => list.filter((o) => !ids.includes(o.id)));
+        setPlacedIds((list) => list.filter((id) => !ids.includes(id)));
+        setObjectDraft((d) => (d && ids.includes(d.id) ? null : d));
+    };
+    const undoPlaced = async () => {
+        const last = placedIds[placedIds.length - 1];
+        if (last === undefined) return;
+        const kind = campusObjects.find((o) => o.id === last)?.kind;
+        try {
+            await unplace([last]);
+            setObjectNote(`Removed the ${objectKindLabel(kind).toLowerCase()} you placed last.`);
+        } catch (err) { onError(err.message); }
+    };
+    const cancelPlaced = async () => {
+        if (placedIds.length && !(await confirmAction({
+            title: `Remove the ${placedIds.length} ${placedIds.length === 1 ? 'object' : 'objects'} you placed?`,
+            message: 'Everything placed since you opened the tool comes off the map. Changes you saved to earlier objects stay.',
+            confirmLabel: 'Remove them', tone: 'danger',
+        }))) return;
+        try {
+            await unplace(placedIds);
+            setObjectDraft(null);
+            setObjectNote(null);
+            setTool(IDLE);
+            if (placedIds.length) showToast(`Removed ${placedIds.length} ${placedIds.length === 1 ? 'object' : 'objects'}`);
+        } catch (err) { onError(err.message); }
     };
     const saveObject = async () => {
         if (!objectDraft) return;
@@ -1093,9 +1166,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
         if (!objectDraft) return;
         setObjectSaving(true);
         try {
-            await api.deleteCampusObject(objectDraft.id);
-            setCampusObjects((list) => list.filter((o) => o.id !== objectDraft.id));
-            setObjectDraft(null);
+            await unplace([objectDraft.id]);
             setObjectNote('Removed.');
         } catch (err) {
             onError(err.message);
@@ -1132,7 +1203,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         { label: 'Edit', call: ['__editBuilding', b.id] },
                         { label: 'Move / reshape', call: ['__moveBuilding', b.id] },
                     ] : []),
-                    ...(canEditBuilding(b) && b.status !== 'under_construction' ? [closedNowOf(b)
+                    ...(canCloseNow(b) ? [closedNowOf(b)
                         ? { label: 'Reopen', call: ['__reopenBuilding', b.id], wide: true }
                         : { label: 'Close now', call: ['__closeBuildingNow', b.id], kind: 'danger', wide: true }] : []),
                     ...(isAdmin ? [{ label: 'Remove building', call: ['__deleteBuilding', b.id], kind: 'danger', wide: true }] : []),
@@ -1677,36 +1748,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             const p = pathways.find((x) => x.id === id);
             if (p) startCampus('pathway', p, 'shape');
         };
-        window.__closeBuildingNow = async (id) => {
-            const b = buildings.find((x) => x.id === id);
-            if (!b || !(await confirmAction({
-                title: `Close ${b.short_name || b.name} now?`,
-                message: 'Students see it as closed and routes go around it until you reopen it. Its opening hours stay as they are.',
-                confirmLabel: 'Close now', tone: 'danger',
-            }))) return;
-            try {
-                const now = new Date();
-                // shortcut: "until reopened" is a closure ending in a year; a forgotten one shows as Closed now on the map.
-                await api.createClosure({
-                    building_id: id, reason: 'Closed now', starts_at: now.toISOString(),
-                    ends_at: new Date(now.getTime() + 365 * 86400000).toISOString(),
-                });
-                mapInstance.current?.closePopup();
-                setClosures(await api.getClosures());
-                showToast(`${b.short_name || b.name} is closed until you reopen it`);
-            } catch (err) { onError(err.message); }
-        };
-        window.__reopenBuilding = async (id) => {
-            const b = buildings.find((x) => x.id === id);
-            const closure = b && closedNowOf(b);
-            if (!closure) return;
-            try {
-                await api.deleteClosure(closure.id);
-                mapInstance.current?.closePopup();
-                setClosures(await api.getClosures());
-                showToast(`${b.short_name || b.name} follows its opening hours again`);
-            } catch (err) { onError(err.message); }
-        };
+        window.__closeBuildingNow = (id) => closeBuildingNow(buildings.find((x) => x.id === id));
+        window.__reopenBuilding = (id) => reopenBuilding(buildings.find((x) => x.id === id));
         const nodeWord = (n) => `${n} ${n === 1 ? 'node' : 'nodes'}`;
         window.__deleteBuilding = async (id) => {
             const b = buildings.find((x) => x.id === id);
@@ -2037,7 +2080,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             onError('Name is required for locations');
             return;
         }
-        if (editType === 'location' && hoursProblem(editHours)) {
+        const hoursLocked = hoursLockedFor(editManager);
+        if (editType === 'location' && !hoursLocked && hoursProblem(editHours)) {
             onError(hoursProblem(editHours));
             return;
         }
@@ -2051,8 +2095,9 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 campus: editCampus,
                 building_id: editBuilding === '' ? null : Number(editBuilding),
                 ...(isAdmin ? { department_id: editDept === '' ? null : Number(editDept) } : {}),
-                // Only a place (location) has hours, or is shown to visitors; a route node never is.
-                opening_hours: editType === 'location' ? editHours : null,
+                // Only a place (location) has hours, or is shown to visitors; a route node never is. The hours of
+                // an office someone else runs are theirs to set, so they are left out.
+                ...(editType !== 'location' ? { opening_hours: null } : hoursLocked ? {} : { opening_hours: editHours }),
                 is_public: editType === 'location' && editPublic,
                 ...(!isAdmin && editType === 'location' ? { manager_id: editManager === '' ? null : Number(editManager) } : {}),
             });
@@ -3195,6 +3240,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         onManageNodes={campusEdit.mode === 'bridge' ? openManageBridge : (isAdmin ? null : openManageNodes)}
                         onConnectBridge={startBridgeConnect}
                         canChangeDepartment={isAdmin}
+                        // The building head's "Close now" (and Reopen), separate from the hours.
+                        closedNow={campusEdit.mode === 'building' && campusEdit.record ? closedNowOf(campusEdit.record) || null : null}
+                        onCloseNow={campusEdit.mode === 'building' && canCloseNow(campusEdit.record) ? (reason) => closeBuildingNow(campusEdit.record, reason) : null}
+                        onReopen={() => reopenBuilding(campusEdit.record)}
                         nodes={nodes}
                         borders={borders}
                         links={links}
@@ -3214,7 +3263,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         onSave={saveObject}
                         onDelete={removeObject}
                         onDeselect={() => { setObjectDraft(null); setObjectNote(null); }}
-                        onDone={() => { setObjectDraft(null); setObjectNote(null); setTool(IDLE); }}
+                        onDone={() => { setObjectDraft(null); setObjectNote(null); setPlacedIds([]); setTool(IDLE); }}
+                        placedCount={placedIds.length}
+                        onUndo={undoPlaced}
+                        onCancel={cancelPlaced}
                         saving={objectSaving}
                         note={objectNote}
                     />
@@ -3580,45 +3632,65 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         )}
                         {editType === 'location' && (() => {
                             const building = editBuilding !== '' ? buildings.find((b) => String(b.id) === String(editBuilding)) : null;
+                            const buildingName = building ? (building.short_name || building.name) : 'the building';
                             const inherited = building?.opening_hours ? summarizeHours(building.opening_hours) : null;
                             const ownerDept = editingNode.department_id ?? building?.department?.id ?? building?.department_id;
                             const staff = users.filter((u) => u.role === 'faculty' && u.department?.id === ownerDept && u.id !== myId);
+                            const runner = editManager !== '' ? (users.find((u) => String(u.id) === editManager)?.name || 'its office staff') : null;
+                            const locked = hoursLockedFor(editManager);
                             return (
-                                <section className="mt-stairs" aria-labelledby="edit-hours-title">
+                                <>
+                                    {/* 1. Who runs it: the building head's choice. */}
                                     {!isAdmin && !isOfficeStaff && (
-                                        <div className="ui-field" style={{ marginBottom: 14 }}>
-                                            <label className="ui-label" htmlFor="edit-manager">Runs this office</label>
-                                            <select id="edit-manager" className="ui-select" value={editManager} onChange={(e) => setEditManager(e.target.value)} aria-describedby="edit-manager-hint">
+                                        <section className="mt-stairs" aria-labelledby="edit-manager-title">
+                                            <h3 className="mt-stairs-title" id="edit-manager-title">Who runs this office</h3>
+                                            <select id="edit-manager" className="ui-select" value={editManager} onChange={(e) => setEditManager(e.target.value)} aria-labelledby="edit-manager-title" aria-describedby="edit-manager-hint">
                                                 <option value="">You (the building head)</option>
                                                 {staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                                             </select>
-                                            <span className="ui-hint" id="edit-manager-hint">
-                                                {staff.length ? 'They can set this office\'s hours and close it, nothing else.' : 'No office staff in your department yet. An admin adds their accounts.'}
+                                            <span className="ui-hint" id="edit-manager-hint" style={{ display: 'block', marginTop: 6 }}>
+                                                {staff.length
+                                                    ? 'The office staff you pick set this office\'s hours and closures; you keep the building, its rooms and doors.'
+                                                    : 'No office staff in your department yet. An admin adds their accounts.'}
                                             </span>
-                                        </div>
+                                        </section>
                                     )}
+                                    {/* 2. Its hours: whoever runs it. */}
+                                    <section className="mt-stairs" aria-labelledby="edit-hours-title">
+                                        <h3 className="mt-stairs-title" id="edit-hours-title">Opening hours</h3>
+                                        {locked ? (
+                                            <p className="ui-hint" style={{ margin: 0 }}>
+                                                {editingNode.opening_hours ? summarizeHours(editingNode.opening_hours) : `Follows ${buildingName}${inherited ? ` (${inherited})` : ''}`}.
+                                                {' '}Set by <strong>{runner}</strong>, who runs this office.
+                                            </p>
+                                        ) : (
+                                            <HoursEditor
+                                                value={editHours} onChange={setEditHours} idPrefix="edit-hours"
+                                                offHint={inherited
+                                                    ? `Leave off to follow ${buildingName} (${inherited}). Turn on for its own hours, like a cashier with a lunch break.`
+                                                    : 'Leave off if it is always open.'}
+                                            />
+                                        )}
+                                    </section>
+                                    {/* 3. Visitors: the building head's choice. */}
                                     {!isOfficeStaff && (
-                                    <label className="hours-toggle" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, cursor: 'pointer' }}>
-                                        <input
-                                            type="checkbox" checked={editPublic} onChange={(e) => setEditPublic(e.target.checked)}
-                                            style={{ flex: 'none', width: 18, height: 18, margin: '2px 0 0' }}
-                                        />
-                                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                            <span style={{ fontWeight: 600, color: '#fff' }}>Show to visitors</span>
-                                            <span className="ui-hint" style={{ margin: 0 }}>
-                                                An important place, like the Dean's office: visitors can find it and get a route to it. Other rooms stay hidden from them.
-                                            </span>
-                                        </span>
-                                    </label>
+                                        <section className="mt-stairs" aria-labelledby="edit-visitors-title">
+                                            <h3 className="mt-stairs-title" id="edit-visitors-title">Visitors</h3>
+                                            <label className="hours-toggle" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox" checked={editPublic} onChange={(e) => setEditPublic(e.target.checked)}
+                                                    style={{ flex: 'none', width: 18, height: 18, margin: '2px 0 0' }}
+                                                />
+                                                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                    <span style={{ fontWeight: 600, color: '#fff' }}>Show to visitors</span>
+                                                    <span className="ui-hint" style={{ margin: 0 }}>
+                                                        An important place, like the Dean's office: visitors can find it and get a route to it. Other rooms stay hidden from them.
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        </section>
                                     )}
-                                    <h3 className="mt-stairs-title" id="edit-hours-title">Opening hours</h3>
-                                    <HoursEditor
-                                        value={editHours} onChange={setEditHours} idPrefix="edit-hours"
-                                        offHint={inherited
-                                            ? `Leave off to follow ${building.short_name || building.name} (${inherited}). Turn on for its own hours, like a cashier with a lunch break.`
-                                            : 'Leave off if it is always open.'}
-                                    />
-                                </section>
+                                </>
                             );
                         })()}
                         {!isAdmin && !isOfficeStaff && editingNode.type === 'location' && (

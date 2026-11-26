@@ -91,6 +91,10 @@ class BuildingController extends Controller
         if (! $user->isAdmin() && $request->has('status') && $request->input('status') !== $building->status) {
             abort(403, 'Only an admin can mark a building completed or under construction.');
         }
+        // How it looks (Building Studio) is the department's, like its doors; an admin only for a building with none.
+        if ($user->isAdmin() && $request->has('appearance') && $building->department_id !== null) {
+            abort(403, 'How a building looks is decided by the department or office that runs it.');
+        }
         if ($user->isAdmin() && $request->has('doors')) {
             abort(403, 'Doors are managed by the staff of the department that owns this building.');
         }
@@ -261,6 +265,33 @@ class BuildingController extends Controller
             'osm_ref' => 'sometimes|nullable|string|max:64',
             'department_id' => 'sometimes|nullable|exists:departments,id',
             ...OpeningHours::rules(),
+            ...$this->appearanceRules(),
+        ];
+    }
+
+    /**
+     * Building Studio: how it looks outside. Only these keys are kept (array:... rejects any other).
+     *
+     * @return array<string, mixed>
+     */
+    private function appearanceRules(): array
+    {
+        $color = ['sometimes', 'nullable', 'regex:/^#[0-9a-fA-F]{6}$/'];
+
+        return [
+            'appearance' => 'sometimes|nullable|array:roof,walls,facade,entrance',
+            'appearance.roof' => 'sometimes|array:style,color',
+            'appearance.roof.style' => ['sometimes', Rule::in(Building::ROOF_STYLES)],
+            'appearance.roof.color' => $color,
+            'appearance.walls' => 'sometimes|array:color,accent',
+            'appearance.walls.color' => $color,
+            'appearance.walls.accent' => $color,
+            'appearance.facade' => ['sometimes', Rule::in(Building::FACADES)],
+            'appearance.entrance' => 'sometimes|array:canopy,color,sign,ramp',
+            'appearance.entrance.canopy' => 'sometimes|boolean',
+            'appearance.entrance.color' => $color,
+            'appearance.entrance.sign' => 'sometimes|nullable|string|max:'.Building::SIGN_MAX,
+            'appearance.entrance.ramp' => 'sometimes|boolean',
         ];
     }
 

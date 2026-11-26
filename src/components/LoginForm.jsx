@@ -26,6 +26,8 @@ const DEMO_ACCOUNTS = !SHOW_DEMO ? [] : [
     { email: 'canteen@campus.test', tag: 'Office', name: 'Canteen staff' },
     { email: 'cashier@campus.test', tag: 'Office', name: 'Cashier staff' },
     { email: 'misto@campus.test', tag: 'Office', name: 'Misto staff' },
+    { email: 'upress@campus.test', tag: 'Office', name: 'UPress staff' },
+    { email: 'registrar@campus.test', tag: 'Office', name: 'Registrar staff' },
 ];
 
 // The route the art panel draws, and the one its walker follows: up through the campus, then round to

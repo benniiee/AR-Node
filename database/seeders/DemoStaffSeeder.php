@@ -41,6 +41,9 @@ class DemoStaffSeeder extends Seeder
         ['email' => 'canteen@campus.test', 'name' => 'Canteen Staff', 'department' => 'Canteen', 'kind' => 'office', 'color' => '#ca8a04', 'buildings' => ['Canteen']],
         ['email' => 'cashier@campus.test', 'name' => 'Cashier Staff', 'department' => 'Cashier', 'kind' => 'office', 'color' => '#9333ea', 'buildings' => ['Cashier']],
         ['email' => 'misto@campus.test', 'name' => 'Misto Staff', 'department' => 'Misto', 'kind' => 'office', 'color' => '#b45309', 'buildings' => ['Misto']],
+        ['email' => 'upress@campus.test', 'name' => 'UPress Staff', 'department' => 'UPress', 'kind' => 'office', 'color' => '#475569', 'buildings' => ['UPress']],
+        // The Registrar's office: its building is handed over once one is labelled "Registrar" on the map.
+        ['email' => 'registrar@campus.test', 'name' => 'Registrar Staff', 'department' => 'Registrar', 'kind' => 'office', 'color' => '#be123c', 'buildings' => ['Registrar']],
     ];
 
     public function run(): void

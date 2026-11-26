@@ -163,6 +163,8 @@ class MapSnapshot
                 'polygon' => $b->polygon,
                 'doors' => $b->doors ?? [],
                 'opening_hours' => $b->opening_hours,
+                // How it looks outside (Building Studio); null = the plain look.
+                'appearance' => $b->appearance,
                 // Outline + label dot use the department colour, like nodes.
                 'department' => $b->department ? [
                     'id' => $b->department->id,

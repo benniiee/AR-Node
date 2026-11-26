@@ -54,6 +54,8 @@ const HEAT_SUSPEND_C = 41;
  */
 export default function AdminAnnouncements({ currentUser, departments, buildings, nodes, closures, onChanged, notify, fail }) {
     const isAdmin = currentUser?.role === 'admin';
+    // Office staff (not the department's head): only the offices assigned to them.
+    const isOfficeStaff = currentUser?.role === 'faculty' && currentUser?.is_head === false;
     const ownDept = currentUser?.department_id ?? currentUser?.department?.id ?? null;
     const ownBuildings = useMemo(
         () => (buildings || []).filter((b) => isAdmin || (ownDept != null && b.department_id === ownDept)),
@@ -61,11 +63,14 @@ export default function AdminAnnouncements({ currentUser, departments, buildings
     );
     const places = useMemo(() => {
         const ids = new Set(ownBuildings.map((b) => b.id));
-        return (nodes || []).filter((n) => n.type === 'location' && n.name && (isAdmin || ids.has(n.building_id)))
+        return (nodes || []).filter((n) => n.type === 'location' && n.name
+            && (isOfficeStaff ? n.manager_id === currentUser.id : isAdmin || ids.has(n.building_id)))
             .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    }, [nodes, ownBuildings, isAdmin]);
+    }, [nodes, ownBuildings, isAdmin, isOfficeStaff, currentUser?.id]);
 
-    const SCOPES = isAdmin
+    const SCOPES = isOfficeStaff
+        ? [['place', 'One of your offices']]
+        : isAdmin
         ? [['whole', 'Whole school'], ['school', 'All school buildings (classes suspended)'], ['office', 'All office buildings'], ['department', 'One department or office'], ['building', 'One building'], ['place', 'One room or office']]
         : [['department', `Our department${currentUser?.department?.name ? ` (${currentUser.department.name})` : ''}`], ['building', 'One of our buildings'], ['place', 'One room or office in them']];
 

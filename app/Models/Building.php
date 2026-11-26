@@ -20,6 +20,14 @@ class Building extends Model
 
     public const SOURCES = ['osm', 'custom'];
 
+    /** Building Studio: roof styles (flat, sloped on all four sides, curved) and the styles of its front. */
+    public const ROOF_STYLES = ['flat', 'hip', 'curved'];
+
+    public const FACADES = ['windows', 'arches', 'pillars'];
+
+    /** The longest sign over the entrance. */
+    public const SIGN_MAX = 60;
+
     /** A school building (classes: colleges, the high school) or an office building (cashier, registrar, canteen). */
     public const CATEGORIES = ['school', 'office'];
 
@@ -48,6 +56,8 @@ class Building extends Model
         'doors',
         // Weekly hours (App\Services\OpeningHours); null = no set hours.
         'opening_hours',
+        // How it looks outside (Building Studio); null = the plain look.
+        'appearance',
         'source',
         'osm_ref',
         'department_id',
@@ -78,6 +88,7 @@ class Building extends Model
             'polygon' => 'array',
             'doors' => 'array',
             'opening_hours' => 'array',
+            'appearance' => 'array',
         ];
     }
 

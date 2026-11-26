@@ -24,5 +24,8 @@ export function lazyPreview(load, cssExport, loadingLabel) {
 /** The staircase preview: the phone app's "Stairs in 3D" and the admin stair editor. */
 export const StairPreview3D = lazyPreview(() => import('./StairPreview3D'), 'STAIR_PREVIEW_CSS', 'Loading the stairs...');
 
+/** Building Studio: the building's department dresses its outside in 3D (opened from its card on the admin map). */
+export const BuildingStudio = lazyPreview(() => import('./BuildingStudio'), 'STUDIO_CSS', 'Opening the Building Studio...');
+
 /** A tree, bench, shed or gate among the campus buildings, with a person for scale (admin Objects tool). */
 export const ObjectPreview3D = lazyPreview(() => import('./ObjectPreview3D'), 'OBJECT_PREVIEW_CSS', 'Loading the 3D preview...');

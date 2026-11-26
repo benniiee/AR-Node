@@ -36,12 +36,16 @@ class DemoStaffSeederTest extends TestCase
     public function test_it_hands_unowned_buildings_to_their_department_and_resets_demo_passwords(): void
     {
         $canteen = Building::factory()->create(['name' => 'Canteen', 'department_id' => null, 'category' => 'school']);
+        $upress = Building::factory()->create(['name' => 'UPress', 'department_id' => null, 'category' => 'school']);
         $other = Department::factory()->create(['name' => 'Someone else']);
         $taken = Building::factory()->create(['name' => 'ILS', 'department_id' => $other->id]);
         $this->seed(DemoStaffSeeder::class);
 
         $this->assertSame(Department::where('name', 'Canteen')->value('id'), $canteen->fresh()->department_id);
         $this->assertSame('office', $canteen->fresh()->category, 'an office owns it: an office building');
+        $this->assertSame(Department::where('name', 'UPress')->value('id'), $upress->fresh()->department_id);
+        $this->assertTrue(User::where('email', 'upress@campus.test')->firstOrFail()->is_head, 'UPress has its own head');
+        $this->assertTrue(User::where('email', 'registrar@campus.test')->firstOrFail()->is_head, 'so has the Registrar');
         $this->assertSame($other->id, $taken->fresh()->department_id, 'a real assignment is never undone');
 
         // A changed demo password goes back to "password" on the next run.

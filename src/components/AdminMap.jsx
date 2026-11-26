@@ -34,6 +34,7 @@ import { summarizeHours, closedBuildingIds } from '../openingHours';
 import { toLocalMeters, fromLocalMeters } from '../geo';
 import { planFromLink, fitYaw, footprint, centreline, stairRise, normalizeFlights, meanAngle, shapeLabel } from '../stairGeometry';
 import { createDestinationPinIcon } from '../mapIcons';
+import { BuildingStudio } from './Lazy3D';
 import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPUS_MIN_ZOOM, CAMPUS_MAX_ZOOM, CAMPUS_MAP_LOCK, GPS_HIDDEN_LAYERS, GPS_FLAVOR } from '../campusMap';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation, createHeadingListener } from '../povMotion';
 
@@ -311,6 +312,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const [campusAreas, setCampusAreas] = useState([]);
     // Trees, benches, sheds and gates; the Objects tool's choice and the one open for changes (a draft).
     const [campusObjects, setCampusObjects] = useState([]);
+    // Building Studio: the building being dressed (its id), or null.
+    const [studioId, setStudioId] = useState(null);
     const [objectKind, setObjectKind] = useState('tree');
     const [objectDraft, setObjectDraft] = useState(null);
     // What was placed since the tool was opened, newest last: Undo removes the last one, Cancel all of them.
@@ -470,14 +473,21 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const canEditBuilding = (b) => isAdmin || (!isOfficeStaff && myDept !== null && (b?.department?.id ?? b?.department_id) === myDept);
     // "Close now": the building head's (or an admin's) closure of the whole building, until reopened. It
     // overrides the opening hours without changing them (a closure, like the Announcements ones).
-    const closedNowOf = (b) => closures.find((c) => c.building_id === b.id && c.kind !== 'open' && c.can_manage
+    const closedNowWhere = (match) => closures.find((c) => match(c) && c.kind !== 'open' && c.can_manage
         && new Date(c.starts_at) <= new Date() && new Date(c.ends_at) > new Date());
+    const closedNowOf = (b) => closedNowWhere((c) => c.building_id === b.id);
+    // One office closed now (by whoever runs it: its office staff, or the building head when nobody is assigned).
+    const officeClosedNow = (node) => closedNowWhere((c) => c.node_id === node.id);
     // The building head's "Close now" (the Dean of a college), for an event, maintenance or an emergency: closes the
     // whole building now, whatever its hours say, until reopened. Admins close buildings from Announcements instead.
     const canCloseNow = (b) => !isAdmin && canEditBuilding(b) && b?.status !== 'under_construction';
-    const closeBuildingNow = async (b, reason = '') => {
-        if (!b || !(await confirmAction({
-            title: `Close ${b.short_name || b.name} now?`,
+    // Building Studio (how it looks outside): the building's head; an admin only for a building no department runs.
+    const canStudio = (b) => b?.status === 'existing' && !isOfficeStaff
+        && (isAdmin ? (b.department?.id ?? b.department_id) == null : canEditBuilding(b));
+    // `target`: { building_id } or { node_id }; `name`: what to call it.
+    const closeNow = async (target, name, reason = '') => {
+        if (!(await confirmAction({
+            title: `Close ${name} now?`,
             message: 'Students see it as closed and routes go around it until you reopen it. Its opening hours stay as they are.',
             confirmLabel: 'Close now', tone: 'danger',
         }))) return;
@@ -485,24 +495,26 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             const now = new Date();
             // shortcut: "until reopened" is a closure ending in a year; a forgotten one shows as Closed now on the map.
             await api.createClosure({
-                building_id: b.id, reason: reason.trim() || 'Closed now', starts_at: now.toISOString(),
+                ...target, reason: reason.trim() || 'Closed now', starts_at: now.toISOString(),
                 ends_at: new Date(now.getTime() + 365 * 86400000).toISOString(),
             });
             mapInstance.current?.closePopup();
             setClosures(await api.getClosures());
-            showToast(`${b.short_name || b.name} is closed until you reopen it`);
+            showToast(`${name} is closed until you reopen it`);
         } catch (err) { onError(err.message); }
     };
-    const reopenBuilding = async (b) => {
-        const closure = b && closedNowOf(b);
+    const reopen = async (closure, name) => {
         if (!closure) return;
         try {
             await api.deleteClosure(closure.id);
             mapInstance.current?.closePopup();
             setClosures(await api.getClosures());
-            showToast(`${b.short_name || b.name} follows its opening hours again`);
+            showToast(`${name} follows its opening hours again`);
         } catch (err) { onError(err.message); }
     };
+    const closeBuildingNow = (b, reason = '') => b && closeNow({ building_id: b.id }, b.short_name || b.name, reason);
+    const reopenBuilding = (b) => b && reopen(closedNowOf(b), b.short_name || b.name);
+    const [officeCloseReason, setOfficeCloseReason] = useState('');
     // Where this account may place nodes: admins anywhere; staff only inside
     // their department's buildings (NodeController enforces the same rule).
     const ownBuildings = isAdmin ? buildings : buildings.filter(canEditBuilding);
@@ -1203,6 +1215,10 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         { label: 'Edit', call: ['__editBuilding', b.id] },
                         { label: 'Move / reshape', call: ['__moveBuilding', b.id] },
                     ] : []),
+                    ...(canStudio(b) ? [{ label: 'Building Studio', call: ['__openStudio', b.id], wide: true }] : []),
+                    // Office staff: straight to each office they run in this building (its hours and closures).
+                    ...(isOfficeStaff ? nodes.filter((n) => n.building_id === b.id && n.manager_id === myId)
+                        .map((n) => ({ label: `Manage ${n.name || 'my office'}`, call: ['__editNode', n.id], wide: true })) : []),
                     ...(canCloseNow(b) ? [closedNowOf(b)
                         ? { label: 'Reopen', call: ['__reopenBuilding', b.id], wide: true }
                         : { label: 'Close now', call: ['__closeBuildingNow', b.id], kind: 'danger', wide: true }] : []),
@@ -1640,6 +1656,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             setEditingNode(node);
             setEditName(node.name || '');
             setEditHours(node.opening_hours ?? null);
+            setOfficeCloseReason('');
             setEditPublic(Boolean(node.is_public));
             setEditManager(node.manager_id ? String(node.manager_id) : '');
             setEditType(node.type);
@@ -1737,6 +1754,12 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             if (!b) return;
             if (!canEditBuilding(b)) { onError('You can only edit buildings of your own department.'); return; }
             startCampus('building', b);
+        };
+        window.__openStudio = (id) => {
+            const b = buildings.find((x) => x.id === id);
+            if (!b || !canStudio(b)) return;
+            mapInstance.current?.closePopup();
+            setStudioId(id);
         };
         window.__moveBuilding = (id) => {
             const b = buildings.find((x) => x.id === id);
@@ -1860,6 +1883,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
             delete window.__filterArea;
             delete window.__editBuilding;
             delete window.__moveBuilding;
+            delete window.__openStudio;
             delete window.__movePathway;
             delete window.__closeBuildingNow;
             delete window.__reopenBuilding;
@@ -3306,6 +3330,25 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     </ActionBar>
                 )}
 
+                {studioId != null && buildings.some((b) => b.id === studioId) && (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 4000, background: C.page }}>
+                        <BuildingStudio
+                            building={buildings.find((b) => b.id === studioId)}
+                            buildings={buildings} pathways={pathways} bridges={bridges} objects={campusObjects}
+                            onClose={() => setStudioId(null)}
+                            onSave={async (appearance) => {
+                                const b = buildings.find((x) => x.id === studioId);
+                                try {
+                                    await api.updateBuilding(studioId, { appearance });
+                                    setStudioId(null);
+                                    await loadData();
+                                    showToast(`${b?.short_name || b?.name || 'The building'} has its new look`);
+                                } catch (err) { onError(err.message); }
+                            }}
+                        />
+                    </div>
+                )}
+
                 {surface === 'manage' && manageBuilding && (
                     <ManageNodes
                         building={manageBuilding}
@@ -3615,7 +3658,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     >
                         {isOfficeStaff ? (
                             <p className="ui-hint" style={{ margin: 0, color: TEXT }}>
-                                <strong>{editingNode.name}</strong>: you run this office. Set its hours below; the building head manages everything else.
+                                <strong>{editingNode.name}</strong>: you run this office. Set its hours and close it when you need to; the building head manages everything else.
                             </p>
                         ) : (
                         <NodeForm
@@ -3672,7 +3715,42 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                                             />
                                         )}
                                     </section>
-                                    {/* 3. Visitors: the building head's choice. */}
+                                    {/* 3. Close it now: whoever runs it (as the building's Close now, for this office alone). */}
+                                    {!isAdmin && !locked && (() => {
+                                        const closedNow = officeClosedNow(editingNode);
+                                        const name = editingNode.name || 'This office';
+                                        return (
+                                            <section className="mt-stairs" aria-labelledby="edit-close-title">
+                                                <h3 className="mt-stairs-title" id="edit-close-title">Close now</h3>
+                                                {closedNow ? (
+                                                    <>
+                                                        <p className="ui-hint" style={{ margin: '0 0 10px' }} role="status">
+                                                            <strong>Closed now</strong>{closedNow.reason && closedNow.reason !== 'Closed now' ? `: ${closedNow.reason}` : ''}.
+                                                            {' '}Students see it closed until you reopen it.
+                                                        </p>
+                                                        <button type="button" className="ui-btn ui-btn-primary ui-btn-block" onClick={() => reopen(closedNow, name)}>
+                                                            Reopen (follow the opening hours again)
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <label className="ui-label" htmlFor="edit-close-reason">Reason students see (optional)</label>
+                                                        <input
+                                                            id="edit-close-reason" className="ui-input" value={officeCloseReason} maxLength={160}
+                                                            onChange={(e) => setOfficeCloseReason(e.target.value)} placeholder="e.g. Closed for a meeting"
+                                                        />
+                                                        <button type="button" className="ui-btn ui-btn-danger ui-btn-block" style={{ marginTop: 10 }} onClick={() => closeNow({ node_id: editingNode.id }, name, officeCloseReason)}>
+                                                            Close this office now
+                                                        </button>
+                                                        <p className="ui-hint" style={{ margin: '8px 0 0' }}>
+                                                            Closes it right away, whatever its hours say, until you reopen it. The hours stay as they are. To plan a closure for later dates, use Announcements.
+                                                        </p>
+                                                    </>
+                                                )}
+                                            </section>
+                                        );
+                                    })()}
+                                    {/* 4. Visitors: the building head's choice. */}
                                     {!isOfficeStaff && (
                                         <section className="mt-stairs" aria-labelledby="edit-visitors-title">
                                             <h3 className="mt-stairs-title" id="edit-visitors-title">Visitors</h3>

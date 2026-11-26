@@ -30,6 +30,7 @@ import {
     crownFromFrame, heightHandleAt, heightTo,
 } from './campusObjects.js';
 import { arrowsAlong, startBearing } from './routeArrows.js';
+import { appearanceOf, roofLayers, roofColorOf, BAY_M } from './buildingAppearance.js';
 import {
     sunPosition, shadowRings, buildingHeightM, shadowOpacity, penumbraLayers, shadowColor,
     roofLiftM, visibleWalls, wallLight, insetPolygon, parapetShadowQuads, edgesWithNormals, roofLight,
@@ -376,9 +377,29 @@ export function drawBuildings(layer, buildings, { popup = null, skipId = null, s
         const up = (p) => raise(p);
         const hit = [];
         const seeThrough = lift > 0 && xray && (xray.has ? xray.has(b.id) : xray.includes(b.id));
+        // How its department dressed it (Building Studio); the plain look when nobody has.
+        const look = appearanceOf(b);
+        const H = buildingHeightM(b);
+        const placeLabel = () => {
+            const c = polygonCentroid(b.polygon);
+            if (!c) return;
+            L.marker([c.lat + lift, c.lng], {
+                icon: L.divIcon({ className: '', html: labelHtml(b), iconSize: [0, 0] }),
+                interactive: false, keyboard: false,
+            }).addTo(layer);
+        };
+        if (lift > 0 && b.status === 'under_construction') {
+            // Being built: its frame, hollow-block walls going up, scaffolding and a tower crane (as in 3D).
+            const site = drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, interactive: Boolean(popup) });
+            if (popup) for (const shape of site) shape.bindPopup(() => popup(b));
+            placeLabel();
+            continue;
+        }
 
         if (lift > 0) {
-            const wallBase = theme === 'dark' ? WALL.dark : WALL.light;
+            const wallBase = look.walls.color
+                ? { shade: mixHex(look.walls.color, '#000000', 0.4), lit: look.walls.color }
+                : (theme === 'dark' ? WALL.dark : WALL.light);
             // Back walls first, so a nearer wall of the same building covers them.
             const walls = visibleWalls(b.polygon, viewDeg)
                 .sort((w1, w2) => Math.min(depth(w2.a), depth(w2.b)) - Math.min(depth(w1.a), depth(w1.b)));
@@ -401,12 +422,14 @@ export function drawBuildings(layer, buildings, { popup = null, skipId = null, s
                 }
                 // Storey lines: one floor slab per level, so a 3-floor building
                 // visibly has three floors (spacing from the real height).
-                const storeys = Math.max(1, Math.round(buildingHeightM(b) / STOREY_M));
+                const storeys = Math.max(1, Number(b.floors) || Math.round(H / STOREY_M));
+                // Its front: windows, arches or pillars on every storey (Building Studio).
+                facade25D(layer, w, look, at, H, storeys, kLng);
                 for (let k = 1; k < storeys; k += 1) {
                     const f = k / storeys;
-                    L.polyline([at(w.a, f), at(w.b, f)], {
-                        color: mixHex(fill, '#000000', 0.35), weight: 1, opacity: 0.38, interactive: false,
-                    }).addTo(layer);
+                    L.polyline([at(w.a, f), at(w.b, f)], look.walls.accent
+                        ? { color: look.walls.accent, weight: 1.8, opacity: 0.95, interactive: false }
+                        : { color: mixHex(fill, '#000000', 0.35), weight: 1, opacity: 0.38, interactive: false }).addTo(layer);
                 }
             }
             // Doors on the walls facing the viewer: a dark opening with a
@@ -417,21 +440,30 @@ export function drawBuildings(layer, buildings, { popup = null, skipId = null, s
                 // Only doors on walls facing the viewer.
                 if (Math.cos((d.normalDeg - (viewDeg + 180)) * Math.PI / 180) <= 0.05) continue;
                 doorway(layer, d, doorLift, { viewDeg, kLng });
+                if (look.entrance.canopy && !seeThrough) canopy25D(layer, d, look.entrance.color, raise, H, kLng);
             }
         }
 
         // Roof surface brightness follows the sun's height (bright at noon,
         // greyer at dawn and dusk); the rim (outer ring) is a touch darker.
-        const flatRoof = lift > 0 && b.status === 'existing' && !seeThrough;
-        const surface = flatRoof ? mixHex(ROOF_DIM[theme] || ROOF_DIM.light, ROOF[theme] || ROOF.light, roofLight(sun)) : null;
-        const roof = L.polygon(b.polygon.map(up), {
+        // A sloped or curved roof (Building Studio): its faces, shaded by the sun, from the eave to the top.
+        const slopes = lift > 0 && !seeThrough && b.status === 'existing' && look.roof.style !== 'flat'
+            ? slopedRoof25D(layer, b, look, { raise, H, sun, depth, outline: style, interactive: Boolean(popup) })
+            : null;
+        const flatRoof = lift > 0 && b.status === 'existing' && !seeThrough && !slopes;
+        const surface = flatRoof
+            ? (look.roof.color
+                ? mixHex(mixHex(look.roof.color, '#000000', 0.25), look.roof.color, roofLight(sun))
+                : mixHex(ROOF_DIM[theme] || ROOF_DIM.light, ROOF[theme] || ROOF.light, roofLight(sun)))
+            : null;
+        const roof = slopes ? slopes[0] : L.polygon(b.polygon.map(up), {
             ...style,
             ...(flatRoof ? { fillColor: mixHex(surface, '#000000', 0.07), fillOpacity: 0.97 } : {}),
             ...(seeThrough ? { fillOpacity: 0.12, opacity: 0.55, dashArray: '5, 5' } : {}),
             interactive: Boolean(popup),
             className: popup ? 'campus-hit' : '',
         }).addTo(layer);
-        hit.push(roof);
+        hit.push(...(slopes || [roof]));
         if (seeThrough) {
             // The real ground outline with its door gaps, and each door as a
             // bright threshold: the route below walks in through one of them.
@@ -485,14 +517,255 @@ export function drawBuildings(layer, buildings, { popup = null, skipId = null, s
             const off = () => roof.setStyle({ weight: style.weight, fillOpacity: style.fillOpacity });
             for (const shape of hit) { shape.on('mouseover', on); shape.on('mouseout', off); }
         }
-        const c = polygonCentroid(b.polygon);
-        if (c) {
-            L.marker([c.lat + lift, c.lng], {
-                icon: L.divIcon({ className: '', html: labelHtml(b), iconSize: [0, 0] }),
-                interactive: false, keyboard: false,
-            }).addTo(layer);
+        placeLabel();
+    }
+}
+
+/**
+ * A wall's front in 2.5D (Building Studio): on every storey, a window per bay (BAY_M) or an arched
+ * opening, and with pillars a strip of the accent colour at every bay. One path each, however many bays.
+ * `at(p, f)`: a point raised by a share f of the building's height `H`.
+ */
+function facade25D(layer, w, look, at, H, levels, kLng) {
+    const len = Math.hypot((w.b.lat - w.a.lat) * 111320, (w.b.lng - w.a.lng) * 111320 * (kLng || 1));
+    if (len < 2 || !(H > 0)) return;
+    const bays = Math.max(1, Math.round(len / BAY_M));
+    const storeyH = H / levels;
+    const pt = (t, hM) => at({ lat: w.a.lat + (w.b.lat - w.a.lat) * t, lng: w.a.lng + (w.b.lng - w.a.lng) * t }, hM / H);
+    const openings = [];
+    for (let k = 0; k < levels; k += 1) {
+        const y = k * storeyH;
+        for (let i = 0; i < bays; i += 1) {
+            if (look.facade === 'arches') {
+                const tc = (i + 0.5) / bays;
+                const rt = 0.38 / bays;
+                const spring = y + storeyH * 0.52;
+                const ring = [pt(tc - rt, y + storeyH * 0.12)];
+                for (let s = 0; s <= 8; s += 1) {
+                    const th = Math.PI - (s / 8) * Math.PI;
+                    ring.push(pt(tc + rt * Math.cos(th), spring + storeyH * 0.32 * Math.sin(th)));
+                }
+                ring.push(pt(tc + rt, y + storeyH * 0.12));
+                openings.push([ring]);
+            } else {
+                const t0 = (i + 0.22) / bays;
+                const t1 = (i + 0.78) / bays;
+                openings.push([[pt(t0, y + storeyH * 0.32), pt(t1, y + storeyH * 0.32), pt(t1, y + storeyH * 0.72), pt(t0, y + storeyH * 0.72)]]);
+            }
         }
     }
+    L.polygon(openings, { stroke: false, fillColor: look.facade === 'arches' ? '#3b3631' : '#2b3440', fillOpacity: 0.85, interactive: false }).addTo(layer);
+    if (look.facade === 'pillars') {
+        const dt = 0.35 / len;
+        const strips = [];
+        for (let i = 0; i <= bays; i += 1) {
+            const t0 = Math.max(0, i / bays - dt);
+            const t1 = Math.min(1, i / bays + dt);
+            strips.push([[pt(t0, 0), pt(t1, 0), pt(t1, H), pt(t0, H)]]);
+        }
+        L.polygon(strips, { stroke: false, fillColor: look.walls.accent || '#b9b5ac', fillOpacity: 0.95, interactive: false }).addTo(layer);
+    }
+}
+
+/** A canopy over a door in 2.5D: a slab door-high, reaching 1.6 m out and a little past each side. */
+function canopy25D(layer, d, color, raise, H, kLng) {
+    if (!(H > DOOR_HEIGHT_M)) return;
+    const RAD = Math.PI / 180;
+    const shift = (p, bearing, m) => ({
+        lat: p.lat + (Math.cos(bearing * RAD) * m) / 111320,
+        lng: p.lng + (Math.sin(bearing * RAD) * m) / (111320 * (kLng || 1)),
+    });
+    const alongDeg = Math.atan2((d.b.lng - d.a.lng) * (kLng || 1), d.b.lat - d.a.lat) / RAD;
+    const a = shift(d.a, alongDeg + 180, 0.7);
+    const b = shift(d.b, alongDeg, 0.7);
+    const f = (DOOR_HEIGHT_M + 0.45) / H;
+    L.polygon([a, b, shift(b, d.normalDeg, 1.6), shift(a, d.normalDeg, 1.6)].map((p) => raise(p, f)), {
+        color: mixHex(color, '#000000', 0.35), weight: 0.6, fillColor: color, fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+}
+
+/**
+ * A sloped or curved roof in 2.5D: from its eave (in the department's outline colour, the shape that is
+ * tapped) up to its top, every face shaded by where it faces the sun, far faces first.
+ * Returns the shapes to tap (the eave first), or null when the outline cannot take a sloped roof.
+ */
+function slopedRoof25D(layer, b, look, { raise, H, sun, depth, outline, interactive }) {
+    const c = polygonCentroid(b.polygon);
+    if (!c || !(H > 0)) return null;
+    const local = b.polygon.map((p) => { const [x, y] = toLocalMeters(+p.lat, +p.lng, c.lat, c.lng); return { x, y }; });
+    const { rings } = roofLayers(local, look.roof.style);
+    if (rings.length < 2) return null;
+    const back = (q) => { const p = fromLocalMeters(c.lat, c.lng, q.x, q.y); return { lat: p.latitude, lng: p.longitude }; };
+    const at = (q, h) => raise(back(q), (H + h) / H);
+    const color = roofColorOf(look);
+    const tap = interactive ? { interactive: true, className: 'campus-hit' } : { interactive: false };
+    const shapes = [L.polygon(rings[0].pts.map((q) => at(q, rings[0].h)), {
+        ...outline, fillColor: mixHex(color, '#000000', 0.3), fillOpacity: 1, ...tap,
+    }).addTo(layer)];
+    const faces = [];
+    for (let k = 0; k + 1 < rings.length; k += 1) {
+        const A = rings[k];
+        const B = rings[k + 1];
+        const n = A.pts.length;
+        for (let i = 0; i < n; i += 1) {
+            const a0 = A.pts[i];
+            const a1 = A.pts[(i + 1) % n];
+            const b0 = B.pts[i];
+            const b1 = B.pts[(i + 1) % n];
+            // The rings run counter-clockwise: the side's outward normal is to its right.
+            const normalDeg = ((Math.atan2(a1.y - a0.y, -(a1.x - a0.x)) * 180) / Math.PI + 360) % 360;
+            const run = Math.hypot(b0.x - a0.x, b0.y - a0.y) || 1;
+            const steep = Math.min(1, (B.h - A.h) / run);
+            const light = (1 - steep) * roofLight(sun) + steep * wallLight(normalDeg, sun);
+            faces.push({
+                pts: [at(a0, A.h), at(a1, A.h), at(b1, B.h), at(b0, B.h)],
+                far: depth(back({ x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2 })),
+                fill: mixHex(mixHex(color, '#000000', 0.45), color, 0.25 + 0.75 * light),
+            });
+        }
+    }
+    faces.sort((f1, f2) => f2.far - f1.far);
+    for (const f of faces) {
+        shapes.push(L.polygon(f.pts, { color: mixHex(color, '#000000', 0.5), weight: 0.5, opacity: 0.6, fillColor: f.fill, fillOpacity: 1, lineJoin: 'round', ...tap }).addTo(layer));
+    }
+    const top = rings[rings.length - 1];
+    shapes.push(L.polygon(top.pts.map((q) => at(q, top.h)), {
+        color: mixHex(color, '#000000', 0.5), weight: 0.5, opacity: 0.6, fillColor: mixHex(mixHex(color, '#000000', 0.3), color, roofLight(sun)), fillOpacity: 1, ...tap,
+    }).addTo(layer));
+    return shapes;
+}
+
+const SITE = {
+    concrete: '#a9a59d',
+    concreteEdge: '#6f6a62',
+    blocks: { light: ['#8d877c', '#d2ccbf'], dark: ['#3a3833', '#6d6a62'] },
+    steel: '#5d636b',
+    plank: '#9a7446',
+    crane: '#f2b705',
+    craneEdge: '#3b2f05',
+};
+
+/**
+ * A building under construction in 2.5D, like the 3D views: the top storey's floor slab (no roof yet),
+ * hollow-block walls going up on the sides facing the viewer (the top storey part way), the concrete
+ * columns standing above them, scaffolding in front, a yellow tower crane by the longest near side with
+ * its jib over the building, and pallets of blocks on the ground. How far along it is comes from its id.
+ * `raise(p, f)`: a point lifted by a share f of the building's full height. Returns the shapes to click.
+ */
+function drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, interactive }) {
+    const H = buildingHeightM(b);
+    const levels = Math.max(1, Number(b.floors) || Math.round(H / STOREY_M));
+    const storeyH = H / levels;
+    const rand = seededRandom((Number(b.id) || 1) * 7 + 3);
+    const RAD = Math.PI / 180;
+    const at = (p, hM) => raise(p, hM / H);
+    const move = (p, bearingDeg, m) => ({
+        lat: p.lat + (Math.cos(bearingDeg * RAD) * m) / 111320,
+        lng: p.lng + (Math.sin(bearingDeg * RAD) * m) / (111320 * (kLng || 1)),
+    });
+    const along = (w, t) => ({ lat: w.a.lat + (w.b.lat - w.a.lat) * t, lng: w.a.lng + (w.b.lng - w.a.lng) * t });
+    const lengthM = (w) => Math.hypot((w.b.lat - w.a.lat) * 111320, (w.b.lng - w.a.lng) * 111320 * (kLng || 1));
+    const line = (pts, color, weight, opacity = 1) => L.polyline(pts, { color, weight, opacity, interactive: false, lineCap: 'round', lineJoin: 'round' }).addTo(layer);
+    const click = interactive ? { interactive: true, className: 'campus-hit' } : { interactive: false };
+    const shapes = [];
+    const slabH = (levels - 1) * storeyH;
+    const wallTop = slabH + storeyH * (0.3 + rand() * 0.35);
+
+    // The floor of the top storey (the roof is not cast yet), seen through the open frame.
+    shapes.push(L.polygon(b.polygon.map((p) => at(p, slabH)), {
+        color: SITE.concreteEdge, weight: 0.8, fillColor: theme === 'dark' ? '#55524c' : '#bdb8ae', fillOpacity: 0.95, ...click,
+    }).addTo(layer));
+
+    const walls = visibleWalls(b.polygon, viewDeg)
+        .sort((w1, w2) => Math.min(depth(w2.a), depth(w2.b)) - Math.min(depth(w1.a), depth(w1.b)));
+    const [shade, lit] = SITE.blocks[theme] || SITE.blocks.light;
+    for (const w of walls) {
+        const len = lengthM(w);
+        // Hollow blocks up to this side's height (some sides further behind than others).
+        const top = Math.max(0.6, wallTop - (rand() < 0.4 ? rand() * storeyH * 0.6 : 0));
+        const fill = mixHex(shade, lit, wallLight(w.normalDeg, sun));
+        shapes.push(L.polygon([[w.a.lat, w.a.lng], [w.b.lat, w.b.lng], at(w.b, top), at(w.a, top)], {
+            color: mixHex(fill, '#000000', 0.35), weight: 0.6, fillColor: fill, fillOpacity: 0.97, lineJoin: 'round', ...click,
+        }).addTo(layer));
+        // Block courses.
+        for (let y = 0.8; y < top - 0.1; y += 0.8) line([at(w.a, y), at(w.b, y)], mixHex(fill, '#000000', 0.4), 0.7, 0.6);
+        // Floor slabs and columns, the columns standing bare above the walls.
+        for (let k = 1; k < levels; k += 1) line([at(w.a, k * storeyH), at(w.b, k * storeyH)], SITE.concrete, 2.2);
+        const bays = Math.max(1, Math.round(len / 4.5));
+        for (let i = 0; i <= bays; i += 1) {
+            const p = along(w, i / bays);
+            line([at(p, 0), at(p, H + 0.6)], SITE.concreteEdge, 3.2);
+            line([at(p, 0), at(p, H + 0.6)], SITE.concrete, 2);
+        }
+        // Scaffolding a metre out from the wall: standards, braces and a plank every 2 m up.
+        const scaffTop = Math.min(H + 1, top + 1.5);
+        const o = { a: move(w.a, w.normalDeg, 1), b: move(w.b, w.normalDeg, 1) };
+        const sBays = Math.max(1, Math.round(len / 2.2));
+        for (let i = 0; i <= sBays; i += 1) {
+            const p = along(o, i / sBays);
+            line([at(p, 0), at(p, scaffTop)], SITE.steel, 1, 0.9);
+        }
+        for (let i = 0; i < sBays; i += 1) {
+            const zig = [];
+            for (let y = 0, k = i; y <= scaffTop + 0.01; y += 2, k += 1) zig.push(at(along(o, (i + (k % 2)) / sBays), Math.min(y, scaffTop)));
+            line(zig, SITE.steel, 0.6, 0.7);
+        }
+        for (let y = 2; y <= scaffTop + 0.01; y += 2) {
+            line([at(o.a, y), at(o.b, y)], SITE.steel, 0.8, 0.9);
+            line([at(along(o, 0), y + 0.05), at(along(o, 1), y + 0.05)], SITE.plank, 1.3, 0.8);
+        }
+    }
+
+    // Pallets of blocks: little 2.5D boxes.
+    const box = (c, h, from = 0) => {
+        const ring = [move(move(c, 90, -0.6), 0, -0.5), move(move(c, 90, 0.6), 0, -0.5), move(move(c, 90, 0.6), 0, 0.5), move(move(c, 90, -0.6), 0, 0.5)];
+        for (const f of visibleWalls(ring, viewDeg)) {
+            L.polygon([at(f.a, from), at(f.b, from), at(f.b, from + h), at(f.a, from + h)], { color: '#55524c', weight: 0.5, fillColor: mixHex(shade, lit, wallLight(f.normalDeg, sun)), fillOpacity: 1, interactive: false }).addTo(layer);
+        }
+        L.polygon(ring.map((q) => at(q, from + h)), { color: '#55524c', weight: 0.5, fillColor: lit, fillOpacity: 1, interactive: false }).addTo(layer);
+    };
+
+    // The tower crane, standing out from the longest side facing the viewer, its jib over the building.
+    const front = walls.reduce((best, w) => (!best || lengthM(w) > lengthM(best) ? w : best), null);
+    if (!front) return shapes;
+    const base = move(along(front, 0.25 + rand() * 0.5), front.normalDeg, 5);
+    const inward = (front.normalDeg + 180 + (rand() - 0.5) * 60) % 360;
+    const mastH = H + 9;
+    const across = (front.normalDeg + 90) % 360;
+    const m1 = move(base, across, -0.8);
+    const m2 = move(base, across, 0.8);
+    const yellow = (pts, weight = 1.6) => { line(pts, SITE.craneEdge, weight + 1.2, 0.8); line(pts, SITE.crane, weight); };
+    for (let i = 0; i < 3; i += 1) box(move(move(base, front.normalDeg, 2.4), across, -3 - i * 1.5), 0.8);
+    // Mast: two legs and the zig-zag lattice between them.
+    const zig = [];
+    for (let y = 0.6, k = 0; y <= mastH; y += 1.6, k += 1) zig.push(at(k % 2 ? m2 : m1, y));
+    yellow(zig, 0.9);
+    yellow([at(m1, 0.6), at(m1, mastH)]);
+    yellow([at(m2, 0.6), at(m2, mastH)]);
+    // Jib over the building and the counter-jib behind, with the counterweight and the ties to the head.
+    const extent = Math.max(...b.polygon.map((q) => Math.hypot((q.lat - base.lat) * 111320, (q.lng - base.lng) * 111320 * (kLng || 1))));
+    const jibL = Math.min(45, Math.max(14, extent * 0.85));
+    const backL = Math.max(6, jibL * 0.3);
+    const tip = move(base, inward, jibL);
+    const tail = move(base, inward, -backL);
+    const jibZig = [];
+    for (let x = 0, k = 0; x <= jibL; x += 1.8, k += 1) jibZig.push(at(move(base, inward, x), mastH + 0.3 + (k % 2 ? 1.1 - (0.8 * x) / jibL : 0)));
+    yellow(jibZig, 0.8);
+    yellow([at(tail, mastH + 0.3), at(tip, mastH + 0.3)], 1.8);
+    yellow([at(move(base, inward, -1), mastH + 1.4), at(tip, mastH + 0.6)], 1);
+    yellow([at(base, mastH + 5), at(move(base, inward, jibL * 0.7), mastH + 1.2)], 0.8);
+    yellow([at(base, mastH + 5), at(tail, mastH + 0.5)], 0.8);
+    yellow([at(m1, mastH), at(base, mastH + 5), at(m2, mastH)], 1.2);
+    const weight = move(base, inward, -backL + 1.2);
+    L.polygon([at(move(weight, across, -0.7), mastH - 1.2), at(move(weight, across, 0.7), mastH - 1.2), at(move(weight, across, 0.7), mastH + 0.3), at(move(weight, across, -0.7), mastH + 0.3)], {
+        color: '#55524c', weight: 0.6, fillColor: SITE.concrete, fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    // The trolley's cable down to a pallet of blocks on the hook.
+    const hook = move(base, inward, jibL * (0.45 + rand() * 0.4));
+    const hookY = Math.max(2, H * (0.4 + rand() * 0.5));
+    line([at(hook, mastH + 0.3), at(hook, hookY + 0.8)], '#222226', 0.8);
+    box(hook, 0.8, hookY);
+    return shapes;
 }
 
 /**

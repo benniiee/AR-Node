@@ -10,6 +10,7 @@ import { makeLabel, disposeTree } from './StairPreview3D';
 import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
 import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
 import { treeModel, trunkTopM, seededRandom, shedRoof, gateEnds, objectRect, parkingLayout } from '../campusObjects';
+import { appearanceOf, roofLayers, roofColorOf, DEFAULT_WALL, BAY_M } from '../buildingAppearance';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -71,6 +72,437 @@ const stripeTexture = () => patternTexture(64, 16, (g) => {
         g.fill();
     }
 });
+
+/**
+ * Concrete hollow blocks (CHB) laid in running bond: 0.4 x 0.2 m blocks with grey mortar joints. One tile is
+ * 0.8 m across and 1 m high (two blocks by five courses).
+ */
+const hollowBlockTexture = () => patternTexture(128, 160, (g) => {
+    g.fillStyle = '#8a857c';
+    g.fillRect(0, 0, 128, 160);
+    const rand = seededRandom(11);
+    for (let row = 0; row < 5; row += 1) {
+        const shift = row % 2 ? 32 : 0;
+        for (let col = -1; col < 3; col += 1) {
+            const tone = 172 + Math.floor(rand() * 18);
+            g.fillStyle = `rgb(${tone}, ${tone - 4}, ${tone - 12})`;
+            g.fillRect(col * 64 + shift + 2, row * 32 + 2, 60, 28);
+        }
+    }
+});
+
+const CRANE_YELLOW = 0xf2b705;
+const SCAFFOLD_STEEL = 0x8b9198;
+const SCAFFOLD_PLANK = 0x9a7446;
+const SITE_CONCRETE = 0xa9a59d;
+
+/**
+ * Thin bars from point to point, all in one draw call (scaffolding and crane lattices have hundreds).
+ * `segments`: [[a, b], ...] scene points.
+ */
+function addBars(into, segments, size, material) {
+    if (!segments.length) return;
+    const bars = new THREE.InstancedMesh(new THREE.BoxGeometry(size, 1, size), material, segments.length);
+    const up = new THREE.Vector3(0, 1, 0);
+    const dir = new THREE.Vector3();
+    const mid = new THREE.Vector3();
+    const turn = new THREE.Quaternion();
+    const stretch = new THREE.Vector3();
+    const place = new THREE.Matrix4();
+    segments.forEach(([a, b], i) => {
+        dir.subVectors(b, a);
+        stretch.set(1, Math.max(0.01, dir.length()), 1);
+        turn.setFromUnitVectors(up, dir.normalize());
+        mid.addVectors(a, b).multiplyScalar(0.5);
+        bars.setMatrixAt(i, place.compose(mid, turn, stretch));
+    });
+    into.add(bars);
+}
+
+/**
+ * A building under construction: its concrete frame (a slab at every floor, columns, the top storey still
+ * open), hollow-block walls going up (the lower floors done, the top one part way), scaffolding round it,
+ * a tower crane beside its longest side swinging over it, and pallets of hollow blocks on the ground.
+ * How far along it is comes from `seed` (the building's id), so it looks the same every time.
+ * `ring`: its outline in scene coordinates ({x, z}), `height` its finished height (m).
+ */
+export function drawConstructionSite(into, ring, height, floors, seed) {
+    const rand = seededRandom((Number(seed) || 1) * 7 + 3);
+    const levels = Math.max(1, Number(floors) || 1);
+    const storeyH = height / levels;
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const concrete = new THREE.MeshStandardMaterial({ color: SITE_CONCRETE, roughness: 0.95 });
+    const blocks = hollowBlockTexture();
+    const blockWall = new THREE.MeshStandardMaterial({ color: blocks ? 0xffffff : 0xb3ada2, map: blocks, roughness: 0.95, side: THREE.DoubleSide });
+    const steel = new THREE.MeshStandardMaterial({ color: SCAFFOLD_STEEL, roughness: 0.5, metalness: 0.4 });
+    const plank = new THREE.MeshStandardMaterial({ color: SCAFFOLD_PLANK, roughness: 0.9 });
+    const yellow = new THREE.MeshStandardMaterial({ color: CRANE_YELLOW, roughness: 0.6, metalness: 0.2 });
+
+    // Which way round the outline goes, so "outward" is known for every side.
+    let area2 = 0;
+    ring.forEach((p, i) => { const q = ring[(i + 1) % ring.length]; area2 += p.x * q.z - q.x * p.z; });
+    const out = area2 > 0 ? 1 : -1;
+    const sides = ring.map((a, i) => {
+        const b = ring[(i + 1) % ring.length];
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const d = { x: (b.x - a.x) / (len || 1), z: (b.z - a.z) / (len || 1) };
+        return { a, b, len, d, n: { x: d.z * out, z: -d.x * out } };
+    }).filter((side) => side.len > 0.3);
+    if (!sides.length) return;
+
+    // Floor slabs (the roof is not cast yet: the top storey is an open frame).
+    const outline = new THREE.Shape(ring.map((p) => new THREE.Vector2(p.x, -p.z)));
+    for (let k = 1; k < levels; k += 1) {
+        const slab = new THREE.ExtrudeGeometry(outline, { depth: 0.2, bevelEnabled: false });
+        slab.rotateX(-Math.PI / 2);
+        const mesh = new THREE.Mesh(slab, concrete);
+        mesh.position.y = k * storeyH - 0.2;
+        into.add(mesh);
+    }
+    // Columns at the corners and every 4-5 m along each side, up past the top storey (bare, not roofed yet).
+    const columns = [];
+    for (const side of sides) {
+        const bays = Math.max(1, Math.round(side.len / 4.5));
+        for (let i = 0; i < bays; i += 1) {
+            const t = i / bays;
+            const x = side.a.x + (side.b.x - side.a.x) * t;
+            const z = side.a.z + (side.b.z - side.a.z) * t;
+            columns.push([V(x, 0, z), V(x, height + 0.6, z)]);
+        }
+    }
+    addBars(into, columns, 0.35, concrete);
+
+    // Hollow-block walls: full on the lower floors, part way up the top storey (less on some sides).
+    const wallTop = (levels - 1) * storeyH + storeyH * (0.3 + rand() * 0.35);
+    for (const side of sides) {
+        const top = Math.max(0.6, wallTop - (rand() < 0.4 ? rand() * storeyH * 0.6 : 0));
+        const g = new THREE.BufferGeometry();
+        // Just outside the slab edges (the face of the wall), so the two never flicker.
+        const a = { x: side.a.x + side.n.x * 0.1, z: side.a.z + side.n.z * 0.1 };
+        const b = { x: side.b.x + side.n.x * 0.1, z: side.b.z + side.n.z * 0.1 };
+        g.setAttribute('position', new THREE.Float32BufferAttribute([a.x, 0, a.z, b.x, 0, b.z, b.x, top, b.z, a.x, 0, a.z, b.x, top, b.z, a.x, top, a.z], 3));
+        const u = side.len / 0.8;
+        g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, u, 0, u, top, 0, 0, u, top, 0, top], 2));
+        g.computeVertexNormals();
+        into.add(new THREE.Mesh(g, blockWall));
+    }
+
+    // Scaffolding round the outside: two rows of standards, ledgers and planks every 2 m, cross braces.
+    const lift = 2;
+    const scaffTop = Math.min(height + 1, wallTop + 1.5);
+    const standards = [];
+    const ledgers = [];
+    const braces = [];
+    const boards = [];
+    for (const side of sides) {
+        const off = (m, t) => ({ x: side.a.x + side.d.x * t + side.n.x * m, z: side.a.z + side.d.z * t + side.n.z * m });
+        const bays = Math.max(1, Math.round(side.len / 2.2));
+        for (let i = 0; i <= bays; i += 1) {
+            const t = (i / bays) * side.len;
+            for (const m of [0.4, 1.3]) {
+                const p = off(m, t);
+                standards.push([V(p.x, 0, p.z), V(p.x, scaffTop, p.z)]);
+            }
+            for (let y = lift; y <= scaffTop + 0.01; y += lift) {
+                const p = off(0.4, t);
+                const q = off(1.3, t);
+                ledgers.push([V(p.x, y, p.z), V(q.x, y, q.z)]);
+            }
+        }
+        for (let y = lift; y <= scaffTop + 0.01; y += lift) {
+            for (const m of [0.4, 1.3]) {
+                const p = off(m, 0);
+                const q = off(m, side.len);
+                ledgers.push([V(p.x, y, p.z), V(q.x, y, q.z)]);
+            }
+            // The planks people walk on, between the two rows.
+            const p = off(0.85, 0);
+            const q = off(0.85, side.len);
+            boards.push({ a: V(p.x, y + 0.04, p.z), b: V(q.x, y + 0.04, q.z) });
+        }
+        // Zig-zag braces on the outer face.
+        for (let i = 0; i < bays; i += 1) {
+            const t0 = (i / bays) * side.len;
+            const t1 = ((i + 1) / bays) * side.len;
+            for (let y = 0; y + lift <= scaffTop + 0.01; y += lift) {
+                const flip = (i + Math.round(y / lift)) % 2;
+                const p = off(1.3, flip ? t0 : t1);
+                const q = off(1.3, flip ? t1 : t0);
+                braces.push([V(p.x, y, p.z), V(q.x, y + lift, q.z)]);
+            }
+        }
+    }
+    addBars(into, standards, 0.06, steel);
+    addBars(into, ledgers, 0.05, steel);
+    addBars(into, braces, 0.04, steel);
+    for (const { a, b } of boards) {
+        const board = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.05, a.distanceTo(b)), plank);
+        board.position.addVectors(a, b).multiplyScalar(0.5);
+        board.lookAt(b.x, board.position.y, b.z);
+        into.add(board);
+    }
+
+    // The tower crane, beside the longest side, its jib swung out over the building.
+    const long = sides.reduce((best, side) => (side.len > best.len ? side : best), sides[0]);
+    const crane = new THREE.Group();
+    const along = 0.25 + rand() * 0.5;
+    crane.position.set(
+        long.a.x + long.d.x * long.len * along + long.n.x * 5,
+        0,
+        long.a.z + long.d.z * long.len * along + long.n.z * 5,
+    );
+    // Local +x is the jib: pointing back over the building, swung a little to one side.
+    crane.rotation.y = Math.atan2(long.n.z, -long.n.x) + (rand() - 0.5) * 1.2;
+    into.add(crane);
+    const mastH = height + 9;
+    const w = 0.8;
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.6, 3.2), concrete);
+    pad.position.y = 0.3;
+    crane.add(pad);
+    const lattice = [];
+    const corners = [[-w, -w], [w, -w], [w, w], [-w, w]];
+    for (const [x, z] of corners) lattice.push([V(x, 0.6, z), V(x, mastH, z)]);
+    for (let y = 0.6; y < mastH; y += 1.6) {
+        corners.forEach(([x, z], i) => {
+            const [x2, z2] = corners[(i + 1) % 4];
+            lattice.push([V(x, y, z), V(x2, y, z2)], [V(x, y, z), V(x2, Math.min(mastH, y + 1.6), z2)]);
+        });
+    }
+    // The jib (a triangular lattice) and the shorter counter-jib behind the mast.
+    const extent = Math.max(...ring.map((p) => Math.hypot(p.x - crane.position.x, p.z - crane.position.z)));
+    const jibL = Math.min(45, Math.max(14, extent * 0.85));
+    const backL = Math.max(6, jibL * 0.3);
+    const jibY = mastH + 0.3;
+    for (const z of [-0.5, 0.5]) lattice.push([V(-backL, jibY, z), V(jibL, jibY, z)]);
+    lattice.push([V(-1, jibY + 1.1, 0), V(jibL, jibY + 0.3, 0)]);
+    for (let x = 0; x < jibL - 0.1; x += 1.8) {
+        const top = jibY + 1.1 - (0.8 * x) / jibL;
+        for (const z of [-0.5, 0.5]) lattice.push([V(x, jibY, z), V(x + 0.9, top, 0)], [V(x + 0.9, top, 0), V(x + 1.8, jibY, z)]);
+        lattice.push([V(x, jibY, -0.5), V(x, jibY, 0.5)]);
+    }
+    // The tower head and the ties down to both arms.
+    lattice.push([V(-w, mastH, 0), V(0, mastH + 5, 0)], [V(w, mastH, 0), V(0, mastH + 5, 0)]);
+    lattice.push([V(0, mastH + 5, 0), V(jibL * 0.7, jibY + 0.9, 0)], [V(0, mastH + 5, 0), V(-backL, jibY + 0.2, 0)]);
+    addBars(crane, lattice, 0.12, yellow);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.5, 1.2), new THREE.MeshStandardMaterial({ color: 0xe9e4d6, roughness: 0.5 }));
+    cab.position.set(0.8, mastH - 0.6, 1.25);
+    crane.add(cab);
+    const weight = new THREE.Mesh(new THREE.BoxGeometry(2, 1.6, 1.4), concrete);
+    weight.position.set(-backL + 1.2, jibY - 0.6, 0);
+    crane.add(weight);
+    // The trolley part way along, its cable and hook, lifting a pallet of hollow blocks.
+    const reach = jibL * (0.45 + rand() * 0.4);
+    const hookY = Math.max(2, height * (0.4 + rand() * 0.5));
+    addBars(crane, [[V(reach, jibY - 0.1, 0), V(reach, hookY + 0.9, 0)]], 0.04, new THREE.MeshStandardMaterial({ color: 0x222226 }));
+    const trolley = new THREE.Mesh(new THREE.BoxGeometry(1, 0.35, 1.1), yellow);
+    trolley.position.set(reach, jibY - 0.15, 0);
+    crane.add(trolley);
+    const blockMat = new THREE.MeshStandardMaterial({ color: blocks ? 0xffffff : 0xb3ada2, map: blocks, roughness: 0.95 });
+    const pallet = (x, y, z) => {
+        const stack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 1), blockMat);
+        stack.position.set(x, y + 0.52, z);
+        const base = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.12, 1.05), plank);
+        base.position.set(x, y + 0.06, z);
+        crane.add(stack, base);
+    };
+    pallet(reach, hookY, 0);
+    // Pallets of blocks waiting on the ground by the crane.
+    const piles = 3 + Math.floor(rand() * 3);
+    for (let i = 0; i < piles; i += 1) pallet(-3 - (i % 3) * 1.5, 0, 2.6 + Math.floor(i / 3) * 1.3);
+}
+
+/** A #rrggbb colour darkened by a share `k` (0..1), as a CSS colour for canvas painting. */
+const darker = (hex, k) => `#${new THREE.Color(hex).multiplyScalar(1 - k).getHexString()}`;
+
+/**
+ * The front of a building as a repeating tile (one bay, one storey): its wall colour, the floor band at
+ * the foot of each storey (the accent colour when there is one), and its windows with grilles, an open
+ * arched walkway behind a low wall, or windows between full-height pillars.
+ */
+function facadeTexture(look) {
+    const wall = look.walls.color || DEFAULT_WALL;
+    const accent = look.walls.accent;
+    return patternTexture(128, 128, (g) => {
+        g.fillStyle = wall;
+        g.fillRect(0, 0, 128, 128);
+        g.fillStyle = accent || darker(wall, 0.18);
+        g.fillRect(0, 119, 128, 9);
+        if (look.facade === 'arches') {
+            g.fillStyle = '#3b3631';
+            g.beginPath();
+            g.moveTo(14, 119);
+            g.lineTo(14, 64);
+            g.arc(64, 64, 50, Math.PI, 0);
+            g.lineTo(114, 119);
+            g.closePath();
+            g.fill();
+            // The low wall of the walkway and its rail.
+            g.fillStyle = wall;
+            g.fillRect(14, 93, 100, 26);
+            g.fillStyle = accent || darker(wall, 0.3);
+            g.fillRect(14, 89, 100, 5);
+            return;
+        }
+        g.fillStyle = '#2b3440';
+        g.fillRect(26, 38, 76, 52);
+        g.strokeStyle = 'rgba(225, 230, 235, 0.6)';
+        g.lineWidth = 2;
+        g.beginPath();
+        for (const x of [51, 77]) { g.moveTo(x, 38); g.lineTo(x, 90); }
+        g.moveTo(26, 62);
+        g.lineTo(102, 62);
+        g.stroke();
+        g.fillStyle = darker(wall, 0.14);
+        g.fillRect(22, 90, 84, 5);
+        if (look.facade === 'pillars') {
+            g.fillStyle = accent || darker(wall, 0.16);
+            g.fillRect(0, 0, 14, 128);
+        }
+    });
+}
+
+/** The sign over an entrance: dark letters on a light board with a coloured edge. Returns its texture and width (m). */
+function signTexture(text, edge) {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    const g = canvas.getContext('2d');
+    const font = 'bold 72px system-ui, -apple-system, "Segoe UI", sans-serif';
+    g.font = font;
+    const w = Math.min(2048, Math.ceil(g.measureText(text).width) + 80);
+    canvas.width = w;
+    canvas.height = 112;
+    g.fillStyle = edge;
+    g.fillRect(0, 0, w, 112);
+    g.fillStyle = '#f8f6f0';
+    g.fillRect(6, 6, w - 12, 100);
+    g.fillStyle = '#1f2937';
+    g.font = font;
+    g.textBaseline = 'middle';
+    g.textAlign = 'center';
+    g.fillText(text, w / 2, 60);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return { tex, widthM: Math.min(14, (w / 112) * 0.7) };
+}
+
+/**
+ * A building's outside as it looks (Building Studio): walls painted with its front (windows, arches or
+ * pillars, one tile a bay and a storey), its roof (flat, sloped or curved, in its colour), and at its
+ * doors a canopy, the sign over the main entrance and a ramp up to it when it has them.
+ * `ring`: the outline in scene coordinates ({x, z}); `doors`: [{a, b, normalDeg}] in scene coordinates.
+ * Returns the height of the top of the roof.
+ */
+export function drawBuildingExterior(into, { ring, height, floors, look, doors = [] }) {
+    const levels = Math.max(1, Number(floors) || Math.round(height / 3.2) || 1);
+    const storeyH = height / levels;
+    // Walls: one mesh, every side a quad with the front tile repeated along it and up it.
+    const pos = [];
+    const uv = [];
+    ring.forEach((a, i) => {
+        const b = ring[(i + 1) % ring.length];
+        const u = Math.hypot(b.x - a.x, b.z - a.z) / BAY_M;
+        const v = height / storeyH;
+        pos.push(a.x, 0, a.z, b.x, 0, b.z, b.x, height, b.z, a.x, 0, a.z, b.x, height, b.z, a.x, height, a.z);
+        uv.push(0, 0, u, 0, u, v, 0, 0, u, v, 0, v);
+    });
+    const walls = new THREE.BufferGeometry();
+    walls.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    walls.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    walls.computeVertexNormals();
+    const facade = facadeTexture(look);
+    into.add(new THREE.Mesh(walls, new THREE.MeshStandardMaterial({
+        color: facade ? 0xffffff : (look.walls.color || DEFAULT_WALL), map: facade, roughness: 0.9, side: THREE.DoubleSide,
+    })));
+
+    // Roof: the rings from the eave to the top (src/buildingAppearance.js), joined side by side, and the top.
+    const { rings, rise } = roofLayers(ring.map((p) => ({ x: p.x, y: -p.z })), look.roof.style);
+    const roofMat = new THREE.MeshStandardMaterial({ color: roofColorOf(look), roughness: 0.7, metalness: 0.1, flatShading: true, side: THREE.DoubleSide });
+    const faces = [];
+    for (let k = 0; k + 1 < rings.length; k += 1) {
+        const A = rings[k];
+        const B = rings[k + 1];
+        const n = A.pts.length;
+        for (let i = 0; i < n; i += 1) {
+            const a0 = A.pts[i];
+            const a1 = A.pts[(i + 1) % n];
+            const b0 = B.pts[i];
+            const b1 = B.pts[(i + 1) % n];
+            const at = (q, h) => [q.x, height + h, -q.y];
+            faces.push(...at(a0, A.h), ...at(a1, A.h), ...at(b1, B.h), ...at(a0, A.h), ...at(b1, B.h), ...at(b0, B.h));
+        }
+    }
+    if (faces.length) {
+        const slopes = new THREE.BufferGeometry();
+        slopes.setAttribute('position', new THREE.Float32BufferAttribute(faces, 3));
+        slopes.computeVertexNormals();
+        into.add(new THREE.Mesh(slopes, roofMat));
+    }
+    const last = rings[rings.length - 1];
+    const top = new THREE.ShapeGeometry(new THREE.Shape(last.pts.map((q) => new THREE.Vector2(q.x, q.y))));
+    top.rotateX(-Math.PI / 2);
+    const cap = new THREE.Mesh(top, roofMat);
+    cap.position.y = height + last.h + 0.02;
+    into.add(cap);
+
+    // The entrance: a canopy over every door, the sign and a ramp at the main one (the first).
+    const entrance = look.entrance;
+    const canopyMat = new THREE.MeshStandardMaterial({ color: entrance.color, roughness: 0.6 });
+    const concrete = new THREE.MeshStandardMaterial({ color: 0xb9b5ac, roughness: 0.95 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc9ccd1, roughness: 0.4, metalness: 0.6 });
+    doors.forEach((door, i) => {
+        const len = Math.hypot(door.b.x - door.a.x, door.b.z - door.a.z) || 1;
+        const d = { x: (door.b.x - door.a.x) / len, z: (door.b.z - door.a.z) / len };
+        const rad = (door.normalDeg * Math.PI) / 180;
+        const n = { x: Math.sin(rad), z: -Math.cos(rad) };
+        const c = { x: (door.a.x + door.b.x) / 2, z: (door.a.z + door.b.z) / 2 };
+        const turn = Math.atan2(-d.z, d.x);
+        const canopyY = DOOR_HEIGHT_M + 0.45;
+        // The doorway itself, dark glass a little out from the wall's painted front.
+        const doorway = new THREE.Mesh(new THREE.PlaneGeometry(len, DOOR_HEIGHT_M), new THREE.MeshStandardMaterial({ color: 0x1f2630, roughness: 0.3, metalness: 0.2 }));
+        doorway.position.set(c.x + n.x * 0.04, DOOR_HEIGHT_M / 2, c.z + n.z * 0.04);
+        doorway.lookAt(doorway.position.x + n.x, doorway.position.y, doorway.position.z + n.z);
+        into.add(doorway);
+        if (entrance.canopy) {
+            const w = len + 1.4;
+            const roof = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, 1.7), canopyMat);
+            roof.position.set(c.x + n.x * 0.85, canopyY, c.z + n.z * 0.85);
+            roof.rotation.y = turn;
+            into.add(roof);
+            addBars(into, [-1, 1].map((side) => {
+                const x = c.x + n.x * 1.55 + d.x * side * (w / 2 - 0.12);
+                const z = c.z + n.z * 1.55 + d.z * side * (w / 2 - 0.12);
+                return [new THREE.Vector3(x, 0, z), new THREE.Vector3(x, canopyY, z)];
+            }), 0.1, canopyMat);
+        }
+        if (i > 0) return;
+        const text = entrance.sign.trim();
+        const sign = text ? signTexture(text, look.walls.accent || entrance.color) : null;
+        if (sign) {
+            const board = new THREE.Mesh(new THREE.PlaneGeometry(sign.widthM, 0.7), new THREE.MeshBasicMaterial({ map: sign.tex }));
+            const out = entrance.canopy ? 1.72 : 0.06;
+            board.position.set(c.x + n.x * out, entrance.canopy ? canopyY + 0.45 : DOOR_HEIGHT_M + 0.75, c.z + n.z * out);
+            board.lookAt(board.position.x + n.x, board.position.y, board.position.z + n.z);
+            into.add(board);
+        }
+        if (entrance.ramp) {
+            // A landing at the door and a ramp along the wall up to it, with a handrail on the open side.
+            const landing = new THREE.Mesh(new THREE.BoxGeometry(len + 0.6, 0.3, 1.5), concrete);
+            landing.position.set(c.x + n.x * 0.75, 0.15, c.z + n.z * 0.75);
+            landing.rotation.y = turn;
+            into.add(landing);
+            const from = new THREE.Vector3(c.x + d.x * (len / 2 + 4.3) + n.x * 0.75, 0.02, c.z + d.z * (len / 2 + 4.3) + n.z * 0.75);
+            const to = new THREE.Vector3(c.x + d.x * (len / 2 + 0.3) + n.x * 0.75, 0.3, c.z + d.z * (len / 2 + 0.3) + n.z * 0.75);
+            const slope = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, from.distanceTo(to)), concrete);
+            slope.position.copy(from).add(to).multiplyScalar(0.5);
+            slope.lookAt(to);
+            into.add(slope);
+            const rail = (v) => new THREE.Vector3(v.x + n.x * 0.6, v.y + 0.9, v.z + n.z * 0.6);
+            const foot = (v) => new THREE.Vector3(v.x + n.x * 0.6, v.y, v.z + n.z * 0.6);
+            addBars(into, [[rail(from), rail(to)], [foot(from), rail(from)], [foot(to), rail(to)]], 0.05, steel);
+        }
+    });
+    return height + rise;
+}
 
 /** Corrugated roofing: light and dark ribs; one tile is 0.5 m along the bridge. */
 const ribTexture = () => patternTexture(16, 4, (g) => {
@@ -369,23 +801,25 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         }
     }
 
-    // Every other building on campus, for a sense of where you are: plain
-    // solid blocks at their real height with a small name, quieter than the
-    // route's own building (planned ones are not built yet, so not drawn).
-    const blockMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.95 });
-    const blockEdge = new THREE.LineBasicMaterial({ color: 0x6b6b72, transparent: true, opacity: 0.7 });
+    // Every other building on campus, for a sense of where you are: solid at its real height as its
+    // department dressed it (Building Studio), with a small name (planned ones are not built yet, so not drawn).
     for (const b of buildings || []) {
         if (inside.has(b.id) || b.status === 'planned' || !Array.isArray(b.polygon) || b.polygon.length < 3) continue;
         const ring = b.polygon.map((p) => xz(p.lat, p.lng));
         const height = buildingHeightM(b);
-        const body = new THREE.ExtrudeGeometry(new THREE.Shape(ring.map((p) => new THREE.Vector2(p.x, -p.z))), { depth: height, bevelEnabled: false });
-        body.rotateX(-Math.PI / 2);
-        group.add(new THREE.Mesh(body, blockMat));
-        group.add(new THREE.LineSegments(new THREE.EdgesGeometry(body, 25), blockEdge));
+        if (b.status === 'under_construction') {
+            // Being built: a frame with hollow-block walls going up, scaffolding and a tower crane.
+            drawConstructionSite(group, ring, height, b.floors, b.id);
+        }
+        // Its outside as its department dressed it (Building Studio), or the plain look with windows.
+        const roofTop = b.status === 'under_construction' ? height : drawBuildingExterior(group, {
+            ring, height, floors: b.floors, look: appearanceOf(b),
+            doors: doorFrames(b.polygon, b.doors).map((d) => ({ a: xz(d.a.lat, d.a.lng), b: xz(d.b.lat, d.b.lng), normalDeg: d.normalDeg })),
+        });
         const cx = ring.reduce((sum, p) => sum + p.x, 0) / ring.length;
         const cz = ring.reduce((sum, p) => sum + p.z, 0) / ring.length;
         const tag = screenLabel(b.short_name || b.name, { bg: '#26262c', fg: '#e5e5ea', icon: 'building', border: 'rgba(255, 255, 255, 0.18)' }, 0.034);
-        tag.position.set(cx, height + 1.5, cz);
+        tag.position.set(cx, roofTop + 1.5, cz);
         group.add(tag);
     }
 

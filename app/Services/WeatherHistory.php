@@ -151,6 +151,12 @@ class WeatherHistory
                 'provider_probability' => $row->provider_probability,
                 'rain_mode' => $row->rain_mode,
                 'raining_now' => $row->raining_now,
+                // What it did to routing at that refresh: closed / covered / watch / off.
+                'rain_effect' => WeatherService::rainEffect(
+                    (bool) $row->raining_now, (bool) $row->rain_mode,
+                    $row->rain_probability === null ? null : (int) $row->rain_probability, $row->probability_source,
+                    (float) config('weather.rain_penalty'), (int) config('weather.model_ramp_from', 10), (int) config('weather.model_ramp_to', 50),
+                ),
                 'rain_outcome' => $row->rain_outcome,
                 'heat_index_c' => $row->heat_index_c,
                 'heat_plus1' => $this->horizon($row, 1)['heat_index_c'] ?? null,
@@ -208,6 +214,9 @@ class WeatherHistory
                 'brier_provider' => $brier($withProvider, 'provider_probability'),
                 'rain_mode_share' => $rows->isEmpty() ? null : round($rows->where('rain_mode', true)->count() / $rows->count(), 3),
                 'alert_threshold' => $model->last()?->alert_threshold,
+                // The campus model's chance starts to raise the cost of outdoor paths above cost_from %, fully at cost_to %.
+                'cost_from' => (int) config('weather.model_ramp_from', 10),
+                'cost_to' => (int) config('weather.model_ramp_to', 50),
             ],
         ];
     }

@@ -394,6 +394,27 @@ class WeatherService
      * information unused; a ramp lets a 25% chance nudge routes toward cover and a 50% chance
      * push hard. Pure, so it is unit-testable without Laravel.
      */
+    /**
+     * What the rain does to routing, in one word: 'closed' (raining now: outdoor paths are closed),
+     * 'covered' (outdoor paths cost more, so covered ones win), 'watch' (rain mode is on as a warning
+     * only: routes are unchanged) or 'off'. The same rules as a refresh: the campus model's chance
+     * raises the cost only above $from (gradedMultiplier); the provider's whenever rain mode is on.
+     */
+    public static function rainEffect(bool $rainingNow, bool $rainMode, ?int $probability, ?string $source, float $penalty, int $from, int $to): string
+    {
+        if ($rainingNow) {
+            return 'closed';
+        }
+        $raised = $source === 'model'
+            ? self::gradedMultiplier((float) ($probability ?? 0), $penalty, $from, $to) > 1.0
+            : $rainMode && $penalty > 1.0;
+        if ($raised) {
+            return 'covered';
+        }
+
+        return $rainMode ? 'watch' : 'off';
+    }
+
     public static function gradedMultiplier(float $probabilityPercent, float $penalty, int $from, int $to): float
     {
         if ($penalty <= 1.0 || $to <= $from) {

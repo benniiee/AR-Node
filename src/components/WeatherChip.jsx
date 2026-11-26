@@ -4,7 +4,7 @@ import { heatSummary } from '../heatIndex';
 
 /** Plain words for the hotter heat categories; Caution and below just say the temperature. */
 const HEAT_WORDS = { extreme_caution: 'very hot', danger: 'dangerously hot', extreme_danger: 'dangerously hot' };
-import { heatModeActive } from '../weatherCost';
+import { heatModeActive, rainEffectOf } from '../weatherCost';
 
 /**
  * One-line weather readout for the 2D screen, next to the distance/time
@@ -40,6 +40,8 @@ export default function WeatherChip({ weather, inline = false, shadeActive = fal
 
     const raining = Boolean(weather.raining_now);
     const rainMode = Boolean(weather.rain_mode);
+    // What the rain does to routes: a warning alone ('watch') leaves them unchanged.
+    const effect = rainEffectOf(weather);
     // Heat mode closes outdoor paths too: too hot now, or a predicted hot hour has begun (same rule as routing).
     const heatMode = heatModeActive(weather) && !raining;
     const heatNow = Number(weather.heat_index_c);
@@ -62,8 +64,10 @@ export default function WeatherChip({ weather, inline = false, shadeActive = fal
         ? `Raining now${reported ? ' (reported on campus)' : ''}: outdoor paths closed`
         : heatMode
             ? `Extreme heat: outdoor paths closed${Number.isFinite(heatNow) ? ` (feels like ${Math.round(heatNow)}°C)` : ''}`
+        : effect === 'covered'
+            ? `Rain likely${probability !== null ? ` (${probability}%)` : ''}: routes prefer covered paths`
         : rainMode
-            ? `Rain possible: routes lean toward covered paths${probability !== null ? ` (${probability}%)` : ''}`
+            ? `Rain possible${probability !== null ? ` (${probability}%)` : ''}: routes unchanged for now`
             : shadeActive
                 ? `${Number(weather.heat_index_c) > 27 ? 'Hot' : 'Strong sun'}: routes prefer shaded paths`
                 : 'Dry: normal routing';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-    edgeRainFactor, nodeRainStatus, nodeRainLabel, rainRiskOf, cachedWeather, NODE_STATUS, WEATHER_MAX_STALE_MINUTES,
+    edgeRainFactor, nodeRainStatus, nodeRainLabel, rainRiskOf, cachedWeather, NODE_STATUS, WEATHER_MAX_STALE_MINUTES, rainEffectOf,
 } from './weatherCost.js';
 
 // ---- graded penalties: the server now sends values between 1 and the maximum
@@ -21,9 +21,9 @@ for (const w of [dry, possible, raining]) assert.equal(nodeRainStatus('inside', 
 
 // ---- labels
 assert.equal(nodeRainLabel('outside', dry), 'Open');
-assert.equal(nodeRainLabel('outside', possible), 'Rain possible · 27% in the next 20 min');
-assert.equal(nodeRainLabel('outside', { ...possible, probability_horizon_minutes: null }), 'Rain possible · 27%');
-assert.equal(nodeRainLabel('outside', { raining_now: false, rain_mode: true }), 'Rain possible');
+assert.equal(nodeRainLabel('outside', possible), 'Rain possible · 27% in the next 20 min · still routed as usual');
+assert.equal(nodeRainLabel('outside', { ...possible, probability_horizon_minutes: null }), 'Rain possible · 27% · still routed as usual');
+assert.equal(nodeRainLabel('outside', { raining_now: false, rain_mode: true }), 'Rain possible · still routed as usual');
 assert.equal(nodeRainLabel('outside', raining), 'Closed: raining now');
 assert.equal(nodeRainLabel('inside', raining), 'Open · sheltered');
 assert.equal(nodeRainLabel('covered', possible), 'Open · sheltered');
@@ -53,3 +53,12 @@ assert.equal(cachedWeather(good(5, { fetched_at: 'not a date' }), NOW), null);
 assert.equal(cachedWeather(good(-3), NOW).age_minutes, 0);          // clock skew never gives a negative age
 
 console.log('weatherCost tests passed');
+
+// ---- what the rain does to routes: a warning alone ('watch') leaves them unchanged
+assert.equal(rainEffectOf({ raining_now: true, rain_mode: true, rain_multiplier: 2 }), 'closed');
+assert.equal(rainEffectOf({ raining_now: false, rain_mode: true, rain_multiplier: 1.25 }), 'covered');
+assert.equal(rainEffectOf({ raining_now: false, rain_mode: true, rain_multiplier: 1 }), 'watch');   // 9% at a 9% alert level
+assert.equal(rainEffectOf({ raining_now: false, rain_mode: false, rain_multiplier: 1 }), 'off');
+assert.equal(rainEffectOf(null), 'off');
+assert.match(nodeRainLabel('outside', { rain_mode: true, rain_multiplier: 1, rain_probability: 9 }), /still routed as usual/);
+assert.match(nodeRainLabel('outside', { rain_mode: true, rain_multiplier: 1.5, rain_probability: 30 }), /covered paths preferred/);

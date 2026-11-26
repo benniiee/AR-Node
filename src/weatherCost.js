@@ -93,6 +93,28 @@ export function rainRiskOf(weather) {
 }
 
 /**
+ * What the rain does to routing right now, in one word (WeatherService::rainEffect on the server):
+ *   'closed'  — it is raining now: outdoor paths are closed;
+ *   'covered' — outdoor paths cost more (the multiplier is above 1), so covered ones win when close;
+ *   'watch'   — rain mode is on as a warning only: routes are unchanged;
+ *   'off'     — dry: normal routing.
+ */
+export function rainEffectOf(weather) {
+    if (!weather) return 'off';
+    if (weather.raining_now) return 'closed';
+    if (rainMultiplierOf(weather) > 1) return 'covered';
+    return weather.rain_mode ? 'watch' : 'off';
+}
+
+/** Short and long words for each rain effect, the same on the phone and in the admin console. */
+export const RAIN_EFFECTS = {
+    closed: { short: 'Outdoor paths closed', detail: 'It is raining now: routes use covered paths only.' },
+    covered: { short: 'Covered paths preferred', detail: 'Rain is likely: outdoor paths cost more, so a covered way wins when it is close.' },
+    watch: { short: 'Watch only', detail: 'Rain is possible soon. A warning only: routes are unchanged.' },
+    off: { short: 'Off', detail: 'Dry: normal routing.' },
+};
+
+/**
  * Plain-words status for a node's popup. Sheltered paths are never affected; exposed
  * ones are Open, Rain possible (cost goes up, still routable) or Closed (raining now, or
  * heat mode).
@@ -112,7 +134,9 @@ export function nodeRainLabel(pathType, weather) {
         const minutes = Number(weather?.probability_horizon_minutes);
         const when = Number.isFinite(minutes) && minutes > 0 ? ` in the next ${minutes} min` : '';
 
-        return risk === null ? 'Rain possible' : `Rain possible · ${risk}%${when}`;
+        const effect = rainEffectOf(weather) === 'covered' ? 'covered paths preferred' : 'still routed as usual';
+
+        return risk === null ? `Rain possible · ${effect}` : `Rain possible · ${risk}%${when} · ${effect}`;
     }
 
     return 'Open';

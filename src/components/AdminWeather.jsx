@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { api } from '../api';
 import { C, TYPE, TAP } from '../uiTokens';
 import { heatCategory, heatLabel } from '../heatIndex';
+import { RAIN_EFFECTS } from '../weatherCost';
 import InfoIcon from './InfoIcon';
 
 /*
@@ -473,8 +474,9 @@ function NowStrip({ latest }) {
         <div className="wx-now" aria-label="Weather right now">
             <Tile label="Rain chance" value={pct(latest.rain_probability)}
                 tip={`Chance of rain on campus in the next 20 minutes, ${latest.probability_source === 'model' ? 'from the campus rain model' : "from Open-Meteo's forecast (the model could not run)"}.`} />
-            <Tile label="Rain mode" value={latest.rain_mode ? 'On' : 'Off'} sub={latest.rain_mode && latest.raining_now ? 'Raining now' : null}
-                tip="When on, routes prefer covered paths. It turns on when rain is likely soon or it is already raining." />
+            <Tile label="Rain routing" value={RAIN_EFFECTS[latest.rain_effect]?.short ?? (latest.rain_mode ? 'On' : 'Off')}
+                sub={{ closed: 'Raining now', covered: 'Outdoor paths cost more', watch: 'Rain possible · routes unchanged' }[latest.rain_effect] ?? null}
+                tip="What the rain does to routes right now. Off: normal routing. Watch only: rain is possible soon (the chance reached the alert level), a warning only, routes are unchanged. Covered paths preferred: rain is likely, so outdoor paths cost more and a covered way wins when it is close. Outdoor paths closed: it is raining now (the airport's report, or two students' reports), so routes use covered paths only." />
             <Tile label="Heat index" value={deg(latest.heat_index_c)} sub={category}
                 tip="How hot it feels (temperature and humidity together), with its PAGASA warning level." />
             <Tile label="Heat mode" value={latest.heat_mode ? 'On' : 'Off'} sub={latest.heat_mode ? 'Outdoor paths closed' : null}
@@ -609,7 +611,7 @@ function Details({ data }) {
                     <ul className="wx-glossary">
                         <li>Airport checks: {s.checked} of {s.predictions} (the airport reports about hourly).</li>
                         <li>Brier score (0 = perfect): model {num(s.brier_model)}, Open-Meteo {num(s.brier_provider)}.</li>
-                        <li>Rain mode turns on at {s.alert_threshold ? `${Math.round(s.alert_threshold * 100)}%` : '-'}, or when it is already raining.</li>
+                        <li>Watch only (a warning; routes unchanged) from {s.alert_threshold ? `${Math.round(s.alert_threshold * 100)}%` : '-'}. Covered paths preferred above {s.cost_from ?? 10}%, fully at {s.cost_to ?? 50}%. Outdoor paths closed only while it is raining.</li>
                     </ul>
                 </div>
                 <div>
@@ -636,7 +638,7 @@ function Details({ data }) {
                     <table className="wx-table">
                         <thead>
                             <tr>
-                                <th>Time</th><th>Rain chance</th><th>Open-Meteo</th><th>Rain mode</th><th>Airport 20 min later</th>
+                                <th>Time</th><th>Rain chance</th><th>Open-Meteo</th><th>Rain routing</th><th>Airport 20 min later</th>
                                 <th>Heat index</th><th>Model +1 h</th><th>Open-Meteo +1 h</th><th>Airport +1 h</th>
                             </tr>
                         </thead>
@@ -646,7 +648,7 @@ function Details({ data }) {
                                     <td>{fmt.full.format(Date.parse(r.time))}</td>
                                     <td>{pct(r.rain_probability)}{r.probability_source && r.probability_source !== 'model' ? ' (forecast)' : ''}</td>
                                     <td>{pct(r.provider_probability)}</td>
-                                    <td>{r.rain_mode ? (r.raining_now ? 'On (raining)' : 'On') : 'Off'}</td>
+                                    <td>{RAIN_EFFECTS[r.rain_effect]?.short ?? (r.rain_mode ? 'On' : 'Off')}</td>
                                     <td>{r.rain_outcome === null ? '-' : r.rain_outcome ? 'Rain' : 'Dry'}</td>
                                     <td>{deg(r.heat_index_c)}</td>
                                     <td>{deg(r.heat_plus1)}</td>

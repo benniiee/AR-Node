@@ -15,12 +15,12 @@ use Illuminate\Support\Facades\Hash;
 class StudentSeeder extends Seeder
 {
     /**
-     * @var list<array{student_number: string, first_name: string, last_name: string, course: string, year_level: int}>
+     * @var list<array{student_number: string, first_name: string, last_name: string, course: string, year_level: int, gender: string}>
      */
     private const STUDENTS = [
-        ['student_number' => 'ae202401622', 'first_name' => 'Kristine Mae', 'last_name' => 'Alvarez', 'course' => 'BSIT', 'year_level' => 2],
-        ['student_number' => 'ae202502307', 'first_name' => 'Rafael', 'last_name' => 'Jimenez', 'course' => 'CSM', 'year_level' => 1],
-        ['student_number' => 'ae202300418', 'first_name' => 'Nur-aisa', 'last_name' => 'Hadjirul', 'course' => 'BSN', 'year_level' => 3],
+        ['student_number' => 'ae202401622', 'first_name' => 'Kristine Mae', 'last_name' => 'Alvarez', 'course' => 'BSIT', 'year_level' => 2, 'gender' => 'male'],
+        ['student_number' => 'ae202502307', 'first_name' => 'Rafael', 'last_name' => 'Jimenez', 'course' => 'CSM', 'year_level' => 1, 'gender' => 'male'],
+        ['student_number' => 'ae202300418', 'first_name' => 'Nur-aisa', 'last_name' => 'Hadjirul', 'course' => 'BSN', 'year_level' => 3, 'gender' => 'female'],
     ];
 
     public function run(): void

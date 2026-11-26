@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { C } from '../uiTokens';
-import { buildScene, person } from './RouteModel3D';
+import { buildScene, person, ROUTE } from './RouteModel3D';
+import { floorOf } from '../floors';
 import { disposeTree } from './StairPreview3D';
 
 // ── 3D follow view (the 3D screen's "3D" mode) ───────────────────────
 // A game-style view between the camera and the flat map: the campus in 3D
-// (solid buildings, roads, the route as a white ribbon, the destination pin)
+// (solid buildings, roads, the route as a blue ribbon, the destination pin)
 // with you as a walking figure, seen from behind and above at about 45
 // degrees. The figure moves with your GPS position and the view turns with
 // the way the phone faces, so what is ahead of you is up the screen.
@@ -48,6 +49,8 @@ const shortestTurn = (from, to) => {
 export default function FollowView3D({
     route, buildings, links, pathways, bridges = [], objects = [], nodes = [], getPose, routeKey, floor = 0,
     testWalk = false, onTestMove = null, joyBottom = 120,
+    // The signed-in student's gender: their figure wears the school uniform (person). Visitors: plain.
+    look = null,
 }) {
     const hostRef = useRef(null);
     const sceneRef = useRef(null);
@@ -90,13 +93,13 @@ export default function FollowView3D({
         const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
         const world = new THREE.Group();
         scene.add(world);
-        const me = person(new THREE.Vector3(), new THREE.Vector3(0, 0, -1));
+        const me = person(new THREE.Vector3(), new THREE.Vector3(0, 0, -1), look);
         me.traverse((o) => { if (o.isMesh && o.material.isMeshStandardMaterial) o.castShadow = true; });
         scene.add(me);
-        // The live piece of route from you to the next stop (same white ribbon
+        // The live piece of route from you to the next stop (the same blue ribbon
         // with a dark edge as the rest), re-aimed every frame as you walk.
         const leadEdge = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0x16161b, side: THREE.BackSide }));
-        const leadCore = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        const leadCore = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: ROUTE }));
         const lead = new THREE.Group();
         lead.add(leadEdge, leadCore);
         lead.visible = false;
@@ -107,7 +110,7 @@ export default function FollowView3D({
             const j = new THREE.Group();
             j.add(
                 new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshBasicMaterial({ color: 0x16161b, side: THREE.BackSide })),
-                new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff })),
+                new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), new THREE.MeshBasicMaterial({ color: ROUTE })),
             );
             j.visible = false;
             scene.add(j);
@@ -381,14 +384,25 @@ export default function FollowView3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // The campus and the route: rebuilt when the stops or the buildings change
-    // (not on every GPS fix: the figure moves on its own).
+    // The campus: rebuilt only when what the route passes through changes (its destination, the buildings
+    // and floors it goes through) or the campus does. A new route along the same way (you walked on, or it was
+    // worked out again) only redraws its line, below: rebuilding every building, tree and label each time
+    // made the view stutter.
+    const path = route?.path || [];
+    const sceneKey = [
+        path[path.length - 1]?.id ?? '',
+        [...new Set(path.map((q) => q.building_id).filter((id) => id != null))].sort().join(','),
+        [...new Set(path.map((q) => floorOf(q)))].sort().join(','),
+    ].join('|');
+    const builtRouteKeyRef = useRef(null);
     useEffect(() => {
         const s = sceneRef.current;
         if (!s) return;
         disposeTree(s.world);
         s.world.clear();
         const built = buildScene(s.world, { route, buildings, links, pathways, bridges, objects, nodes, follow: true });
+        s.redrawRoute = built.redrawRoute || null;
+        builtRouteKeyRef.current = routeKey;
         // Solid things cast and catch shadows; the ground and see-through walls only catch them.
         s.world.traverse((o) => {
             if (!o.isMesh || !o.material.isMeshStandardMaterial) return;
@@ -408,7 +422,18 @@ export default function FollowView3D({
             s.pos = null;
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [routeKey, buildings, bridges]);
+    }, [sceneKey, buildings, bridges]);
+
+    // The route line alone, when the stops change on the same campus scene.
+    useEffect(() => {
+        const s = sceneRef.current;
+        if (!s?.redrawRoute || builtRouteKeyRef.current === routeKey) return;
+        builtRouteKeyRef.current = routeKey;
+        const next = s.redrawRoute(route?.path || []);
+        s.routePts = next.pts;
+        s.stops = next.stops;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [routeKey]);
 
     // Test walk joystick (touch and mouse): push the knob the way to walk.
     const joyRef = useRef(null);

@@ -53,6 +53,7 @@ class StudentController extends Controller
             'last_name' => $validated['last_name'],
             'course_id' => Course::where('code', $validated['course'])->value('id'),
             'year_level' => $validated['year_level'],
+            'gender' => $validated['gender'] ?? null,
         ]);
 
         return response()->json($this->present($student), 201);
@@ -75,6 +76,7 @@ class StudentController extends Controller
             'last_name' => 'sometimes|required|string|max:100',
             'course' => ['sometimes', 'required', 'string', Rule::exists('courses', 'code')],
             'year_level' => 'sometimes|required|integer|min:1|max:'.User::MAX_YEAR_LEVEL,
+            'gender' => ['sometimes', 'nullable', Rule::in(User::GENDERS)],
             'student_number' => ['sometimes', 'required', 'string', 'regex:'.User::STUDENT_NUMBER_PATTERN, Rule::unique('users', 'student_number')->ignore($student->id)],
             'password' => 'nullable|string|min:8',
         ]);
@@ -162,6 +164,7 @@ class StudentController extends Controller
             // A course code (BSIT); stored as users.course_id.
             'course' => ['required', 'string', Rule::exists('courses', 'code')],
             'year_level' => 'required|integer|min:1|max:'.User::MAX_YEAR_LEVEL,
+            'gender' => ['nullable', Rule::in(User::GENDERS)],
         ];
     }
 
@@ -174,7 +177,7 @@ class StudentController extends Controller
     }
 
     /**
-     * @return array{id: int, student_number: string|null, email: string, first_name: string|null, last_name: string|null, name: string, course: string|null, course_name: string|null, year_level: int|null, must_change_password: bool, created_at: string|null}
+     * @return array{id: int, student_number: string|null, email: string, first_name: string|null, last_name: string|null, name: string, course: string|null, course_name: string|null, year_level: int|null, gender: string|null, must_change_password: bool, created_at: string|null}
      */
     private function present(User $s): array
     {
@@ -188,6 +191,7 @@ class StudentController extends Controller
             'course' => $s->course?->code,
             'course_name' => $s->course?->name,
             'year_level' => $s->year_level,
+            'gender' => $s->gender,
             'must_change_password' => (bool) $s->must_change_password,
             'created_at' => $s->created_at?->toIso8601String(),
         ];

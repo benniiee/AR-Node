@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    treeModel, crownFootprint, bordersWithGates, snapGateToWall, objectShadowRings, objectDefaults, parkingLayout,
+    treeModel, trunkTopM, crownFootprint, bordersWithGates, snapGateToWall, objectShadowRings, objectDefaults, parkingLayout,
     toObjectFrame, fromObjectFrame, resizeFrom, rotateTo, rotateHandleAt, crownWidthTo,
     crownFromFrame, heightHandleAt, heightTo,
 } from './campusObjects.js';
@@ -147,4 +147,24 @@ test('a gate dropped near a wall snaps onto it, facing along it', () => {
     assert.ok(Math.abs(s.latitude - O.lat) < 1e-6, 'moved onto the wall');
     assert.ok(Math.abs(s.rotation_deg - 90) < 1, 'faces along the east-west wall');
     assert.equal(snapGateToWall([wall], at(0, 40).lat, at(0, 40).lng), null, 'no wall near: nothing to snap to');
+});
+
+test('a tree trunk always reaches up into its crown, for every form', () => {
+    for (const form of ['round', 'spreading', 'tall']) {
+        for (let seed = 1; seed <= 40; seed += 1) {
+            for (const [h, w] of [[4, 3], [6, 5], [9, 8], [12, 4]]) {
+                const m = treeModel({ form, seed, height_m: h, width_m: w });
+                const top = trunkTopM(m);
+                // Inside a clump (well within it: the 3D clumps are faceted and a little squashed).
+                const inside = m.puffs.some((p) => Math.hypot(p.e, p.n, (p.u - top) / 0.85) < p.r * 0.8);
+                assert.ok(inside, `${form} seed ${seed} ${h}x${w}: the trunk top at ${top.toFixed(2)} m is not inside the crown`);
+                assert.ok(top < m.crownTop, `${form} seed ${seed}: the trunk pokes out of the top`);
+            }
+        }
+    }
+    // Palms and shade trees end at their fronds and limbs.
+    for (const form of ['palm', 'canopy']) {
+        const m = treeModel({ form, seed: 3, height_m: 8, width_m: 6 });
+        assert.equal(trunkTopM(m), m.trunkH);
+    }
 });

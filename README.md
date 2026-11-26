@@ -266,7 +266,7 @@ Each idea below is an extra source or method checked in Nov 2026. None of them c
 
 | Table | Holds |
 |---|---|
-| `users` | Admins, faculty (with a department; `is_head` = the building head, else office staff) and students (school ID, course, year level). |
+| `users` | Admins, faculty (with a department; `is_head` = the building head, else office staff) and students (school ID, course, year level, `gender`: male / female, which dresses their own figure in the 3D views in the school uniform; visitors keep the plain figure). |
 | `campus_objects` | Trees (height, crown, form, seed), benches, sheds and gates placed on the campus. |
 | `nodes` | Rooms, offices and route nodes: position, floor, `inside`/`outside`, building, department, who placed it, and a place's own `opening_hours` (none = its building's). |
 | `node_links` | Staircases between two nodes on different floors (slope, direction, flights, landing). |
@@ -292,6 +292,8 @@ Foreign keys and the wall `group_id` are indexed. The public static file `/stora
 - **Staff (admin and faculty; rules per role in the controllers; office staff only change their own offices, `RestrictOfficeStaff`):** `nodes` (+ `POST /api/nodes/swap`), `node-links`, `borders` (+ `DELETE /api/borders/group/{id}`), `buildings`, `pathways` (+ `POST /api/pathways/{id}/route-nodes`), `campus-areas`, `campus-objects`, `closures`, `departments`, `users`, `students` (+ `reset-password`), `GET /api/weather/history`, `POST /api/weather/refresh`.
 
 ### Routing rules (`src/pathfinding.js`)
+
+- Routes are worked out off the main thread, in a Web Worker (`src/routeService.js`, `src/routeWorker.js`), so the map, the 3D view and the camera never stall while one is computed (a route takes up to a few hundred milliseconds on a phone). The map is sent to the worker once; a new route is asked for only when something changed or you walked 2 m or more, and only the newest request counts. Without workers it falls back to the page. The 3D view rebuilds the campus only when the route's destination, buildings or floors change; otherwise it redraws just the route line.
 
 - Every road and walkway is walkable along its line: the router lays virtual route nodes every 6 m along it (`pathwayWaypoints`, never stored or drawn), which join everything nearby like any route node. GPS snapping uses them too.
 - Walking links use a Gabriel graph on each floor: two nodes are linked if no other reachable node sits between them and the line crosses no wall. Staircases are the only links between floors.

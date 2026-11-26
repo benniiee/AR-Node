@@ -445,7 +445,7 @@ export function roadStrip(line, halfWidth) {
 
 /**
  * The AR route as a road on the ground (the 3D view's route, brought into the camera): a blue strip
- * (the route colour everywhere) with white edges and white chevrons painted on it, moving toward the destination. Points are on the
+ * (the route colour everywhere, no outline) with white chevrons painted on it, moving toward the destination. Points are on the
  * ground already (the caller drops them from marker height).
  *
  * @returns {{ group: THREE.Group, setPoints: (pts: {x:number,y:number,z:number}[]) => void,
@@ -463,9 +463,6 @@ export function createGroundRoad({ width = ROAD_WIDTH_M } = {}) {
     const g = canvas.getContext('2d');
     g.fillStyle = 'rgba(31,111,235,0.66)';
     g.fillRect(0, 0, 64, tilePx);
-    g.fillStyle = 'rgba(255,255,255,0.92)';
-    g.fillRect(0, 0, 7, tilePx);
-    g.fillRect(57, 0, 7, tilePx);
     // The chevron: a thick "^" across the middle of the road.
     const top = tilePx / 2 - 26;
     g.beginPath();

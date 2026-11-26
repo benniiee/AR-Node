@@ -361,6 +361,8 @@ export default function ARView({
     links = [],
     // Satellite settings owned by /map (same device setting); null = no control.
     satellite = null,
+    // The signed-in student's gender, for the uniform on their 3D figure; null (visitors) = plain figure.
+    look = null,
 }) {
     /* ── Shared button interaction styles (.mbtn from the 2D screen) ──
        Plus the HUD language shared with the 2D screen (HUD_CSS): glass
@@ -3762,14 +3764,16 @@ export default function ARView({
                     miniPovRef.current.getElement().style.display = headingDeg === null ? 'none' : '';
                 }
                 const dirEl = miniDirRef.current.getElement()?.querySelector('.dir-rot');
+                // The arrow points where the camera looks (the compass, or the free-roam view); with no
+                // heading at all, the way the route goes from here.
+                const dirDeg = headingDeg !== null ? headingDeg : rel;
                 if (dirEl && rel !== null) {
-                    // Same unwrap: rel is a signed turn in (−180, 180], so a
-                    // stop passing directly behind you would otherwise flip
-                    // the arrow to the other side instead of sweeping past.
+                    // Same unwrap: crossing north (or the route turning past
+                    // behind you) sweeps the short way instead of flipping.
                     const prev = miniDirAngleRef.current;
                     const next = prev === null
-                        ? rel
-                        : rel + 360 * Math.round((prev - rel) / 360);
+                        ? dirDeg
+                        : dirDeg + 360 * Math.round((prev - dirDeg) / 360);
                     miniDirAngleRef.current = next;
                     dirEl.style.transform = `rotate(${next}deg)`;
                     const sideEl = miniDirRef.current.getElement()?.querySelector('.dir-side');
@@ -4354,6 +4358,7 @@ export default function ARView({
                     <FollowView3D
                         route={route} buildings={buildings} links={links} pathways={pathways} bridges={bridges} objects={objects} nodes={nodes}
                         getPose={getFollowPose}
+                        look={look}
                         floor={floor}
                         testWalk={testWalkOn}
                         onTestMove={onTestMove}

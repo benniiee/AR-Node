@@ -9,7 +9,7 @@ const yearLabel = (n) => `${n}${['th', 'st', 'nd', 'rd'][n] || 'th'} year`;
 // Same rule as User::STUDENT_NUMBER_PATTERN: two letters + nine digits.
 const ID_PATTERN = /^[a-z]{2}\d{9}$/;
 const DEFAULT_DOMAIN = 'wmsu.edu.ph';
-const EMPTY = { student_number: '', first_name: '', last_name: '', course: '', year_level: 1, password: '' };
+const EMPTY = { student_number: '', first_name: '', last_name: '', course: '', year_level: 1, gender: '', password: '' };
 
 const CSS = `
     .stu-page {
@@ -146,7 +146,7 @@ export default function AdminStudents({ notify, fail }) {
     const reset = () => { setForm(EMPTY); setEditing(null); setTouchedId(false); setShowPw(false); };
     const startEdit = (s) => {
         setEditing(s);
-        setForm({ student_number: s.student_number || '', first_name: s.first_name || '', last_name: s.last_name || '', course: s.course || courses[0]?.code || '', year_level: s.year_level || 1, password: '' });
+        setForm({ student_number: s.student_number || '', first_name: s.first_name || '', last_name: s.last_name || '', course: s.course || courses[0]?.code || '', year_level: s.year_level || 1, gender: s.gender || '', password: '' });
         setTouchedId(true);
         setTimeout(() => idRef.current?.focus(), 50);
     };
@@ -170,6 +170,7 @@ export default function AdminStudents({ notify, fail }) {
             last_name: form.last_name.trim(),
             course: form.course,
             year_level: Number(form.year_level),
+            gender: form.gender || null,
         };
         try {
             if (editing) {
@@ -283,6 +284,15 @@ export default function AdminStudents({ notify, fail }) {
                                 <select id="stu-year" className="ui-select" value={form.year_level} onChange={set('year_level')}>
                                     {YEAR_LEVELS.map((n) => <option key={n} value={n}>{yearLabel(n)}</option>)}
                                 </select>
+                            </div>
+                            <div className="ui-field">
+                                <label className="ui-label" htmlFor="stu-gender">Gender</label>
+                                <select id="stu-gender" className="ui-select" value={form.gender} onChange={set('gender')} aria-describedby="stu-gender-hint">
+                                    <option value="">Not set</option>
+                                    <option value="male">Male</option>
+                                    <option value="female">Female</option>
+                                </select>
+                                <span className="ui-hint" id="stu-gender-hint">Picks the uniform on their figure in the 3D views.</span>
                             </div>
                             <div className="ui-field full">
                                 <label className="ui-label" htmlFor="stu-pw">

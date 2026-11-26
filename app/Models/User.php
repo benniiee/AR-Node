@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'role', 'department_id', 'is_head', 'student_number', 'first_name', 'last_name', 'course_id', 'year_level'])]
+#[Fillable(['name', 'email', 'password', 'role', 'department_id', 'is_head', 'student_number', 'first_name', 'last_name', 'course_id', 'year_level', 'gender'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -24,6 +24,9 @@ class User extends Authenticatable
     public const STAFF_ROLES = ['admin', 'faculty'];
 
     public const MAX_YEAR_LEVEL = 6;
+
+    /** A student's gender: picks the uniform on their figure in the 3D views. */
+    public const GENDERS = ['male', 'female'];
 
     /** School ID format: two letters + nine digits, e.g. ae202401622. */
     public const STUDENT_NUMBER_PATTERN = '/^[a-z]{2}\d{9}$/';

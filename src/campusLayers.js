@@ -25,7 +25,7 @@ import { planFromLink, stairTreads, walkLine, footprint } from './stairGeometry.
 import { fromLocalMeters, toLocalMeters } from './geo.js';
 import { convexHull, clipToConvex, cutStairwells } from './planarGeometry.js';
 import {
-    treeModel, crownFootprint, shedRoof, objectRect, gateEnds, objectShadowRings, seededRandom, parkingLayout,
+    treeModel, trunkTopM, crownFootprint, shedRoof, objectRect, gateEnds, objectShadowRings, seededRandom, parkingLayout,
     objectSize, RESIZE_HANDLES, fromObjectFrame, resizeFrom, rotateTo, rotateHandleAt,
     crownFromFrame, heightHandleAt, heightTo,
 } from './campusObjects.js';
@@ -1276,7 +1276,7 @@ function drawTree25D(into, o, liftM, hit, outline, interactive) {
     const off = (e, n, u = 0) => [base.lat + n / 111320 + liftM(u), base.lng + e / k];
     // Trunk: a thin upright band from the ground to where the crown starts.
     const tr = m.trunkR;
-    const topU = m.fronds.length || m.limbs.length ? m.trunkH : m.crownBase + 0.3;
+    const topU = trunkTopM(m);
     if (m.stems.length) {
         // A banana plant: its clumped stems, yellow-green.
         for (const s of m.stems) {
@@ -1370,12 +1370,13 @@ export function chevronIcon(bearing) {
  */
 export function directionArrowIcon(bearing) {
     const arrow = (fill, stroke) => `<path d="M24 1 35 46 24 38 13 46Z" fill="${fill}" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>`;
-    const rot = `rotate(${Math.round(bearing)}deg)`;
+    // `--dir` on .route-dir-arrow turns it live without rebuilding the icon (the 2D map: where you face).
+    const rotDeg = `${Math.round(bearing)}deg`;
     return L.divIcon({
         className: '',
         html: '<div class="route-dir-arrow" style="position:relative;width:48px;height:48px;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.45))" role="img" aria-label="Walk this way">'
-            + `<svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;inset:0;transform:translateY(4px) ${rot}" aria-hidden="true">${arrow('#0b3d91', '#0b3d91')}</svg>`
-            + `<svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;inset:0;transform:${rot}" aria-hidden="true">${arrow('#3d8bff', '#ffffff')}</svg>`
+            + `<svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;inset:0;transform:translateY(4px) rotate(var(--dir, ${rotDeg}))" aria-hidden="true">${arrow('#0b3d91', '#0b3d91')}</svg>`
+            + `<svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;inset:0;transform:rotate(var(--dir, ${rotDeg}))" aria-hidden="true">${arrow('#3d8bff', '#ffffff')}</svg>`
             + '</div>',
         iconSize: [48, 48],
         iconAnchor: [24, 24],

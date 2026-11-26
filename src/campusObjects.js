@@ -88,6 +88,16 @@ export function treeModel(obj) {
     };
 }
 
+/**
+ * Where a tree's trunk ends (metres up). Palms and shade trees: at their fronds or limbs. A crown of leaf
+ * clumps: up into the middle of the clump over the trunk (the first one), so the trunk never stops short of
+ * the leaves when the lowest clumps hang off to the side.
+ */
+export function trunkTopM(m) {
+    if (m.fronds.length || m.limbs.length || !m.puffs.length) return m.trunkH;
+    return Math.max(m.crownBase + 0.3, m.puffs[0].u);
+}
+
 function treeShape(obj) {
     const rand = seededRandom(obj.seed);
     const h = num(obj.height_m, 6);

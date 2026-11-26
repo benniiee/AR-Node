@@ -72,6 +72,26 @@ class StudentAccountsTest extends TestCase
         $this->assertTrue(Hash::check('new-password', $student->fresh()->password));
     }
 
+    public function test_admin_sets_a_students_gender_which_their_profile_carries(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        $created = $this->postJson('/api/students', $this->payload(['gender' => 'male']))
+            ->assertCreated()
+            ->assertJsonPath('gender', 'male');
+        $this->postJson('/api/students', $this->payload(['student_number' => 'ae202401623', 'gender' => 'other']))
+            ->assertInvalid(['gender']);
+
+        $id = $created->json('id');
+        $this->putJson("/api/students/{$id}", ['gender' => 'female'])->assertOk()->assertJsonPath('gender', 'female');
+        $this->putJson("/api/students/{$id}", ['gender' => null])->assertOk()->assertJsonPath('gender', null);
+
+        $this->app['auth']->forgetGuards();
+        $token = User::find($id)->createToken('student-map')->plainTextToken;
+        User::whereKey($id)->update(['gender' => 'female']);
+        $this->withToken($token)->getJson('/api/student/me')->assertOk()->assertJsonPath('gender', 'female');
+    }
+
     public function test_blank_password_on_edit_keeps_the_old_one(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
@@ -170,5 +190,6 @@ class StudentAccountsTest extends TestCase
         $this->assertSame(3, User::where('role', 'student')->count());
         $this->assertEqualsCanonicalizing(['BSIT', 'CSM', 'BSN'], User::where('role', 'student')->with('course')->get()->pluck('course.code')->all());
         $this->assertSame('BSIT', User::where('student_number', 'ae202401622')->first()->course->code);
+        $this->assertSame('male', User::where('student_number', 'ae202401622')->first()->gender);
     }
 }

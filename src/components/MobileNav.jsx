@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { loadMap } from '../mobileApi';
 import { describeAge } from '../offlineData';
-import { computeRoute, pathwayWaypoints } from '../pathfinding';
-import { buildingDestination, parseBuildingDestination, routableBuildings, routeToBuilding } from '../buildingDestinations';
+import { pathwayWaypoints } from '../pathfinding';
+import { buildingDestination, parseBuildingDestination, routableBuildings } from '../buildingDestinations';
+import { RouteService, shouldReroute } from '../routeService';
 import { nodeArea, buildingArea } from '../campusAreas';
 import { qrNodeIdFrom, QR_PARAM } from '../qrPosition';
-import { shadeMap, shadePenaltyFor } from '../shadeRouting';
+import { shadePenaltyFor } from '../shadeRouting';
 import { useWeather } from '../useWeather';
 import WeatherPill from './WeatherPill';
 import { SyncPill } from './SyncPill';
@@ -64,8 +65,9 @@ const USER_ICON = L.divIcon({
     iconSize: [18, 18],
     iconAnchor: [9, 9],
 });
-// With a route, the "you" marker is the raised blue arrow pointing the way to walk (rounded to 5 degrees, so
-// GPS jitter does not rebuild it on every fix); without one, the white dot.
+// With a route, the "you" marker is the raised blue arrow; without one, the white dot. It points where you
+// face (the compass, turned live by paintUserArrow); without a compass, the way the route goes from here
+// (rounded to 5 degrees, so GPS jitter does not rebuild it on every fix).
 const userIconFor = (heading) => (heading === null ? USER_ICON : directionArrowIcon(heading));
 
 // Does this browser hide the orientation API behind a permission prompt
@@ -163,6 +165,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     // Visitors (guests) see building locations only. The server enforces it
     // (no token = buildings-only map feed); the screen just shows less.
     const isVisitor = session?.role !== 'student';
+    // A student's figure in the 3D views wears the school uniform for their gender; visitors stay plain.
+    const personLook = isVisitor ? null : session?.user?.gender || null;
     // Install app (PWA): offered to students and visitors alike while the browser allows it.
     const installOffer = useInstallPrompt();
     const showInstall = installOffer.canInstall || installOffer.iosHint;
@@ -180,6 +184,12 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         if (next === routeHeadingRef.current) return;
         routeHeadingRef.current = next;
         userMarkerRef.current?.setIcon(userIconFor(next));
+        if (povSpinRef.current?.hasValue) paintUserArrow(povSpinRef.current.angle);
+    };
+    // The arrow turns with the compass (the same eased angle as the facing wedge), straight in the DOM.
+    const paintUserArrow = (deg) => {
+        if (routeHeadingRef.current === null) return;
+        userMarkerRef.current?.getElement()?.querySelector('.route-dir-arrow')?.style.setProperty('--dir', `${deg}deg`);
     };
     const accuracyRef = useRef(null);
     const routeLayerRef = useRef(null);
@@ -216,6 +226,12 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     const watchIdRef = useRef(null);
     const testLocRef = useRef(false);
     const prevDestRef = useRef(null);
+    // Routes are worked out in a worker (off the main thread), the newest request only; and only when
+    // something changed or you walked a couple of metres (routeService.js).
+    const routeServiceRef = useRef(null);
+    if (!routeServiceRef.current) routeServiceRef.current = new RouteService();
+    useEffect(() => () => routeServiceRef.current?.dispose(), []);
+    const lastAskRef = useRef(null);
 
     const [nodes, setNodes] = useState([]);
     const [borders, setBorders] = useState([]);
@@ -547,6 +563,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     nodesRef.current = walkNodes;
     // The walls with each gate's opening cut out: routing, GPS matching and the drawn walls use these.
     const walls = useMemo(() => bordersWithGates(borders, objects), [borders, objects]);
+    // A new object whenever any part of the map a route depends on changes (routeService.shouldReroute).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const routeMapKey = useMemo(() => ({}), [nodes, walls, links, buildings, bridges, pathways, objects]);
     bordersRef.current = walls;
 
     // The map is locked to the campus box and must never leave it — least of
@@ -623,7 +642,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         if (!povSpinRef.current || povSpinRef.current.dead) {
             povSpinRef.current = new SmoothAngle({
                 tau: 0.08,
-                onUpdate: (deg) => paintPovRotation(povMarkerRef.current, deg),
+                onUpdate: (deg) => { paintPovRotation(povMarkerRef.current, deg); paintUserArrow(deg); },
             });
         }
     };
@@ -1193,6 +1212,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
             follow.moveTo(ll[0], ll[1]);
         } else {
             userMarkerRef.current = L.marker(ll, { icon: userIconFor(routeHeadingRef.current), zIndexOffset: 1000, title: 'Your location' }).addTo(map);
+            if (povSpinRef.current?.hasValue) paintUserArrow(povSpinRef.current.angle);
             follow.snapTo(ll[0], ll[1]);
         }
         // Anything created now starts where the dot is DRAWN, not at the
@@ -1232,9 +1252,9 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         ? shadePenaltyFor(weather.heat_index_c, weather.uv_index) : 1;
     const routeShade = useMemo(() => {
         if (!(shadePenalty > 1)) return null;
-        // Buildings, trees and sheds shade the paths.
-        const map = shadeMap(buildings, sunDate, CAMPUS_CENTER[0], CAMPUS_CENTER[1], objects);
-        return map ? { map, penalty: shadePenalty } : null;
+        // Buildings, trees and sheds shade the paths: the route worker works the shade out for this sun time.
+        if (!buildings.length && !objects.length && sunPosition(sunDate, CAMPUS_CENTER[0], CAMPUS_CENTER[1]).altitudeDeg < 2) return null;
+        return { at: sunDate.getTime(), penalty: shadePenalty, lat: CAMPUS_CENTER[0], lng: CAMPUS_CENTER[1] };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [buildings, objects, sunWallsKey, shadePenalty]);
 
@@ -1243,6 +1263,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
     useEffect(() => {
         // Visitors have no stored nodes (only the outdoor network), so "loaded" is the test, not a count.
         if (!destId || !effectiveUser || loading) {
+            routeServiceRef.current.cancel();
+            lastAskRef.current = null;
             setRoute(null);
             setNoRoute(null);
             routeLayerRef.current?.clearLayers();
@@ -1251,196 +1273,197 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
         }
         // Closed right now: no route, just why and when it opens (it reappears once open).
         if (destClosed) {
+            routeServiceRef.current.cancel();
+            lastAskRef.current = null;
             setRoute(null);
             setNoRoute(destClosed);
             routeLayerRef.current?.clearLayers();
             setRouteHeading(null);
             return;
         }
+        // Rain changes the COST of exposed edges (and closes them entirely while it is actually falling),
+        // so a flip in the weather state must route again; so must the floor you are on, closures and the map.
+        const service = routeServiceRef.current;
+        service.setMap({ nodes, walls, links, buildings, bridges, pathways, objects });
+        const ask = {
+            key: JSON.stringify([destId, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, closedKey, routeShade?.at ?? null, routeShade?.penalty ?? null]),
+            mapKey: routeMapKey, lat: effectiveUser.latitude, lng: effectiveUser.longitude,
+        };
+        // The same request from (almost) the same spot keeps the route shown: GPS jitter is not a reason.
+        if (!shouldReroute(lastAskRef.current, ask)) return;
+        lastAskRef.current = ask;
+        service.route({
+            lat: effectiveUser.latitude, lng: effectiveUser.longitude, destId,
+            // A whole building: the shortest way to one of its doors (or its ground floor when it has none yet).
+            buildingId: parseBuildingDestination(destId),
+            // The floor the student is on is where the route starts; other floors only through staircases.
+            userFloor: activeFloor,
+            rainMultiplier: rainMultiplierOf(weather),
+            rainNow: Boolean(weather.raining_now),
+            heatNow: heatClosed,
+            // Hot day: sunny exposed paths cost more, so shaded ones win.
+            shade: routeShade,
+            // Closed buildings (opening hours) are walked around, not through.
+            closedBuildingIds: closedIds,
+        }).then((result) => {
+            // null: a newer request (or a cleared destination) replaced this one.
+            if (!result) return;
         try {
-            // Rain changes the COST of exposed edges (and closes them entirely
-            // while it is actually falling), so a flip in the weather state
-            // must re-run Dijkstra — hence the weather deps below.
-            // The floor the student is on is where the route starts; other
-            // floors are reached only through the admin's staircase links.
-            const routeTo = (target) => computeRoute(nodes, target, effectiveUser.latitude, effectiveUser.longitude, 0, walls, {
-                rainMultiplier: rainMultiplierOf(weather),
-                rainNow: Boolean(weather.raining_now),
-                heatNow: heatClosed,
-                // Hot day: sunny exposed paths cost more, so shaded ones win.
-                shade: routeShade,
-                userFloor: activeFloor,
-                links,
-                // Routes walk around buildings, entering only the one they need.
-                buildings,
-                // Bridges with doors are got on and off only through them.
-                bridges,
-                // Every road and walkway is a route along its line.
-                pathways,
-                // Closed buildings (opening hours) are walked around, not through.
-                closedBuildingIds: closedIds,
-            });
-            // A whole building: the shortest way to one of its doors (or its
-            // ground floor when it has none yet).
-            const destBuilding = parseBuildingDestination(destId);
-            const target = destBuilding !== null ? buildingsById.get(destBuilding) : null;
-            // walkNodes: with the pathways' points, so a building with no doors or nodes yet is reached at the
-            // walkway beside it (real outdoor nodes are few now: routes follow the pathways).
-            const result = target ? routeToBuilding(target, walkNodes, routeTo) : routeTo(destId);
-            setRoute(result.success ? result : null);
-            // Every failure is said out loud: a silent one left "Choose a destination" on screen
-            // with a destination chosen.
-            setNoRoute(result.success ? null : (result.message || 'No walking path to there yet.'));
-            routeLayerRef.current?.clearLayers();
-            setRouteHeading(null);
-            if (result.success && mapInstance.current) {
-                // Only the part of the route on the floor being shown is
-                // drawn; the rest appears when the student changes floor.
-                // Inside a building the route is drawn on the cut-away floor
-                // plate it walks on, not on the ground under the raised roof.
-                const entered = new Set(result.path.map((p) => p.building_id).filter((id) => id !== null && id !== undefined));
-                // A raised bridge deck is drawn flat on the ground map, so on the ground floor its part of the
-                // route is drawn too: up the stairs' walking line, along the deck, and down again.
-                const deckUnder = (p) => (activeFloor === 0 && p.building_id == null && floorOf(p) > 0 ? (bridges || []).find((br) => br.status !== 'planned'
-                    && Number(br.deck_floor) === floorOf(p) && Array.isArray(br.polygon) && pointInPolygon(+p.latitude, +p.longitude, br.polygon)) : null);
-                const onDeck = (p) => Boolean(deckUnder(p));
-                // On the raised (2.5D) deck, as drawBridges draws it: lifted by the deck's height.
-                const deckLift = (br) => roofLiftM(bridgeDeckHeightM(br)) / 111320;
-                const shown = (p) => p.type === 'user' || floorOf(p) === activeFloor || onDeck(p);
-                // One line per stretch on this floor: a route that leaves it and comes back is not
-                // joined straight across the gap (it used to draw the ground under a bridge).
-                const segs = [];
-                let seg = null;
-                result.path.forEach((p, i) => {
-                    if (!shown(p)) { seg = null; return; }
-                    const prev = result.path[i - 1];
-                    if (!seg) segs.push(seg = []);
-                    else if (prev && prev.type !== 'user' && floorOf(prev) !== floorOf(p)) {
-                        const link = links.find((l) => (l.node_a_id === prev.id && l.node_b_id === p.id) || (l.node_a_id === p.id && l.node_b_id === prev.id));
-                        // Up (or down) the stairs from the ground to the raised deck.
-                        const br = deckUnder(p) || deckUnder(prev);
-                        if (link) seg.push(...stairRouteLine(link, prev, p, (f) => (f > 0 && br ? deckLift(br) : 0)).slice(1, -1));
-                    }
-                    const br = deckUnder(p);
-                    seg.push([p.latitude + (br ? deckLift(br) : cutawayLift(p, entered)), p.longitude]);
-                });
-                const latlngs = segs.flat();
-                // A staircase marker where this floor's route ends (going
-                // up/down) and where it begins (arriving).
-                // Depth: what is on a higher floor than the one shown (stairs
-                // going up, the floor above's preview) is drawn OVER this
-                // floor's route; lower floors go under it.
-                const below = L.layerGroup().addTo(routeLayerRef.current);
-                const above = L.layerGroup();
-                for (const st of result.stairs || []) {
-                    const leaving = st.from_floor === activeFloor;
-                    const arriving = st.to_floor === activeFloor;
-                    if (!leaving && !arriving) continue;
-                    const node = result.path[leaving ? st.from_index : st.to_index];
-                    const tagLift = cutawayLift(node, entered);
-                    // Inside a cut-away building the staircase itself is drawn,
-                    // rising from this floor's plate to the next one.
-                    const fromNode = result.path[st.from_index];
-                    const toNode = result.path[st.to_index];
-                    const stairBuilding = fromNode?.building_id != null && fromNode.building_id === toNode?.building_id && entered.has(fromNode.building_id)
-                        ? buildingsById.get(fromNode.building_id) : null;
-                    if (stairBuilding) {
-                        const link = links.find((l) => (l.node_a_id === st.from_id && l.node_b_id === st.to_id)
-                            || (l.node_a_id === st.to_id && l.node_b_id === st.from_id)) || { angle_deg: st.angle_deg };
-                        const top = Math.max(1, Number(stairBuilding.floors) || 1) - 1;
-                        const liftOf = (f) => floorLiftDeg(stairBuilding, Math.min(Math.max(0, f), top));
-                        const depth = Math.max(st.from_floor, st.to_floor) > activeFloor ? above : below;
-                        drawStairs25D(depth, link, fromNode, toNode, liftOf, {
-                            ghost: Math.max(st.from_floor, st.to_floor) > activeFloor,
-                        });
-                        // The route itself climbs the steps to the next floor,
-                        // joining this floor's line to the preview above (below).
-                        const climb = stairRouteLine(link, fromNode, toNode, liftOf);
-                        if (climb.length >= 2) {
-                            L.polyline(climb, { color: ROUTE_CASING, weight: 9, opacity: 0.85, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
-                            L.polyline(climb, { color: C.route, weight: 5, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
+                setRoute(result.success ? result : null);
+                // Every failure is said out loud: a silent one left "Choose a destination" on screen
+                // with a destination chosen.
+                setNoRoute(result.success ? null : (result.message || 'No walking path to there yet.'));
+                routeLayerRef.current?.clearLayers();
+                setRouteHeading(null);
+                if (result.success && mapInstance.current) {
+                    // Only the part of the route on the floor being shown is
+                    // drawn; the rest appears when the student changes floor.
+                    // Inside a building the route is drawn on the cut-away floor
+                    // plate it walks on, not on the ground under the raised roof.
+                    const entered = new Set(result.path.map((p) => p.building_id).filter((id) => id !== null && id !== undefined));
+                    // A raised bridge deck is drawn flat on the ground map, so on the ground floor its part of the
+                    // route is drawn too: up the stairs' walking line, along the deck, and down again.
+                    const deckUnder = (p) => (activeFloor === 0 && p.building_id == null && floorOf(p) > 0 ? (bridges || []).find((br) => br.status !== 'planned'
+                        && Number(br.deck_floor) === floorOf(p) && Array.isArray(br.polygon) && pointInPolygon(+p.latitude, +p.longitude, br.polygon)) : null);
+                    const onDeck = (p) => Boolean(deckUnder(p));
+                    // On the raised (2.5D) deck, as drawBridges draws it: lifted by the deck's height.
+                    const deckLift = (br) => roofLiftM(bridgeDeckHeightM(br)) / 111320;
+                    const shown = (p) => p.type === 'user' || floorOf(p) === activeFloor || onDeck(p);
+                    // One line per stretch on this floor: a route that leaves it and comes back is not
+                    // joined straight across the gap (it used to draw the ground under a bridge).
+                    const segs = [];
+                    let seg = null;
+                    result.path.forEach((p, i) => {
+                        if (!shown(p)) { seg = null; return; }
+                        const prev = result.path[i - 1];
+                        if (!seg) segs.push(seg = []);
+                        else if (prev && prev.type !== 'user' && floorOf(prev) !== floorOf(p)) {
+                            const link = links.find((l) => (l.node_a_id === prev.id && l.node_b_id === p.id) || (l.node_a_id === p.id && l.node_b_id === prev.id));
+                            // Up (or down) the stairs from the ground to the raised deck.
+                            const br = deckUnder(p) || deckUnder(prev);
+                            if (link) seg.push(...stairRouteLine(link, prev, p, (f) => (f > 0 && br ? deckLift(br) : 0)).slice(1, -1));
                         }
+                        const br = deckUnder(p);
+                        seg.push([p.latitude + (br ? deckLift(br) : cutawayLift(p, entered)), p.longitude]);
+                    });
+                    const latlngs = segs.flat();
+                    // A staircase marker where this floor's route ends (going
+                    // up/down) and where it begins (arriving).
+                    // Depth: what is on a higher floor than the one shown (stairs
+                    // going up, the floor above's preview) is drawn OVER this
+                    // floor's route; lower floors go under it.
+                    const below = L.layerGroup().addTo(routeLayerRef.current);
+                    const above = L.layerGroup();
+                    for (const st of result.stairs || []) {
+                        const leaving = st.from_floor === activeFloor;
+                        const arriving = st.to_floor === activeFloor;
+                        if (!leaving && !arriving) continue;
+                        const node = result.path[leaving ? st.from_index : st.to_index];
+                        const tagLift = cutawayLift(node, entered);
+                        // Inside a cut-away building the staircase itself is drawn,
+                        // rising from this floor's plate to the next one.
+                        const fromNode = result.path[st.from_index];
+                        const toNode = result.path[st.to_index];
+                        const stairBuilding = fromNode?.building_id != null && fromNode.building_id === toNode?.building_id && entered.has(fromNode.building_id)
+                            ? buildingsById.get(fromNode.building_id) : null;
+                        if (stairBuilding) {
+                            const link = links.find((l) => (l.node_a_id === st.from_id && l.node_b_id === st.to_id)
+                                || (l.node_a_id === st.to_id && l.node_b_id === st.from_id)) || { angle_deg: st.angle_deg };
+                            const top = Math.max(1, Number(stairBuilding.floors) || 1) - 1;
+                            const liftOf = (f) => floorLiftDeg(stairBuilding, Math.min(Math.max(0, f), top));
+                            const depth = Math.max(st.from_floor, st.to_floor) > activeFloor ? above : below;
+                            drawStairs25D(depth, link, fromNode, toNode, liftOf, {
+                                ghost: Math.max(st.from_floor, st.to_floor) > activeFloor,
+                            });
+                            // The route itself climbs the steps to the next floor,
+                            // joining this floor's line to the preview above (below).
+                            const climb = stairRouteLine(link, fromNode, toNode, liftOf);
+                            if (climb.length >= 2) {
+                                L.polyline(climb, { color: ROUTE_CASING, weight: 9, opacity: 0.85, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
+                                L.polyline(climb, { color: C.route, weight: 5, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
+                            }
+                        }
+                        // A short tag at the foot of the stairs: where they go, in
+                        // the same chip as the building labels (the details are in
+                        // the route panel at the bottom).
+                        const goingUp = st.direction !== 'down';
+                        const main = leaving ? `${goingUp ? 'Up' : 'Down'} to ${floorTag(st.to_floor)}` : `From ${floorTag(st.from_floor)}`;
+                        const sub = leaving ? 'Stairs' : 'Stairs arrive';
+                        const icon = goingUp ? '<path d="M3 20h5v-5h5v-5h5V5" />' : '<path d="M3 5h5v5h5v5h5v5" />';
+                        L.marker([node.latitude + tagLift, node.longitude], {
+                            icon: L.divIcon({
+                                className: '',
+                                html: `<div class="mnav-stair-tag" role="img" aria-label="${escapeHtml(`${sub}: ${main}`)}">`
+                                    + `<span class="mnav-stair-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></span>`
+                                    + `<span class="mnav-stair-main">${escapeHtml(main)}</span>`
+                                    + `<span class="mnav-stair-sub">${escapeHtml(sub)}</span></div>`,
+                                iconSize: [0, 0],
+                            }),
+                            interactive: false, keyboard: false, zIndexOffset: 800,
+                        }).addTo(routeLayerRef.current);
                     }
-                    // A short tag at the foot of the stairs: where they go, in
-                    // the same chip as the building labels (the details are in
-                    // the route panel at the bottom).
-                    const goingUp = st.direction !== 'down';
-                    const main = leaving ? `${goingUp ? 'Up' : 'Down'} to ${floorTag(st.to_floor)}` : `From ${floorTag(st.from_floor)}`;
-                    const sub = leaving ? 'Stairs' : 'Stairs arrive';
-                    const icon = goingUp ? '<path d="M3 20h5v-5h5v-5h5V5" />' : '<path d="M3 5h5v5h5v5h5v5" />';
-                    L.marker([node.latitude + tagLift, node.longitude], {
-                        icon: L.divIcon({
-                            className: '',
-                            html: `<div class="mnav-stair-tag" role="img" aria-label="${escapeHtml(`${sub}: ${main}`)}">`
-                                + `<span class="mnav-stair-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></span>`
-                                + `<span class="mnav-stair-main">${escapeHtml(main)}</span>`
-                                + `<span class="mnav-stair-sub">${escapeHtml(sub)}</span></div>`,
-                            iconSize: [0, 0],
-                        }),
-                        interactive: false, keyboard: false, zIndexOffset: 800,
+                    // Preview of the rest of the route on the building's other
+                    // floors (dashed, lighter), lifted onto those floors, and the
+                    // destination's pin when it is on another floor.
+                    const runs = [];
+                    for (const p of result.path) {
+                        if (p.type === 'user' || floorOf(p) === activeFloor || !entered.has(p.building_id)) { runs.push(null); continue; }
+                        const last = runs[runs.length - 1];
+                        const at = [p.latitude + cutawayLift(p, entered), p.longitude];
+                        if (last && last.floor === floorOf(p)) last.pts.push(at);
+                        else runs.push({ floor: floorOf(p), pts: [at] });
+                    }
+                    for (const run of runs) {
+                        if (!run || run.pts.length < 2) continue;
+                        const depth = run.floor > activeFloor ? above : below;
+                        L.polyline(run.pts, { color: ROUTE_CASING, weight: 7, opacity: 0.35, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
+                        L.polyline(run.pts, { color: C.route, weight: 3.5, opacity: 0.85, dashArray: '6, 7', lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
+                    }
+                    const dest = result.path[result.path.length - 1];
+                    if (dest && floorOf(dest) !== activeFloor && entered.has(dest.building_id)) {
+                        L.marker([dest.latitude + cutawayLift(dest, entered), dest.longitude], {
+                            icon: createDestinationPinIcon(C.go, 16), opacity: 0.75, interactive: false, keyboard: false, zIndexOffset: 400,
+                        }).addTo(routeLayerRef.current);
+                    }
+                    if (latlngs.length < 2) { above.addTo(routeLayerRef.current); return; }
+                    // Two strokes: a dark casing under the blue route line, so it stands out on the light base
+                    // map and on the satellite photo. Blue (not red): red means "problem" in this app.
+                    const lines = segs.filter((s) => s.length >= 2);
+                    L.polyline(lines, {
+                        color: ROUTE_CASING, weight: 10, opacity: 0.85,
+                        lineJoin: 'round', lineCap: 'round',
                     }).addTo(routeLayerRef.current);
-                }
-                // Preview of the rest of the route on the building's other
-                // floors (dashed, lighter), lifted onto those floors, and the
-                // destination's pin when it is on another floor.
-                const runs = [];
-                for (const p of result.path) {
-                    if (p.type === 'user' || floorOf(p) === activeFloor || !entered.has(p.building_id)) { runs.push(null); continue; }
-                    const last = runs[runs.length - 1];
-                    const at = [p.latitude + cutawayLift(p, entered), p.longitude];
-                    if (last && last.floor === floorOf(p)) last.pts.push(at);
-                    else runs.push({ floor: floorOf(p), pts: [at] });
-                }
-                for (const run of runs) {
-                    if (!run || run.pts.length < 2) continue;
-                    const depth = run.floor > activeFloor ? above : below;
-                    L.polyline(run.pts, { color: ROUTE_CASING, weight: 7, opacity: 0.35, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
-                    L.polyline(run.pts, { color: C.route, weight: 3.5, opacity: 0.85, dashArray: '6, 7', lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(depth);
-                }
-                const dest = result.path[result.path.length - 1];
-                if (dest && floorOf(dest) !== activeFloor && entered.has(dest.building_id)) {
-                    L.marker([dest.latitude + cutawayLift(dest, entered), dest.longitude], {
-                        icon: createDestinationPinIcon(C.go, 16), opacity: 0.75, interactive: false, keyboard: false, zIndexOffset: 400,
+                    L.polyline(lines, {
+                        color: C.route, weight: 6, opacity: 0.95,
+                        lineJoin: 'round', lineCap: 'round',
                     }).addTo(routeLayerRef.current);
+                    // Which way to go: white chevrons along the line; your own marker turns into the raised
+                    // arrow pointing the way to walk from here (the route starts where you are).
+                    drawRouteDirection(routeLayerRef.current, lines, { userArrow: false });
+                    // Only when the line shown starts where you are (not on another floor of a building).
+                    const startsHere = effectiveUser && L.latLng(lines[0][0]).distanceTo([effectiveUser.latitude, effectiveUser.longitude]) < 15;
+                    setRouteHeading(startsHere ? startBearing(lines[0]) : null);
+                    above.addTo(routeLayerRef.current);
+                    // Frame the route only when the destination itself changes,
+                    // never on GPS drift — the view must stay put while testing.
+                    // Deliberately not on free-roam either: re-framing on every
+                    // walked metre would yank the map out from under the
+                    // presenter mid-sentence.
+                    // Clamped: the route starts at the user, who may be outside
+                    // the archive footprint.
+                    if (prevDestRef.current !== destId) {
+                        prevDestRef.current = destId;
+                        fitInsideBox(L.latLngBounds(latlngs));
+                    }
                 }
-                if (latlngs.length < 2) { above.addTo(routeLayerRef.current); return; }
-                // Two strokes: a dark casing under the blue route line, so it stands out on the light base
-                // map and on the satellite photo. Blue (not red): red means "problem" in this app.
-                const lines = segs.filter((s) => s.length >= 2);
-                L.polyline(lines, {
-                    color: ROUTE_CASING, weight: 10, opacity: 0.85,
-                    lineJoin: 'round', lineCap: 'round',
-                }).addTo(routeLayerRef.current);
-                L.polyline(lines, {
-                    color: C.route, weight: 6, opacity: 0.95,
-                    lineJoin: 'round', lineCap: 'round',
-                }).addTo(routeLayerRef.current);
-                // Which way to go: white chevrons along the line; your own marker turns into the raised
-                // arrow pointing the way to walk from here (the route starts where you are).
-                drawRouteDirection(routeLayerRef.current, lines, { userArrow: false });
-                // Only when the line shown starts where you are (not on another floor of a building).
-                const startsHere = effectiveUser && L.latLng(lines[0][0]).distanceTo([effectiveUser.latitude, effectiveUser.longitude]) < 15;
-                setRouteHeading(startsHere ? startBearing(lines[0]) : null);
-                above.addTo(routeLayerRef.current);
-                // Frame the route only when the destination itself changes,
-                // never on GPS drift — the view must stay put while testing.
-                // Deliberately not on free-roam either: re-framing on every
-                // walked metre would yank the map out from under the
-                // presenter mid-sentence.
-                // Clamped: the route starts at the user, who may be outside
-                // the archive footprint.
-                if (prevDestRef.current !== destId) {
-                    prevDestRef.current = destId;
-                    fitInsideBox(L.latLngBounds(latlngs));
-                }
-            }
         } catch (err) {
             setError(err.message || 'Route failed');
         }
+        }).catch((err) => setError(err.message || 'Route failed'));
         // `weather.rain_multiplier` / `weather.raining_now` rather than the
         // whole object: a poll rebuilds it every 5 minutes, and the route
         // only cares about the two values that change routing.
-    }, [destId, effectiveUser, nodes, walls, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, routeShade, closedKey, destClosed, loading]);
+    }, [destId, effectiveUser, nodes, walls, links, activeFloor, weather.rain_multiplier, weather.raining_now, heatClosed, buildings, buildingsById, bridges, pathways, objects, routeMapKey, routeShade, closedKey, destClosed, loading]);
 
     // A destination on another floor is a normal case now (the route climbs
     // the linked stairs), so it is only dropped when the node itself is gone.
@@ -2631,7 +2654,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                         footer={<button type="button" className="ui-btn ui-btn-primary" onClick={() => setRouteModelOpen(false)}>Done</button>}
                     >
                         <React.Suspense fallback={<div role="status" style={{ ...LOADING_3D, height: 'min(64vh, 600px)' }}>Loading the 3D route...</div>}>
-                            <RouteModel3D route={route} buildings={buildings} bridges={bridges} objects={objects} nodes={nodes} links={links} height="min(64vh, 600px)" />
+                            <RouteModel3D route={route} buildings={buildings} bridges={bridges} objects={objects} nodes={nodes} links={links} height="min(64vh, 600px)" look={personLook} />
                         </React.Suspense>
                     </StairModal>
                 )}
@@ -2777,6 +2800,7 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
                         destPlace={selectedDest ? nodePlaceLabel(selectedDest, buildingsById) : ''}
                         links={links}
                         satellite={satellite}
+                        look={personLook}
                     />
                     </React.Suspense>
                 </ARViewErrorBoundary>

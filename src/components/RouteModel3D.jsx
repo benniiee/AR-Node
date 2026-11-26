@@ -9,7 +9,7 @@ import { planFromLink, stairTreads, walkLine, footprint } from '../stairGeometry
 import { makeLabel, disposeTree } from './StairPreview3D';
 import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
 import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
-import { treeModel, seededRandom, shedRoof, gateEnds, objectRect, parkingLayout } from '../campusObjects';
+import { treeModel, trunkTopM, seededRandom, shedRoof, gateEnds, objectRect, parkingLayout } from '../campusObjects';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -20,7 +20,7 @@ import { treeModel, seededRandom, shedRoof, gateEnds, objectRect, parkingLayout 
 // Scene axes: x = east, y = up, z = -north (as the other 3D previews).
 
 // Navigation blue (uiTokens C.route), with white chevrons riding on it towards the destination.
-const ROUTE = 0x1f6feb;
+export const ROUTE = 0x1f6feb;
 const ROUTE_CHEVRON = 0xffffff;
 /** One chevron every this many metres along the 3D route. */
 const CHEVRON_EVERY_M = 6;
@@ -84,36 +84,67 @@ const RAIL_M = 1.05;
 const ROOF_CLEAR_M = 2.6;
 
 /**
- * A person at real size (about 1.7 m), standing on the ground at `foot` and
- * facing `heading` (a direction on the ground): legs, body, arms and head, in
- * the route's white. Real proportions: legs ~0.85 m, body ~0.6 m, head ~0.23 m.
+ * School uniforms for a student's own figure (users.gender): a white short-sleeved polo with dark
+ * slacks, or a white blouse with long red pants. Anyone else (visitors, guests, no gender set) keeps the
+ * plain white figure.
  */
-export function person(foot, heading) {
+const UNIFORMS = {
+    male: { skin: 0xd2a27c, top: 0xf8fafc, legs: 0x1f2a44, hair: 0x2a1d16, longHair: false },
+    female: { skin: 0xd2a27c, top: 0xf8fafc, legs: 0xa3192b, hair: 0x2a1d16, longHair: true },
+};
+
+/**
+ * A person at real size (about 1.7 m), standing on the ground at `foot` and
+ * facing `heading` (a direction on the ground): legs, body, arms and head.
+ * Real proportions: legs ~0.85 m, body ~0.6 m, head ~0.23 m. `look`: 'male' or
+ * 'female' dresses it in the school uniform (UNIFORMS); otherwise it is plain white.
+ * The figure faces its local +z.
+ */
+export function person(foot, heading, look = null) {
+    const uniform = UNIFORMS[look] || null;
+    const mat = (color, roughness = 0.65) => new THREE.MeshStandardMaterial({ color, roughness });
+    const skin = mat(uniform ? uniform.skin : 0xffffff, 0.6);
+    const top = uniform ? mat(uniform.top) : skin;
+    const legMat = uniform ? mat(uniform.legs, 0.8) : mat(0xd4d4d8, 0.7);
     const body = new THREE.Group();
-    const skin = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
-    const shade = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.7 });
     // Everything above the feet sits in `torso`, so a walk can bob it; legs and
     // arms hang from pivots at the hips and shoulders, so they can swing.
     const torso = new THREE.Group();
     body.add(torso);
-    const part = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
+    const part = (parent, geo, material, x, y, z) => { const m = new THREE.Mesh(geo, material); m.position.set(x, y, z); parent.add(m); return m; };
     const pivot = (x, y) => { const g = new THREE.Group(); g.position.set(x, y, 0); torso.add(g); return g; };
-    // Legs (hip at 0.88 m).
+    // Legs (hip at 0.88 m); in uniform, dark shoes pointing forward.
     const legL = pivot(-0.1, 0.88);
     const legR = pivot(0.1, 0.88);
-    part(legL, new THREE.CapsuleGeometry(0.075, 0.72, 4, 10), shade, 0, -0.44, 0);
-    part(legR, new THREE.CapsuleGeometry(0.075, 0.72, 4, 10), shade, 0, -0.44, 0);
+    for (const leg of [legL, legR]) {
+        part(leg, new THREE.CapsuleGeometry(0.075, 0.72, 4, 10), legMat, 0, -0.44, 0);
+        if (uniform) part(leg, new THREE.BoxGeometry(0.1, 0.06, 0.2), mat(0x18181b, 0.5), 0, -0.85, 0.035);
+    }
     // Body (shoulders at ~1.45 m).
-    part(torso, new THREE.CapsuleGeometry(0.17, 0.42, 4, 12), skin, 0, 1.15, 0).scale.set(1, 1, 0.62);
-    // Arms, hanging slightly out from the shoulders (~1.38 m).
+    part(torso, new THREE.CapsuleGeometry(0.17, 0.42, 4, 12), top, 0, 1.15, 0).scale.set(1, 1, 0.62);
+    if (uniform) {
+        // The pants up to the waist (over the bottom of the shirt) and a belt where it is tucked in.
+        part(torso, new THREE.CylinderGeometry(0.174, 0.165, 0.2, 18), legMat, 0, 0.8, 0).scale.set(1, 1, 0.64);
+        part(torso, new THREE.CylinderGeometry(0.178, 0.178, 0.05, 18), mat(0x18181b, 0.5), 0, 0.91, 0).scale.set(1, 1, 0.66);
+    }
+    // Arms, hanging slightly out from the shoulders (~1.38 m); in uniform, short white sleeves.
     const armL = pivot(-0.24, 1.38);
     const armR = pivot(0.24, 1.38);
-    part(armL, new THREE.CapsuleGeometry(0.055, 0.56, 4, 10), skin, -0.01, -0.28, 0).rotation.z = -0.12;
-    part(armR, new THREE.CapsuleGeometry(0.055, 0.56, 4, 10), skin, 0.01, -0.28, 0).rotation.z = 0.12;
+    for (const [arm, side] of [[armL, -1], [armR, 1]]) {
+        part(arm, new THREE.CapsuleGeometry(0.055, 0.56, 4, 10), skin, side * 0.01, -0.28, 0).rotation.z = side * 0.12;
+        if (uniform) part(arm, new THREE.CapsuleGeometry(0.07, 0.14, 4, 10), top, side * 0.002, -0.06, 0).rotation.z = side * 0.12;
+    }
     // Neck and head (top of head at ~1.72 m).
     part(torso, new THREE.CylinderGeometry(0.045, 0.05, 0.08, 10), skin, 0, 1.49, 0);
     part(torso, new THREE.SphereGeometry(0.115, 18, 14), skin, 0, 1.6, 0);
+    if (uniform) {
+        // Hair: a cap over the top and back of the head; long hair falls down the back.
+        const hair = mat(uniform.hair, 0.9);
+        part(torso, new THREE.SphereGeometry(0.123, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, 0, 1.605, -0.012);
+        if (uniform.longHair) part(torso, new THREE.CapsuleGeometry(0.095, 0.2, 4, 10), hair, 0, 1.47, -0.07).scale.set(1.1, 1, 0.55);
+    }
     body.userData.rig = { torso, legL, legR, armL, armR };
+    body.userData.look = uniform ? look : null;
     // A soft ring on the ground, so the person is easy to find from afar.
     const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.42, 0.62, 40),
@@ -143,8 +174,9 @@ function screenLabel(text, opts = {}, size = 0.05) {
  * follow: the live 3D view walks a person along instead of the fixed one at the
  * start, and draws the roads and walkways (`pathways`) on the ground.
  * origin: {lat, lng} to centre the scene on when there is no route (the campus object preview).
+ * look: the signed-in student's gender, for the uniform on the figure at the start (person).
  */
-export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false, origin = null }) {
+export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false, origin = null, look = null }) {
     const path = route?.path || [];
     const byId = new Map((buildings || []).map((b) => [b.id, b]));
     const inside = new Map();
@@ -572,7 +604,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             if (o.kind === 'tree') {
                 const m = treeModel(o);
                 const leaf = leafMats[Math.floor(seededRandom((Number(o.seed) || 1) + 3)() * leafMats.length)];
-                const topU = m.fronds.length || m.limbs.length ? m.trunkH : m.crownBase + 0.3;
+                const topU = trunkTopM(m);
                 if (m.stems.length) {
                     // A banana plant: its clumped yellow-green stems.
                     for (const s of m.stems) {
@@ -763,32 +795,40 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         });
     };
     const concreteStep = new THREE.MeshStandardMaterial({ color: BRIDGE_DECK, roughness: 0.9 });
-    const pts = [];
-    const push = (v) => { const last = pts[pts.length - 1]; if (!last || last.distanceTo(v) > 0.05) pts.push(v); };
-    // Follow view: the user's start point is not part of the fixed ribbon. The
-    // view draws its own live piece from where you are now to the next stop, so
-    // the route never stays behind at the spot where it was first worked out.
-    const stops = new Map();
-    path.forEach((p, i) => {
-        if (follow && p.type === 'user') return;
-        const here = xz(p.latitude, p.longitude);
-        if (p.id != null) stops.set(String(p.id), { x: here.x, y: yOf(p) + 0.25, z: here.z, floor: Math.max(0, floorOf(p)) });
-        const prev = path[i - 1];
-        if (prev && prev.type !== 'user' && p.type !== 'user' && floorOf(prev) !== floorOf(p)) {
-            const link = linkFor(prev, p) || {};
-            if (link.id != null) drawnLinks.add(link.id);
-            const { plan, bottom, top } = planFromLink(link, prev, p);
-            const y0 = yOf(bottom);
-            const y1 = yOf(top);
-            const base = xz(bottom.latitude, bottom.longitude);
-            const climb = walkLine(plan).map((q) => new THREE.Vector3(base.x + q.e, y0 + (plan.rise > 0 ? q.u / plan.rise : 0) * (y1 - y0) + 0.25, base.z - q.n));
-            (bottom === prev ? climb : climb.reverse()).forEach(push);
-            drawSteps(plan, bottom, top);
-            const deck = deckOf(prev) || deckOf(p);
-            if (deck) dressBridgeStairs(plan, bottom, top, deck);
-        }
-        push(new THREE.Vector3(here.x, yOf(p) + 0.25, here.z));
-    });
+    // The route's points (up and down its staircases) and its stops, for a path. The first time, its
+    // staircases are drawn too (amber); later redraws of the line alone (redrawRoute) leave them.
+    const routePoints = (routePath, withStairs) => {
+        const pts = [];
+        const push = (v) => { const last = pts[pts.length - 1]; if (!last || last.distanceTo(v) > 0.05) pts.push(v); };
+        // Follow view: the user's start point is not part of the fixed ribbon. The
+        // view draws its own live piece from where you are now to the next stop, so
+        // the route never stays behind at the spot where it was first worked out.
+        const stops = new Map();
+        routePath.forEach((p, i) => {
+            if (follow && p.type === 'user') return;
+            const here = xz(p.latitude, p.longitude);
+            if (p.id != null) stops.set(String(p.id), { x: here.x, y: yOf(p) + 0.25, z: here.z, floor: Math.max(0, floorOf(p)) });
+            const prev = routePath[i - 1];
+            if (prev && prev.type !== 'user' && p.type !== 'user' && floorOf(prev) !== floorOf(p)) {
+                const link = linkFor(prev, p) || {};
+                if (link.id != null) drawnLinks.add(link.id);
+                const { plan, bottom, top } = planFromLink(link, prev, p);
+                const y0 = yOf(bottom);
+                const y1 = yOf(top);
+                const base = xz(bottom.latitude, bottom.longitude);
+                const climb = walkLine(plan).map((q) => new THREE.Vector3(base.x + q.e, y0 + (plan.rise > 0 ? q.u / plan.rise : 0) * (y1 - y0) + 0.25, base.z - q.n));
+                (bottom === prev ? climb : climb.reverse()).forEach(push);
+                if (withStairs) {
+                    drawSteps(plan, bottom, top);
+                    const deck = deckOf(prev) || deckOf(p);
+                    if (deck) dressBridgeStairs(plan, bottom, top, deck);
+                }
+            }
+            push(new THREE.Vector3(here.x, yOf(p) + 0.25, here.z));
+        });
+        return { pts, stops };
+    };
+    const { pts, stops } = routePoints(path, true);
     // Every staircase up to a bridge deck, on the route or not: a bridge is seen with its stairs.
     if (bridges?.length && nodes?.length) {
         const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -804,88 +844,103 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
             dressBridgeStairs(plan, bottom, top, deck);
         }
     }
-    if (pts.length >= 2) {
-        // Each turn rounded off with a short curve (up to 1 m each side), so the ribbon bends smoothly
-        // instead of kinking: a tube pinches and twists at a sharp corner.
-        const curve = new THREE.CurvePath();
-        let at = pts[0];
-        for (let i = 1; i < pts.length - 1; i += 1) {
-            const p = pts[i];
-            const back = pts[i - 1].clone().sub(p);
-            const ahead = pts[i + 1].clone().sub(p);
-            const r = Math.min(1, back.length() / 2, ahead.length() / 2);
-            back.normalize();
-            ahead.normalize();
-            if (r < 0.05 || back.dot(ahead) < -0.999) {
-                if (at.distanceTo(p) > 1e-3) curve.add(new THREE.LineCurve3(at, p));
-                at = p;
-                continue;
+    // The route line (blue tube, chevrons, the destination pin) in its own group, so the follow view can
+    // redraw it alone as you walk instead of rebuilding the whole campus.
+    const routeGroup = new THREE.Group();
+    group.add(routeGroup);
+    const drawRibbon = (into, pts, routePath) => {
+        if (pts.length >= 2) {
+            // Each turn rounded off with a short curve (up to 1 m each side), so the ribbon bends smoothly
+            // instead of kinking: a tube pinches and twists at a sharp corner.
+            const curve = new THREE.CurvePath();
+            let at = pts[0];
+            for (let i = 1; i < pts.length - 1; i += 1) {
+                const p = pts[i];
+                const back = pts[i - 1].clone().sub(p);
+                const ahead = pts[i + 1].clone().sub(p);
+                const r = Math.min(1, back.length() / 2, ahead.length() / 2);
+                back.normalize();
+                ahead.normalize();
+                if (r < 0.05 || back.dot(ahead) < -0.999) {
+                    if (at.distanceTo(p) > 1e-3) curve.add(new THREE.LineCurve3(at, p));
+                    at = p;
+                    continue;
+                }
+                const enter = p.clone().addScaledVector(back, r);
+                const leave = p.clone().addScaledVector(ahead, r);
+                if (at.distanceTo(enter) > 1e-3) curve.add(new THREE.LineCurve3(at, enter));
+                curve.add(new THREE.QuadraticBezierCurve3(enter, p, leave));
+                at = leave;
             }
-            const enter = p.clone().addScaledVector(back, r);
-            const leave = p.clone().addScaledVector(ahead, r);
-            if (at.distanceTo(enter) > 1e-3) curve.add(new THREE.LineCurve3(at, enter));
-            curve.add(new THREE.QuadraticBezierCurve3(enter, p, leave));
-            at = leave;
+            curve.add(new THREE.LineCurve3(at, pts[pts.length - 1]));
+            const segs = Math.min(4000, pts.length * 16);
+            // Blue route with a thin dark edge: the edge tube shows only its back
+            // faces, so it outlines the blue tube instead of covering it.
+            into.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.3, 10, false), new THREE.MeshBasicMaterial({ color: ROUTE_EDGE, side: THREE.BackSide })));
+            into.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.22, 10, false), new THREE.MeshBasicMaterial({ color: ROUTE })));
+            // White chevrons lying on top of the tube, pointing towards the destination: a notched arrowhead
+            // built pointing along +Z, so lookAt() aims it along the route.
+            const chevGeo = new THREE.BufferGeometry();
+            chevGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+                0, 0, 0.55, 0.42, 0, -0.2, 0, 0, 0.05,
+                0, 0, 0.55, 0, 0, 0.05, -0.42, 0, -0.2,
+            ], 3));
+            chevGeo.computeVertexNormals();
+            const chevMat = new THREE.MeshBasicMaterial({ color: ROUTE_CHEVRON, side: THREE.DoubleSide });
+            const routeLen = curve.getLength();
+            for (let m = CHEVRON_EVERY_M / 2; m < routeLen - 1; m += CHEVRON_EVERY_M) {
+                const t = m / routeLen;
+                const p = curve.getPointAt(t);
+                const tan = curve.getTangentAt(t);
+                const chev = new THREE.Mesh(chevGeo, chevMat);
+                chev.position.set(p.x, p.y + 0.24, p.z);
+                chev.lookAt(p.x + tan.x, p.y + 0.24 + tan.y, p.z + tan.z);
+                into.add(chev);
+            }
+            // Start and destination.
+            // You: a person at the start, facing the way the route goes (the
+            // follow view moves its own person with you instead).
+            if (!follow) {
+                const foot = new THREE.Vector3(pts[0].x, pts[0].y - 0.25, pts[0].z);
+                const ahead = new THREE.Vector3().subVectors(pts[1], pts[0]).setY(0);
+                into.add(person(foot, ahead, look));
+            }
         }
-        curve.add(new THREE.LineCurve3(at, pts[pts.length - 1]));
-        const segs = Math.min(4000, pts.length * 16);
-        // Blue route with a thin dark edge: the edge tube shows only its back
-        // faces, so it outlines the blue tube instead of covering it.
-        group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.3, 10, false), new THREE.MeshBasicMaterial({ color: ROUTE_EDGE, side: THREE.BackSide })));
-        group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.22, 10, false), new THREE.MeshBasicMaterial({ color: ROUTE })));
-        // White chevrons lying on top of the tube, pointing towards the destination: a notched arrowhead
-        // built pointing along +Z, so lookAt() aims it along the route.
-        const chevGeo = new THREE.BufferGeometry();
-        chevGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-            0, 0, 0.55, 0.42, 0, -0.2, 0, 0, 0.05,
-            0, 0, 0.55, 0, 0, 0.05, -0.42, 0, -0.2,
-        ], 3));
-        chevGeo.computeVertexNormals();
-        const chevMat = new THREE.MeshBasicMaterial({ color: ROUTE_CHEVRON, side: THREE.DoubleSide });
-        const routeLen = curve.getLength();
-        for (let m = CHEVRON_EVERY_M / 2; m < routeLen - 1; m += CHEVRON_EVERY_M) {
-            const t = m / routeLen;
-            const p = curve.getPointAt(t);
-            const tan = curve.getTangentAt(t);
-            const chev = new THREE.Mesh(chevGeo, chevMat);
-            chev.position.set(p.x, p.y + 0.24, p.z);
-            chev.lookAt(p.x + tan.x, p.y + 0.24 + tan.y, p.z + tan.z);
-            group.add(chev);
+        // The destination pin (also for a one-stop route in the follow view, which
+        // has no fixed ribbon: its whole route is the live piece from you).
+        if (pts.length >= 1) {
+            const end = pts[pts.length - 1];
+            const pin = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.4, 20), new THREE.MeshBasicMaterial({ color: GO }));
+            pin.rotation.x = Math.PI;
+            pin.position.set(end.x, end.y + 1.1, end.z);
+            into.add(pin);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 14), new THREE.MeshBasicMaterial({ color: GO }));
+            head.position.set(end.x, end.y + 1.9, end.z);
+            into.add(head);
+            const dest = routePath[routePath.length - 1];
+            if (dest?.name) {
+                const label = screenLabel(dest.name, { bg: '#22c55e', fg: '#05230f', icon: 'pin', border: '#ffffff' }, 0.05);
+                label.position.set(end.x, end.y + 3.1, end.z);
+                into.add(label);
+            }
         }
-        // Start and destination.
-        // You: a person at the start, facing the way the route goes (the
-        // follow view moves its own person with you instead).
-        if (!follow) {
-            const foot = new THREE.Vector3(pts[0].x, pts[0].y - 0.25, pts[0].z);
-            const ahead = new THREE.Vector3().subVectors(pts[1], pts[0]).setY(0);
-            group.add(person(foot, ahead));
-        }
-    }
-    // The destination pin (also for a one-stop route in the follow view, which
-    // has no fixed ribbon: its whole route is the live piece from you).
-    if (pts.length >= 1) {
-        const end = pts[pts.length - 1];
-        const pin = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.4, 20), new THREE.MeshBasicMaterial({ color: GO }));
-        pin.rotation.x = Math.PI;
-        pin.position.set(end.x, end.y + 1.1, end.z);
-        group.add(pin);
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 14), new THREE.MeshBasicMaterial({ color: GO }));
-        head.position.set(end.x, end.y + 1.9, end.z);
-        group.add(head);
-        const dest = path[path.length - 1];
-        if (dest?.name) {
-            const label = screenLabel(dest.name, { bg: '#22c55e', fg: '#05230f', icon: 'pin', border: '#ffffff' }, 0.05);
-            label.position.set(end.x, end.y + 3.1, end.z);
-            group.add(label);
-        }
-    }
+    };
+    drawRibbon(routeGroup, pts, path);
 
     // Scene position back to latitude / longitude (the follow view's test walk).
     const toLatLng = (x, z) => fromLocalMeters(originLL.lat, originLL.lng, x, -z);
-    return { target: new THREE.Vector3(0, 3, 0), radius, xz, toLatLng, routePts: pts, stops };
+    // A new route on the same campus (the follow view as you walk): only the line is redrawn.
+    const redrawRoute = (routePath) => {
+        disposeTree(routeGroup);
+        routeGroup.clear();
+        const next = routePoints(routePath || [], false);
+        drawRibbon(routeGroup, next.pts, routePath || []);
+        return next;
+    };
+    return { target: new THREE.Vector3(0, 3, 0), radius, xz, toLatLng, routePts: pts, stops, redrawRoute };
 }
 
-export default function RouteModel3D({ route, buildings, links, bridges = [], objects = [], nodes = [], height = 420 }) {
+export default function RouteModel3D({ route, buildings, links, bridges = [], objects = [], nodes = [], height = 420, look = null }) {
     const hostRef = useRef(null);
     const stateRef = useRef(null);
 
@@ -917,7 +972,7 @@ export default function RouteModel3D({ route, buildings, links, bridges = [], ob
             keys: new Set(), joy: { x: 0, y: 0 }, last: 0, home: new THREE.Vector3(),
         };
         stateRef.current = s;
-        const built = buildScene(group, { route, buildings, links, bridges, objects, nodes });
+        const built = buildScene(group, { route, buildings, links, bridges, objects, nodes, look });
         s.target.copy(built.target);
         s.home.copy(built.target);
         s.base = built.radius * 2.6 + 10;

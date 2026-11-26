@@ -90,6 +90,11 @@ function mapServiceWorker() {
             Object.values(bundle)
                 .filter((item) => item.type === 'chunk' && item.isEntry && item.name === 'map')
                 .forEach((entry) => visit(entry.fileName));
+            // Web workers (src/routeWorker.js) are emitted apart from the chunk graph: list them too, so routes
+            // are worked out off the main thread offline as well.
+            Object.values(bundle)
+                .filter((item) => /Worker-[\w-]+\.js$/.test(item.fileName))
+                .forEach((item) => files.add(item.fileName));
 
             const urls = [...files].sort().map((f) => base + f);
             const source = fs.readFileSync(path.resolve('resources/pwa/service-worker.js'), 'utf8');

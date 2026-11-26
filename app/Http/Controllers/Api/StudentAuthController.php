@@ -96,7 +96,7 @@ class StudentAuthController extends Controller
     }
 
     /**
-     * @return array{id: int, name: string, first_name: string|null, student_number: string|null, email: string, course: string|null, course_name: string|null, year_level: int|null, must_change_password: bool}
+     * @return array{id: int, name: string, first_name: string|null, student_number: string|null, email: string, course: string|null, course_name: string|null, year_level: int|null, gender: string|null, must_change_password: bool}
      */
     private static function profile(User $student): array
     {
@@ -109,6 +109,7 @@ class StudentAuthController extends Controller
             'course' => $student->course?->code,
             'course_name' => $student->course?->name,
             'year_level' => $student->year_level,
+            'gender' => $student->gender,
             'must_change_password' => (bool) $student->must_change_password,
         ];
     }

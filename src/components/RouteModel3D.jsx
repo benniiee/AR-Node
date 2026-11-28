@@ -10,7 +10,8 @@ import { makeLabel, disposeTree } from './StairPreview3D';
 import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
 import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
 import { treeModel, trunkTopM, seededRandom, shedRoof, gateEnds, objectRect, parkingLayout } from '../campusObjects';
-import { appearanceOf, roofLayers, roofColorOf, DEFAULT_WALL, BAY_M } from '../buildingAppearance';
+import { appearanceOf, roofLayers, roofColorOf, DEFAULT_WALL, DEFAULT_DOOR, BAY_M } from '../buildingAppearance';
+import { drawStudioItems } from './buildingItems3D';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -322,12 +323,16 @@ const darker = (hex, k) => `#${new THREE.Color(hex).multiplyScalar(1 - k).getHex
 function facadeTexture(look) {
     const wall = look.walls.color || DEFAULT_WALL;
     const accent = look.walls.accent;
+    const band = look.walls.band || accent;
+    const frame = look.windows?.frame || '#2b3440';
+    const awning = Boolean(look.windows?.awning);
     return patternTexture(128, 128, (g) => {
         g.fillStyle = wall;
         g.fillRect(0, 0, 128, 128);
-        g.fillStyle = accent || darker(wall, 0.18);
-        g.fillRect(0, 119, 128, 9);
-        if (look.facade === 'arches') {
+        // The storey band along the foot: the accent, or the department's band colour.
+        g.fillStyle = band || darker(wall, 0.18);
+        g.fillRect(0, band ? 112 : 119, 128, band ? 16 : 9);
+        if (look.facade === 'arches' || look.facade === 'balcony') {
             g.fillStyle = '#3b3631';
             g.beginPath();
             g.moveTo(14, 119);
@@ -336,27 +341,113 @@ function facadeTexture(look) {
             g.lineTo(114, 119);
             g.closePath();
             g.fill();
-            // The low wall of the walkway and its rail.
-            g.fillStyle = wall;
-            g.fillRect(14, 93, 100, 26);
-            g.fillStyle = accent || darker(wall, 0.3);
-            g.fillRect(14, 89, 100, 5);
-            return;
+            if (look.facade === 'balcony') {
+                // An open gallery: the walkway's ceiling, a low parapet with a rail, no glazing.
+                g.fillStyle = darker(wall, 0.35);
+                g.fillRect(14, 40, 100, 14);
+                g.fillStyle = wall;
+                g.fillRect(14, 93, 100, 26);
+                g.fillStyle = accent || darker(wall, 0.3);
+                g.fillRect(14, 89, 100, 5);
+                g.strokeStyle = darker(wall, 0.1);
+                g.lineWidth = 3;
+                g.beginPath();
+                g.moveTo(14, 70);
+                g.lineTo(114, 70);
+                g.stroke();
+            } else {
+                // The low wall of the walkway and its rail.
+                g.fillStyle = wall;
+                g.fillRect(14, 93, 100, 26);
+                g.fillStyle = accent || darker(wall, 0.3);
+                g.fillRect(14, 89, 100, 5);
+            }
+        } else if (look.facade === 'glass') {
+            // A curtain wall: glazing bay to bay with slim mullions and a spandrel below.
+            g.fillStyle = '#31424f';
+            g.fillRect(6, 20, 116, 74);
+            g.strokeStyle = 'rgba(232, 240, 246, 0.55)';
+            g.lineWidth = 2;
+            g.beginPath();
+            for (const x of [6, 45, 83, 122]) { g.moveTo(x, 20); g.lineTo(x, 94); }
+            g.moveTo(6, 57);
+            g.lineTo(122, 57);
+            g.stroke();
+            g.fillStyle = darker(wall, 0.22);
+            g.fillRect(6, 94, 116, 12);
+        } else if (look.facade === 'louvres') {
+            // Wooden slats across the opening: the louvre screens of the older blocks.
+            g.fillStyle = darker(wall, 0.55);
+            g.fillRect(20, 34, 88, 62);
+            g.fillStyle = '#8a6a44';
+            for (let y = 36; y < 94; y += 6) g.fillRect(22, y, 84, 3);
+        } else {
+            g.fillStyle = frame;
+            g.fillRect(24, 36, 80, 56);
+            g.fillStyle = '#2b3440';
+            g.fillRect(28, 40, 72, 48);
+            g.strokeStyle = 'rgba(225, 230, 235, 0.6)';
+            g.lineWidth = 2;
+            g.beginPath();
+            for (const x of [52, 76]) { g.moveTo(x, 40); g.lineTo(x, 88); }
+            g.moveTo(28, 64);
+            g.lineTo(100, 64);
+            g.stroke();
+            g.fillStyle = darker(wall, 0.14);
+            g.fillRect(22, 92, 84, 5);
+            if (look.facade === 'pillars') {
+                g.fillStyle = accent || darker(wall, 0.16);
+                g.fillRect(0, 0, 14, 128);
+            }
         }
-        g.fillStyle = '#2b3440';
-        g.fillRect(26, 38, 76, 52);
-        g.strokeStyle = 'rgba(225, 230, 235, 0.6)';
-        g.lineWidth = 2;
-        g.beginPath();
-        for (const x of [51, 77]) { g.moveTo(x, 38); g.lineTo(x, 90); }
-        g.moveTo(26, 62);
-        g.lineTo(102, 62);
-        g.stroke();
-        g.fillStyle = darker(wall, 0.14);
-        g.fillRect(22, 90, 84, 5);
-        if (look.facade === 'pillars') {
-            g.fillStyle = accent || darker(wall, 0.16);
-            g.fillRect(0, 0, 14, 128);
+        if (awning) {
+            // The concrete eyebrow over each window: two bands, lit top and shadowed underside.
+            g.fillStyle = '#efece4';
+            g.fillRect(16, 24, 96, 8);
+            g.fillStyle = '#c9c4b8';
+            g.fillRect(16, 32, 96, 4);
+        }
+    });
+}
+
+/**
+ * The roof's surface texture: corrugated ribs, clay-tile rows or staggered shingles, in the roof's own
+ * colour. Concrete (or a flat roof) has none: it is the plain coloured face.
+ */
+function roofTexture(look) {
+    const base = roofColorOf(look);
+    const material = look.roof?.material || 'metal';
+    if (material === 'concrete') return null;
+    return patternTexture(64, 64, (g) => {
+        g.fillStyle = base;
+        g.fillRect(0, 0, 64, 64);
+        if (material === 'metal') {
+            for (let x = 0; x < 64; x += 8) {
+                g.fillStyle = 'rgba(255, 255, 255, 0.22)';
+                g.fillRect(x, 0, 2, 64);
+                g.fillStyle = 'rgba(0, 0, 0, 0.16)';
+                g.fillRect(x + 4, 0, 2, 64);
+            }
+        } else if (material === 'tile') {
+            g.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+            g.lineWidth = 2;
+            for (let y = 0; y < 64; y += 16) {
+                g.beginPath();
+                g.moveTo(0, y);
+                g.lineTo(64, y);
+                g.stroke();
+                for (let x = ((y / 16) % 2) * 8; x < 64; x += 16) {
+                    g.beginPath();
+                    g.moveTo(x, y);
+                    g.lineTo(x, y + 16);
+                    g.stroke();
+                }
+            }
+        } else {
+            g.fillStyle = 'rgba(0, 0, 0, 0.18)';
+            for (let y = 0; y < 64; y += 10) {
+                for (let x = ((y / 10) % 2) * 10; x < 64; x += 20) g.fillRect(x, y, 18, 2);
+            }
         }
     });
 }
@@ -392,32 +483,62 @@ function signTexture(text, edge) {
  * `ring`: the outline in scene coordinates ({x, z}); `doors`: [{a, b, normalDeg}] in scene coordinates.
  * Returns the height of the top of the roof.
  */
-export function drawBuildingExterior(into, { ring, height, floors, look, doors = [] }) {
+export function drawBuildingExterior(into, { ring, height, floors, look, doors = [], studio = null }) {
     const levels = Math.max(1, Number(floors) || Math.round(height / 3.2) || 1);
     const storeyH = height / levels;
     // Walls: one mesh, every side a quad with the front tile repeated along it and up it.
-    const pos = [];
-    const uv = [];
-    ring.forEach((a, i) => {
-        const b = ring[(i + 1) % ring.length];
-        const u = Math.hypot(b.x - a.x, b.z - a.z) / BAY_M;
-        const v = height / storeyH;
-        pos.push(a.x, 0, a.z, b.x, 0, b.z, b.x, height, b.z, a.x, 0, a.z, b.x, height, b.z, a.x, height, a.z);
-        uv.push(0, 0, u, 0, u, v, 0, 0, u, v, 0, v);
-    });
-    const walls = new THREE.BufferGeometry();
-    walls.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    walls.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    walls.computeVertexNormals();
     const facade = facadeTexture(look);
-    into.add(new THREE.Mesh(walls, new THREE.MeshStandardMaterial({
+    const wallMat = new THREE.MeshStandardMaterial({
         color: facade ? 0xffffff : (look.walls.color || DEFAULT_WALL), map: facade, roughness: 0.9, side: THREE.DoubleSide,
-    })));
+    });
+    if (studio) {
+        // Individual wall quads so Building Studio can raycast which wall edge and height was clicked.
+        ring.forEach((a, i) => {
+            const b = ring[(i + 1) % ring.length];
+            const u = Math.hypot(b.x - a.x, b.z - a.z) / BAY_M;
+            const v = height / storeyH;
+            const wg = new THREE.BufferGeometry();
+            wg.setAttribute('position', new THREE.Float32BufferAttribute([
+                a.x, 0, a.z, b.x, 0, b.z, b.x, height, b.z, a.x, 0, a.z, b.x, height, b.z, a.x, height, a.z,
+            ], 3));
+            wg.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, u, 0, u, v, 0, 0, u, v, 0, v], 2));
+            wg.computeVertexNormals();
+            const wm = new THREE.Mesh(wg, wallMat);
+            wm.userData.studioWallEdge = i;
+            into.add(wm);
+        });
+    } else {
+        const pos = [];
+        const uv = [];
+        ring.forEach((a, i) => {
+            const b = ring[(i + 1) % ring.length];
+            const u = Math.hypot(b.x - a.x, b.z - a.z) / BAY_M;
+            const v = height / storeyH;
+            pos.push(a.x, 0, a.z, b.x, 0, b.z, b.x, height, b.z, a.x, 0, a.z, b.x, height, b.z, a.x, height, a.z);
+            uv.push(0, 0, u, 0, u, v, 0, 0, u, v, 0, v);
+        });
+        const walls = new THREE.BufferGeometry();
+        walls.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        walls.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        walls.computeVertexNormals();
+        into.add(new THREE.Mesh(walls, wallMat));
+    }
 
     // Roof: the rings from the eave to the top (src/buildingAppearance.js), joined side by side, and the top.
     const { rings, rise } = roofLayers(ring.map((p) => ({ x: p.x, y: -p.z })), look.roof.style);
-    const roofMat = new THREE.MeshStandardMaterial({ color: roofColorOf(look), roughness: 0.7, metalness: 0.1, flatShading: true, side: THREE.DoubleSide });
+    // Its surface: ribs, tile rows or shingles when it is not plain concrete (Building Studio).
+    const sheet = roofTexture(look);
+    const roofMat = new THREE.MeshStandardMaterial({
+        color: sheet ? 0xffffff : roofColorOf(look), map: sheet, roughness: 0.7, metalness: look.roof?.material === 'metal' ? 0.25 : 0.1,
+        flatShading: true, side: THREE.DoubleSide,
+    });
     const faces = [];
+    const uvs = [];
+    const put = (q, h) => {
+        faces.push(q.x, height + h, -q.y);
+        // The roof's own metres, so the pattern repeats at a real scale on any building.
+        uvs.push(q.x / 1.5, q.y / 1.5);
+    };
     for (let k = 0; k + 1 < rings.length; k += 1) {
         const A = rings[k];
         const B = rings[k + 1];
@@ -427,13 +548,14 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
             const a1 = A.pts[(i + 1) % n];
             const b0 = B.pts[i];
             const b1 = B.pts[(i + 1) % n];
-            const at = (q, h) => [q.x, height + h, -q.y];
-            faces.push(...at(a0, A.h), ...at(a1, A.h), ...at(b1, B.h), ...at(a0, A.h), ...at(b1, B.h), ...at(b0, B.h));
+            put(a0, A.h); put(a1, A.h); put(b1, B.h);
+            put(a0, A.h); put(b1, B.h); put(b0, B.h);
         }
     }
     if (faces.length) {
         const slopes = new THREE.BufferGeometry();
         slopes.setAttribute('position', new THREE.Float32BufferAttribute(faces, 3));
+        slopes.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
         slopes.computeVertexNormals();
         into.add(new THREE.Mesh(slopes, roofMat));
     }
@@ -442,6 +564,7 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
     top.rotateX(-Math.PI / 2);
     const cap = new THREE.Mesh(top, roofMat);
     cap.position.y = height + last.h + 0.02;
+    if (studio) cap.userData.studioRoof = true;
     into.add(cap);
 
     // The entrance: a canopy over every door, the sign and a ramp at the main one (the first).
@@ -449,6 +572,13 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
     const canopyMat = new THREE.MeshStandardMaterial({ color: entrance.color, roughness: 0.6 });
     const concrete = new THREE.MeshStandardMaterial({ color: 0xb9b5ac, roughness: 0.95 });
     const steel = new THREE.MeshStandardMaterial({ color: 0xc9ccd1, roughness: 0.4, metalness: 0.6 });
+    // The doors themselves: glass, timber or sliding glass (Building Studio).
+    const doorColor = entrance.doorColor
+        || (entrance.door === 'wood' ? '#6b4a2f' : entrance.door === 'sliding' ? '#26404f' : DEFAULT_DOOR);
+    const doorMat = new THREE.MeshStandardMaterial({
+        color: doorColor, roughness: entrance.door === 'glass' || entrance.door === 'sliding' ? 0.28 : 0.8,
+        metalness: entrance.door === 'wood' ? 0.05 : 0.25,
+    });
     doors.forEach((door, i) => {
         const len = Math.hypot(door.b.x - door.a.x, door.b.z - door.a.z) || 1;
         const d = { x: (door.b.x - door.a.x) / len, z: (door.b.z - door.a.z) / len };
@@ -458,16 +588,48 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
         const turn = Math.atan2(-d.z, d.x);
         const canopyY = DOOR_HEIGHT_M + 0.45;
         // The doorway itself, dark glass a little out from the wall's painted front.
-        const doorway = new THREE.Mesh(new THREE.PlaneGeometry(len, DOOR_HEIGHT_M), new THREE.MeshStandardMaterial({ color: 0x1f2630, roughness: 0.3, metalness: 0.2 }));
+        const doorway = new THREE.Mesh(new THREE.PlaneGeometry(len, DOOR_HEIGHT_M), doorMat);
         doorway.position.set(c.x + n.x * 0.04, DOOR_HEIGHT_M / 2, c.z + n.z * 0.04);
         doorway.lookAt(doorway.position.x + n.x, doorway.position.y, doorway.position.z + n.z);
         into.add(doorway);
+        // The meeting stile between the leaves, and a pull handle on sliding doors.
+        const stile = new THREE.Mesh(new THREE.BoxGeometry(0.07, DOOR_HEIGHT_M * 0.92, 0.05), steel);
+        stile.position.set(c.x + n.x * 0.1, DOOR_HEIGHT_M * 0.48, c.z + n.z * 0.1);
+        stile.rotation.y = turn;
+        into.add(stile);
+        if (entrance.door === 'sliding') {
+            const pull = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), steel);
+            pull.position.set(c.x + n.x * 0.14 + d.x * 0.22, 1.05, c.z + n.z * 0.14 + d.z * 0.22);
+            into.add(pull);
+        }
+        if (entrance.steps) {
+            // Two shallow steps up to the threshold, as most of the campus blocks have.
+            for (let s = 0; s < 2; s += 1) {
+                const step = new THREE.Mesh(new THREE.BoxGeometry(len + 1.0, 0.16, 0.5), concrete);
+                step.position.set(c.x + n.x * (1.0 + s * 0.5), 0.08 + (1 - s) * 0.16, c.z + n.z * (1.0 + s * 0.5));
+                step.rotation.y = turn;
+                into.add(step);
+            }
+        }
         if (entrance.canopy) {
             const w = len + 1.4;
-            const roof = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, 1.7), canopyMat);
-            roof.position.set(c.x + n.x * 0.85, canopyY, c.z + n.z * 0.85);
-            roof.rotation.y = turn;
-            into.add(roof);
+            if (entrance.canopyShape === 'curved') {
+                // A shallow arch: four panels stepping down from the wall to the outer edge.
+                const panels = 4;
+                for (let s = 0; s < panels; s += 1) {
+                    const t = (s + 0.5) / panels;
+                    const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 1.7 / panels + 0.03), canopyMat);
+                    panel.position.set(c.x + n.x * (0.15 + t * 1.4), canopyY + 0.22 * Math.sin(Math.PI * t) - 0.06, c.z + n.z * (0.15 + t * 1.4));
+                    panel.rotation.y = turn;
+                    panel.rotation.x = -Math.cos(Math.PI * t) * 0.22;
+                    into.add(panel);
+                }
+            } else {
+                const roof = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, 1.7), canopyMat);
+                roof.position.set(c.x + n.x * 0.85, canopyY, c.z + n.z * 0.85);
+                roof.rotation.y = turn;
+                into.add(roof);
+            }
             addBars(into, [-1, 1].map((side) => {
                 const x = c.x + n.x * 1.55 + d.x * side * (w / 2 - 0.12);
                 const z = c.z + n.z * 1.55 + d.z * side * (w / 2 - 0.12);
@@ -500,6 +662,92 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
             const foot = (v) => new THREE.Vector3(v.x + n.x * 0.6, v.y, v.z + n.z * 0.6);
             addBars(into, [[rail(from), rail(to)], [foot(from), rail(from)], [foot(to), rail(to)]], 0.05, steel);
         }
+    });
+
+    // ── Decorations (Building Studio) ────────────────────────────────
+    // Dressed along the wall of the main door, so they read from the front the map looks at.
+    const decor = look.decor;
+    const front = doors[0];
+    if (front && (decor.planters || decor.ac || decor.bunting)) {
+        const len = Math.hypot(front.b.x - front.a.x, front.b.z - front.a.z) || 1;
+        const d = { x: (front.b.x - front.a.x) / len, z: (front.b.z - front.a.z) / len };
+        const rad = (front.normalDeg * Math.PI) / 180;
+        const n = { x: Math.sin(rad), z: -Math.cos(rad) };
+        const c = { x: (front.a.x + front.b.x) / 2, z: (front.a.z + front.b.z) / 2 };
+        const turn = Math.atan2(-d.z, d.x);
+        // A point `along` metres sideways and `out` metres in front of the wall's middle.
+        const at = (along, out) => ({ x: c.x + d.x * along + n.x * out, z: c.z + d.z * along + n.z * out });
+        if (decor.planters) {
+            const pot = new THREE.MeshStandardMaterial({ color: 0xc9c4b8, roughness: 0.9 });
+            const leaf = new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.95 });
+            for (const side of [-1, 1]) {
+                const p = at(side * (len / 2 + 1.1), 0.85);
+                const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 0.6), pot);
+                box.position.set(p.x, 0.22, p.z);
+                box.rotation.y = turn;
+                into.add(box);
+                const bush = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), leaf);
+                bush.scale.set(1.4, 0.8, 0.9);
+                bush.position.set(p.x, 0.75, p.z);
+                into.add(bush);
+            }
+        }
+        if (decor.ac) {
+            const unit = new THREE.MeshStandardMaterial({ color: 0xdadde0, roughness: 0.6, metalness: 0.3 });
+            const vents = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.7 });
+            for (const side of [-1, 1]) {
+                const p = at(side * (len / 2 + 2.1), 0.3);
+                const box = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.6, 0.42), unit);
+                box.position.set(p.x, 2.55, p.z);
+                box.rotation.y = turn;
+                into.add(box);
+                const grille = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.34, 0.03), vents);
+                grille.position.set(p.x + n.x * 0.22, 2.55, p.z + n.z * 0.22);
+                grille.rotation.y = turn + Math.PI / 2;
+                into.add(grille);
+            }
+        }
+        if (decor.bunting) {
+            // Flags strung across the front, as the campus is dressed for college week.
+            const drop = DOOR_HEIGHT_M + 1.6;
+            const span = len + 2.6;
+            const cord = new THREE.Mesh(new THREE.BoxGeometry(span, 0.03, 0.03), steel);
+            cord.position.set(c.x + n.x * 0.55, drop, c.z + n.z * 0.55);
+            cord.rotation.y = turn;
+            into.add(cord);
+            const colors = [0xb3262e, 0x2f6fb3, 0xf2c94c, 0x2f9e5f];
+            const flags = Math.max(4, Math.round(span / 1.1));
+            for (let i = 0; i < flags; i += 1) {
+                const p = at((i + 0.5) / flags * span - span / 2, 0.57);
+                const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.38), new THREE.MeshStandardMaterial({
+                    color: colors[i % colors.length], side: THREE.DoubleSide, roughness: 0.9,
+                }));
+                flag.position.set(p.x, drop - 0.22, p.z);
+                flag.rotation.y = Math.atan2(n.x, n.z);
+                into.add(flag);
+            }
+        }
+    }
+    if (decor.tank && ring.length) {
+        // A steel water tank on the roof, on a low frame: on nearly every block in the photos.
+        const cx = ring.reduce((s, p) => s + p.x, 0) / ring.length;
+        const cz = ring.reduce((s, p) => s + p.z, 0) / ring.length;
+        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.24, 1.8), steel);
+        stand.position.set(cx, height + rise + 0.12, cz);
+        into.add(stand);
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 1.7, 14), new THREE.MeshStandardMaterial({
+            color: 0x9aa3a8, roughness: 0.5, metalness: 0.4,
+        }));
+        tank.position.set(cx, height + rise + 1.1, cz);
+        into.add(tank);
+    }
+    drawStudioItems(into, {
+        ring,
+        height,
+        floors,
+        look,
+        selectedIndex: studio ? studio.selectedItemIndex : null,
+        pickable: Boolean(studio),
     });
     return height + rise;
 }
@@ -608,7 +856,7 @@ function screenLabel(text, opts = {}, size = 0.05) {
  * origin: {lat, lng} to centre the scene on when there is no route (the campus object preview).
  * look: the signed-in student's gender, for the uniform on the figure at the start (person).
  */
-export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false, origin = null, look = null }) {
+export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false, origin = null, look = null, studio = null }) {
     const path = route?.path || [];
     const byId = new Map((buildings || []).map((b) => [b.id, b]));
     const inside = new Map();
@@ -815,6 +1063,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         const roofTop = b.status === 'under_construction' ? height : drawBuildingExterior(group, {
             ring, height, floors: b.floors, look: appearanceOf(b),
             doors: doorFrames(b.polygon, b.doors).map((d) => ({ a: xz(d.a.lat, d.a.lng), b: xz(d.b.lat, d.b.lng), normalDeg: d.normalDeg })),
+            studio: studio && b.id === studio.buildingId ? studio : null,
         });
         const cx = ring.reduce((sum, p) => sum + p.x, 0) / ring.length;
         const cz = ring.reduce((sum, p) => sum + p.z, 0) / ring.length;

@@ -19,10 +19,22 @@ class BuildingAppearanceTest extends TestCase
 
     /** @var array<string, mixed> */
     private const LOOK = [
-        'roof' => ['style' => 'curved', 'color' => '#7a2430'],
-        'walls' => ['color' => '#f1eee7', 'accent' => '#7a2430'],
+        'roof' => ['style' => 'gable', 'color' => '#7a2430', 'material' => 'metal'],
+        'walls' => ['color' => '#f1eee7', 'accent' => '#7a2430', 'band' => '#e3957a'],
         'facade' => 'pillars',
-        'entrance' => ['canopy' => true, 'color' => '#7a2430', 'sign' => 'COLLEGE OF COMPUTING STUDIES', 'ramp' => true],
+        'windows' => ['awning' => true, 'frame' => '#2f6fb3'],
+        'entrance' => [
+            'canopy' => true, 'canopyShape' => 'curved', 'color' => '#7a2430', 'sign' => 'COLLEGE OF COMPUTING STUDIES',
+            'ramp' => true, 'steps' => true, 'door' => 'sliding', 'doorColor' => '#26404f',
+        ],
+        'decor' => ['planters' => true, 'ac' => true, 'tank' => true, 'bunting' => true],
+        'items' => [
+            [
+                'id' => 'it_win1', 'type' => 'window_standard', 'edge' => 0, 't' => 0.35, 'floor' => 1,
+                'rx' => 0, 'rz' => 0, 'width_m' => 1.6, 'height_m' => 1.5, 'depth_m' => 0.16,
+                'color' => '#1f2937', 'accent' => '#2f6fb3', 'awning' => true, 'label' => '',
+            ],
+        ],
     ];
 
     private function headOf(Department $department): User
@@ -38,8 +50,13 @@ class BuildingAppearanceTest extends TestCase
 
         $this->putJson("/api/buildings/{$building->id}", ['appearance' => self::LOOK])
             ->assertOk()
-            ->assertJsonPath('appearance.roof.style', 'curved')
-            ->assertJsonPath('appearance.entrance.sign', 'COLLEGE OF COMPUTING STUDIES');
+            ->assertJsonPath('appearance.roof.style', 'gable')
+            ->assertJsonPath('appearance.roof.material', 'metal')
+            ->assertJsonPath('appearance.entrance.sign', 'COLLEGE OF COMPUTING STUDIES')
+            ->assertJsonPath('appearance.entrance.door', 'sliding')
+            ->assertJsonPath('appearance.windows.frame', '#2f6fb3')
+            ->assertJsonPath('appearance.decor.tank', true)
+            ->assertJsonPath('appearance.items.0.type', 'window_standard');
 
         $this->getJson('/api/map-data')->assertOk()->assertJsonPath('buildings.0.appearance.facade', 'pillars');
 
@@ -58,6 +75,11 @@ class BuildingAppearanceTest extends TestCase
         $this->putJson("/api/buildings/{$building->id}", ['appearance' => ['facade' => 'windows', 'script' => '<b>']])->assertInvalid(['appearance']);
         $this->putJson("/api/buildings/{$building->id}", ['appearance' => ['entrance' => ['sign' => str_repeat('A', Building::SIGN_MAX + 1)]]])
             ->assertInvalid(['appearance.entrance.sign']);
+        $this->putJson("/api/buildings/{$building->id}", ['appearance' => ['roof' => ['material' => 'thatch']]])->assertInvalid(['appearance.roof.material']);
+        $this->putJson("/api/buildings/{$building->id}", ['appearance' => ['entrance' => ['door' => 'trapdoor']]])->assertInvalid(['appearance.entrance.door']);
+        $this->putJson("/api/buildings/{$building->id}", ['appearance' => ['decor' => ['flagpole' => true]]])->assertInvalid(['appearance.decor']);
+        $this->putJson("/api/buildings/{$building->id}", ['appearance' => ['items' => [['id' => 'x', 'type' => 'unknown_gadget']]]])
+            ->assertInvalid(['appearance.items.0.type']);
         $this->assertNull($building->fresh()->appearance);
     }
 

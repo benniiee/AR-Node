@@ -436,11 +436,40 @@ export function drawBuildings(layer, buildings, { popup = null, skipId = null, s
             // light frame, door-high (doors on the far walls are hidden by
             // the building itself, as in real life).
             const doorLift = (Math.min(roofLiftM(DOOR_HEIGHT_M), roofLiftM(buildingHeightM(b)) * 0.85) * liftScale) / 111320;
+            const RAD = Math.PI / 180;
+            const shift = (p, bearing, m) => ({
+                lat: p.lat + (Math.cos(bearing * RAD) * m) / 111320,
+                lng: p.lng + (Math.sin(bearing * RAD) * m) / (111320 * (kLng || 1)),
+            });
+            let frontDoor = null;
             for (const d of doorFrames(b.polygon, b.doors)) {
                 // Only doors on walls facing the viewer.
                 if (Math.cos((d.normalDeg - (viewDeg + 180)) * Math.PI / 180) <= 0.05) continue;
-                doorway(layer, d, doorLift, { viewDeg, kLng });
-                if (look.entrance.canopy && !seeThrough) canopy25D(layer, d, look.entrance.color, raise, H, kLng);
+                if (!frontDoor) frontDoor = d;
+                if (look.entrance.steps && !seeThrough) {
+                    // Two shallow steps out from the threshold (Building Studio).
+                    const alongDeg = Math.atan2((d.b.lng - d.a.lng) * (kLng || 1), d.b.lat - d.a.lat) / RAD;
+                    for (let s = 0; s < 2; s += 1) {
+                        const out0 = 0.15 + s * 0.45;
+                        const out1 = out0 + 0.45;
+                        const p0 = shift(d.a, alongDeg + 180, 0.55 + s * 0.08);
+                        const p1 = shift(d.b, alongDeg, 0.55 + s * 0.08);
+                        L.polygon([
+                            shift(p0, d.normalDeg, out0), shift(p1, d.normalDeg, out0),
+                            shift(p1, d.normalDeg, out1), shift(p0, d.normalDeg, out1),
+                        ], {
+                            color: '#8d877c', weight: 0.5, opacity: 0.8,
+                            fillColor: s ? '#c9c4b8' : '#b9b5ac', fillOpacity: 1, interactive: false,
+                        }).addTo(layer);
+                    }
+                }
+                doorway(layer, d, doorLift, { viewDeg, kLng, style: look.entrance.door, color: look.entrance.doorColor });
+                if (look.entrance.canopy && !seeThrough) {
+                    canopy25D(layer, d, look.entrance.color, raise, H, kLng, look.entrance.canopyShape);
+                }
+            }
+            if (frontDoor && !seeThrough) {
+                drawDecor25D(layer, look, frontDoor, { raise, H, kLng, shift });
             }
         }
 
@@ -464,6 +493,21 @@ export function drawBuildings(layer, buildings, { popup = null, skipId = null, s
             className: popup ? 'campus-hit' : '',
         }).addTo(layer);
         hit.push(...(slopes || [roof]));
+        // A water tank on the roof, standing above the roof surface.
+        if (lift > 0 && !seeThrough && look.decor.tank) {
+            const c = polygonCentroid(b.polygon);
+            if (c) {
+                const ring = [];
+                for (let i = 0; i < 14; i += 1) {
+                    const th = (i / 14) * Math.PI * 2;
+                    ring.push(raise({
+                        lat: c.lat + (Math.cos(th) * 0.95) / 111320,
+                        lng: c.lng + (Math.sin(th) * 0.95) / (111320 * (kLng || 1)),
+                    }, 1 + 1.5 / H));
+                }
+                L.polygon(ring, { color: '#5d636b', weight: 0.8, opacity: 0.9, fillColor: '#9aa3a8', fillOpacity: 1, interactive: false }).addTo(layer);
+            }
+        }
         if (seeThrough) {
             // The real ground outline with its door gaps, and each door as a
             // bright threshold: the route below walks in through one of them.
@@ -532,11 +576,15 @@ function facade25D(layer, w, look, at, H, levels, kLng) {
     const bays = Math.max(1, Math.round(len / BAY_M));
     const storeyH = H / levels;
     const pt = (t, hM) => at({ lat: w.a.lat + (w.b.lat - w.a.lat) * t, lng: w.a.lng + (w.b.lng - w.a.lng) * t }, hM / H);
+    const facade = look.facade;
+    const arched = facade === 'arches' || facade === 'balcony';
+    const frame = look.windows.frame;
     const openings = [];
+    const awnings = [];
     for (let k = 0; k < levels; k += 1) {
         const y = k * storeyH;
         for (let i = 0; i < bays; i += 1) {
-            if (look.facade === 'arches') {
+            if (arched) {
                 const tc = (i + 0.5) / bays;
                 const rt = 0.38 / bays;
                 const spring = y + storeyH * 0.52;
@@ -548,14 +596,47 @@ function facade25D(layer, w, look, at, H, levels, kLng) {
                 ring.push(pt(tc + rt, y + storeyH * 0.12));
                 openings.push([ring]);
             } else {
-                const t0 = (i + 0.22) / bays;
-                const t1 = (i + 0.78) / bays;
-                openings.push([[pt(t0, y + storeyH * 0.32), pt(t1, y + storeyH * 0.32), pt(t1, y + storeyH * 0.72), pt(t0, y + storeyH * 0.72)]]);
+                const glazed = facade === 'glass';
+                const t0 = (i + (glazed ? 0.1 : 0.22)) / bays;
+                const t1 = (i + (glazed ? 0.9 : 0.78)) / bays;
+                const low = y + storeyH * (glazed ? 0.16 : 0.32);
+                const high = y + storeyH * (glazed ? 0.86 : 0.72);
+                if (facade === 'louvres') {
+                    // A louvre screen: slats across the opening, not glass.
+                    const slats = [];
+                    for (let s = 0; s < 6; s += 1) {
+                        const yy = low + ((high - low) * s) / 6;
+                        slats.push([[pt(t0, yy), pt(t1, yy), pt(t1, yy + storeyH * 0.05), pt(t0, yy + storeyH * 0.05)]]);
+                    }
+                    openings.push(...slats);
+                } else {
+                    openings.push([[pt(t0, low), pt(t1, low), pt(t1, high), pt(t0, high)]]);
+                }
+                if (look.windows.awning) {
+                    // The concrete eyebrow over the window, standing a little proud of the wall.
+                    awnings.push([[pt(t0 - 0.03 / bays, high + storeyH * 0.03), pt(t1 + 0.03 / bays, high + storeyH * 0.03),
+                        pt(t1 + 0.03 / bays, high + storeyH * 0.12), pt(t0 - 0.03 / bays, high + storeyH * 0.12)]]);
+                }
             }
         }
     }
-    L.polygon(openings, { stroke: false, fillColor: look.facade === 'arches' ? '#3b3631' : '#2b3440', fillOpacity: 0.85, interactive: false }).addTo(layer);
-    if (look.facade === 'pillars') {
+    // A balcony's walkway rail, on every storey: the open gallery of the old blocks.
+    if (facade === 'balcony') {
+        const rails = [];
+        for (let k = 1; k <= levels; k += 1) {
+            const y = k * storeyH - storeyH * 0.06;
+            rails.push([pt(0, y), pt(1, y)]);
+        }
+        L.polyline(rails, { color: '#5d636b', weight: 1.4, opacity: 0.9, interactive: false, lineCap: 'round' }).addTo(layer);
+    }
+    L.polygon(openings, {
+        stroke: Boolean(frame), color: frame || '#000000', weight: frame ? 1.1 : 0, opacity: frame ? 1 : 0,
+        fillColor: arched ? '#3b3631' : (frame ? mixHex(frame, '#000000', 0.55) : '#2b3440'), fillOpacity: facade === 'louvres' ? 0.9 : 0.85, interactive: false,
+    }).addTo(layer);
+    if (awnings.length) {
+        L.polygon(awnings, { color: '#b9b5ac', weight: 0.6, opacity: 0.8, fillColor: '#efece4', fillOpacity: 1, interactive: false }).addTo(layer);
+    }
+    if (facade === 'pillars') {
         const dt = 0.35 / len;
         const strips = [];
         for (let i = 0; i <= bays; i += 1) {
@@ -565,10 +646,16 @@ function facade25D(layer, w, look, at, H, levels, kLng) {
         }
         L.polygon(strips, { stroke: false, fillColor: look.walls.accent || '#b9b5ac', fillOpacity: 0.95, interactive: false }).addTo(layer);
     }
+    // The department's band along the foot of the wall: the maroon or salmon stripe of the photos.
+    if (look.walls.band) {
+        L.polygon([[pt(0, 0), pt(1, 0), pt(1, storeyH * 0.22), pt(0, storeyH * 0.22)]], {
+            stroke: false, fillColor: look.walls.band, fillOpacity: 0.95, interactive: false,
+        }).addTo(layer);
+    }
 }
 
 /** A canopy over a door in 2.5D: a slab door-high, reaching 1.6 m out and a little past each side. */
-function canopy25D(layer, d, color, raise, H, kLng) {
+function canopy25D(layer, d, color, raise, H, kLng, shape = 'slab') {
     if (!(H > DOOR_HEIGHT_M)) return;
     const RAD = Math.PI / 180;
     const shift = (p, bearing, m) => ({
@@ -579,9 +666,77 @@ function canopy25D(layer, d, color, raise, H, kLng) {
     const a = shift(d.a, alongDeg + 180, 0.7);
     const b = shift(d.b, alongDeg, 0.7);
     const f = (DOOR_HEIGHT_M + 0.45) / H;
-    L.polygon([a, b, shift(b, d.normalDeg, 1.6), shift(a, d.normalDeg, 1.6)].map((p) => raise(p, f)), {
+    let plan;
+    if (shape === 'curved') {
+        // Bowed out at the middle: a curved canopy in plan.
+        const out = [a, b];
+        for (let s = 0; s <= 6; s += 1) {
+            const t = 1 - s / 6;
+            const p = { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+            out.push(shift(p, d.normalDeg, 1.6 + 0.5 * Math.sin(Math.PI * t)));
+        }
+        plan = out;
+    } else {
+        plan = [a, b, shift(b, d.normalDeg, 1.6), shift(a, d.normalDeg, 1.6)];
+    }
+    L.polygon(plan.map((p) => raise(p, f)), {
         color: mixHex(color, '#000000', 0.35), weight: 0.6, fillColor: color, fillOpacity: 1, interactive: false,
     }).addTo(layer);
+}
+
+/**
+ * The decorations a department dressed its front with (Building Studio): planter boxes and air-con
+ * units beside the door, and flags strung across the front. Drawn on the wall of the main door, the
+ * side the map looks at. `shift(p, bearing, m)` moves a point; `raise(p, f)` lifts it by a share of H.
+ */
+function drawDecor25D(layer, look, d, { raise, H, kLng, shift }) {
+    const decor = look.decor;
+    if (!decor.planters && !decor.ac && !decor.bunting) return;
+    const RAD = Math.PI / 180;
+    const alongDeg = Math.atan2((d.b.lng - d.a.lng) * (kLng || 1), d.b.lat - d.a.lat) / RAD;
+    const mid = { lat: (d.a.lat + d.b.lat) / 2, lng: (d.a.lng + d.b.lng) / 2 };
+    // A rectangle `along` metres sideways of the door, `out` metres in front of the wall, raised `f` up it.
+    const quad = (along, out, halfAlong, halfOut, f = 0) => {
+        const c0 = shift(shift(mid, alongDeg, along), d.normalDeg, out);
+        const side = (m) => shift(c0, alongDeg + 90, m);
+        return [
+            shift(side(-halfAlong), d.normalDeg, -halfOut), shift(side(halfAlong), d.normalDeg, -halfOut),
+            shift(side(halfAlong), d.normalDeg, halfOut), shift(side(-halfAlong), d.normalDeg, halfOut),
+        ].map((p) => raise(p, f));
+    };
+    if (decor.planters) {
+        const pots = [];
+        const leaves = [];
+        for (const along of [-3.4, 3.4]) {
+            pots.push([quad(along, 0.9, 0.9, 0.3)]);
+            leaves.push([quad(along, 0.9, 0.78, 0.2)]);
+        }
+        L.polygon(pots, { color: '#8d877c', weight: 0.5, opacity: 0.85, fillColor: '#c9c4b8', fillOpacity: 1, interactive: false }).addTo(layer);
+        L.polygon(leaves, { stroke: false, fillColor: '#4f7a3a', fillOpacity: 0.95, interactive: false }).addTo(layer);
+    }
+    if (decor.ac) {
+        // Wall-hung air-con units, halfway up the front.
+        const units = [];
+        for (const along of [-4.8, 4.8]) units.push([quad(along, 0.32, 0.5, 0.18, 0.5)]);
+        L.polygon(units, { color: '#5d636b', weight: 0.6, opacity: 0.9, fillColor: '#dadde0', fillOpacity: 1, interactive: false }).addTo(layer);
+    }
+    if (decor.bunting) {
+        // Flags strung across the front, above the doors.
+        const f = Math.min(1, (DOOR_HEIGHT_M + 1.6) / (H || 1));
+        const a = shift(mid, alongDeg + 90, -4.2);
+        const z = shift(mid, alongDeg + 90, 4.2);
+        L.polyline([raise(a, f), raise(z, f)], { color: '#5d636b', weight: 1.1, opacity: 0.85, interactive: false }).addTo(layer);
+        const colors = ['#b3262e', '#2f6fb3', '#f2c94c', '#2f9e5f'];
+        for (let i = 0; i < 8; i += 1) {
+            const t = (i + 0.5) / 8;
+            const p = { lat: a.lat + (z.lat - a.lat) * t, lng: a.lng + (z.lng - a.lng) * t };
+            L.polygon([
+                raise(shift(p, alongDeg + 90, -0.13), f),
+                raise(shift(p, alongDeg + 90, 0.13), f),
+                raise(shift(p, alongDeg, 0.4), f - 0.02),
+            ], { stroke: false, fillColor: colors[i % colors.length], fillOpacity: 0.95, interactive: false }).addTo(layer);
+        }
+    }
 }
 
 /**
@@ -603,6 +758,10 @@ function slopedRoof25D(layer, b, look, { raise, H, sun, depth, outline, interact
         ...outline, fillColor: mixHex(color, '#000000', 0.3), fillOpacity: 1, ...tap,
     }).addTo(layer)];
     const faces = [];
+    // The roof's surface: ribs up each slope for metal, rows across it for tile and shingle.
+    const material = look.roof.material;
+    const ribs = [];
+    const rows = [];
     for (let k = 0; k + 1 < rings.length; k += 1) {
         const A = rings[k];
         const B = rings[k + 1];
@@ -622,11 +781,33 @@ function slopedRoof25D(layer, b, look, { raise, H, sun, depth, outline, interact
                 far: depth(back({ x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2 })),
                 fill: mixHex(mixHex(color, '#000000', 0.45), color, 0.25 + 0.75 * light),
             });
+            if (material === 'metal') {
+                // Ribs up the slope, about every 0.45 m along the eave.
+                for (let t = 0.08; t < 1; t += 0.1) {
+                    const p0 = { x: a0.x + (a1.x - a0.x) * t, y: a0.y + (a1.y - a0.y) * t };
+                    const p1 = { x: b0.x + (b1.x - b0.x) * t, y: b0.y + (b1.y - b0.y) * t };
+                    ribs.push([at(p0, A.h), at(p1, B.h)]);
+                }
+            } else if (material === 'tile' || material === 'shingle') {
+                for (let s = 0.15; s < 1; s += 0.2) {
+                    const h = A.h + (B.h - A.h) * s;
+                    rows.push([
+                        at({ x: a0.x + (b0.x - a0.x) * s, y: a0.y + (b0.y - a0.y) * s }, h),
+                        at({ x: a1.x + (b1.x - a1.x) * s, y: a1.y + (b1.y - a1.y) * s }, h),
+                    ]);
+                }
+            }
         }
     }
     faces.sort((f1, f2) => f2.far - f1.far);
     for (const f of faces) {
         shapes.push(L.polygon(f.pts, { color: mixHex(color, '#000000', 0.5), weight: 0.5, opacity: 0.6, fillColor: f.fill, fillOpacity: 1, lineJoin: 'round', ...tap }).addTo(layer));
+    }
+    const grooves = ribs.length ? ribs : rows;
+    if (grooves.length) {
+        L.polyline(grooves, {
+            color: mixHex(color, '#000000', 0.2), weight: 0.5, opacity: 0.4, interactive: false, lineCap: 'round',
+        }).addTo(layer);
     }
     const top = rings[rings.length - 1];
     shapes.push(L.polygon(top.pts.map((q) => at(q, top.h)), {
@@ -905,15 +1086,30 @@ export function drawFloorGuide(layer, building, level, { named = false } = {}) {
  * `behind`: on a far wall (seen through the building), drawn lighter with a
  * dashed frame so it still reads as being at the back.
  */
-function doorway(layer, d, doorLift, { behind = false, viewDeg = 0, kLng = 1 } = {}) {
+function doorway(layer, d, doorLift, { behind = false, viewDeg = 0, kLng = 1, style = 'glass', color = null } = {}) {
+    // Glass, timber or sliding glass doors, in the department's own door colour (Building Studio).
+    const leaf = behind ? '#22c55e' : (color || (style === 'wood' ? '#6b4a2f' : style === 'sliding' ? '#26404f' : '#2a2420'));
     const vN = Math.cos(viewDeg * Math.PI / 180);
     const vE = Math.sin(viewDeg * Math.PI / 180);
     const up = (p) => [p.lat + doorLift * vN, p.lng + (doorLift * vE) / (kLng || 1)];
     const a = [d.a.lat, d.a.lng];
     const b = [d.b.lat, d.b.lng];
     L.polygon([a, b, up(d.b), up(d.a)], {
-        stroke: false, fillColor: behind ? '#22c55e' : '#2a2420', fillOpacity: behind ? 0.35 : 0.92, interactive: false,
+        stroke: false, fillColor: leaf, fillOpacity: behind ? 0.35 : 0.92, interactive: false,
     }).addTo(layer);
+    if (!behind) {
+        // The leaves: a stile down the middle, and a pair of panels on a timber door.
+        const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const midUp = [(up(d.a)[0] + up(d.b)[0]) / 2, (up(d.a)[1] + up(d.b)[1]) / 2];
+        L.polyline([mid, midUp], { color: 'rgba(255, 255, 255, 0.9)', weight: 1.6, opacity: 0.95, interactive: false, lineCap: 'round' }).addTo(layer);
+        if (style === 'wood') {
+            for (const t of [0.3, 0.7]) {
+                const p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+                const q = [up(d.a)[0] + (up(d.b)[0] - up(d.a)[0]) * t, up(d.a)[1] + (up(d.b)[1] - up(d.a)[1]) * t];
+                L.polyline([p, q], { color: 'rgba(0, 0, 0, 0.35)', weight: 1.2, opacity: 0.8, interactive: false }).addTo(layer);
+            }
+        }
+    }
     L.polyline([a, up(d.a), up(d.b), b], {
         color: '#ffffff', weight: behind ? 1.6 : 2, opacity: behind ? 0.95 : 1, lineJoin: 'round', lineCap: 'round',
         ...(behind ? { dashArray: '3, 3' } : {}), interactive: false,

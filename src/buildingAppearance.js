@@ -4,14 +4,49 @@
 
 export const ROOF_STYLES = [
     { value: 'flat', label: 'Flat' },
-    { value: 'hip', label: 'Sloped' },
+    { value: 'hip', label: 'Hip' },
+    { value: 'gable', label: 'Gable' },
+    { value: 'shed', label: 'Shed' },
     { value: 'curved', label: 'Curved' },
+];
+
+/** What the roof is made of: it changes the ribs, rows or plain face it is drawn with. */
+export const ROOF_MATERIALS = [
+    { value: 'metal', label: 'Metal sheet' },
+    { value: 'tile', label: 'Clay tile' },
+    { value: 'shingle', label: 'Shingle' },
+    { value: 'concrete', label: 'Concrete' },
 ];
 
 export const FACADES = [
     { value: 'windows', label: 'Windows' },
     { value: 'arches', label: 'Arches' },
     { value: 'pillars', label: 'Pillars' },
+    { value: 'balcony', label: 'Balcony' },
+    { value: 'glass', label: 'Glass front' },
+    { value: 'louvres', label: 'Wood slats' },
+];
+
+/** The shape of the canopy over the doors. */
+export const CANOPY_SHAPES = [
+    { value: 'slab', label: 'Flat slab' },
+    { value: 'curved', label: 'Curved' },
+];
+
+/** What the doors themselves are made of. */
+export const DOOR_STYLES = [
+    { value: 'glass', label: 'Glass doors' },
+    { value: 'wood', label: 'Wooden doors' },
+    { value: 'sliding', label: 'Sliding glass' },
+];
+
+/** Colours a window frame / door leaf may be given; any colour is allowed too. */
+export const FRAME_COLORS = [
+    { value: '#2f6fb3', label: 'Blue' },
+    { value: '#1f2937', label: 'Charcoal' },
+    { value: '#7a2430', label: 'Maroon' },
+    { value: '#d6d2c8', label: 'White' },
+    { value: '#6b4834', label: 'Brown' },
 ];
 
 /** Colours seen on campus (WMSU Campus B photos): roofs, walls and the accents on them. */
@@ -44,34 +79,139 @@ export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 export const BAY_M = 3.5;
 /** Same as Building::SIGN_MAX. */
 export const SIGN_MAX = 60;
+/** Most individually placed items one building may have (mirrors Building::MAX_ITEMS). */
+export const MAX_ITEMS = 80;
+
+export const ITEM_CATEGORIES = [
+    { value: 'windows', label: 'Windows' },
+    { value: 'pillars', label: 'Pillars & trim' },
+    { value: 'doors', label: 'Doors & entry' },
+    { value: 'signs', label: 'Signs' },
+    { value: 'misc', label: 'Misc' },
+];
+
+/**
+ * Individually placeable building items (windows, pillars, doors, signs, accessories)
+ * modelled after the campus buildings in the reference photos.
+ */
+export const ITEM_CATALOG = [
+    // Windows
+    { type: 'window_standard', label: 'Framed window', category: 'windows', placement: 'wall', defaultWidth: 1.6, defaultHeight: 1.5, defaultDepth: 0.16, minWidth: 0.6, maxWidth: 8, minHeight: 0.5, maxHeight: 4, hasAwning: true, defaultColor: '#1f2937', defaultAccent: '#2f6fb3' },
+    { type: 'window_grille', label: 'Grille window', category: 'windows', placement: 'wall', defaultWidth: 2.8, defaultHeight: 1.3, defaultDepth: 0.14, minWidth: 0.8, maxWidth: 10, minHeight: 0.6, maxHeight: 3.5, hasAwning: true, defaultColor: '#1f2937', defaultAccent: '#d6d2c8' },
+    { type: 'window_awning', label: 'Louver vent', category: 'windows', placement: 'wall', defaultWidth: 2.2, defaultHeight: 0.7, defaultDepth: 0.14, minWidth: 0.6, maxWidth: 6, minHeight: 0.4, maxHeight: 2, hasAwning: false, defaultColor: '#1f2937', defaultAccent: '#1f2937' },
+    { type: 'window_arch', label: 'Arch opening', category: 'windows', placement: 'wall', defaultWidth: 3.2, defaultHeight: 2.4, defaultDepth: 0.25, minWidth: 1.2, maxWidth: 8, minHeight: 1.2, maxHeight: 5, hasAwning: false, defaultColor: '#1f2937', defaultAccent: '#ecdfb8' },
+    // Pillars & structure
+    { type: 'pillar_square', label: 'Square pillar', category: 'pillars', placement: 'wall', defaultWidth: 0.7, defaultHeight: 3.2, defaultDepth: 0.55, minWidth: 0.3, maxWidth: 2.5, minHeight: 1, maxHeight: 16, defaultColor: '#e3957a', defaultAccent: null },
+    { type: 'pillar_round', label: 'Round column', category: 'pillars', placement: 'wall', defaultWidth: 0.6, defaultHeight: 3.2, defaultDepth: 0.6, minWidth: 0.3, maxWidth: 2, minHeight: 1, maxHeight: 16, defaultColor: '#f1eee7', defaultAccent: null },
+    { type: 'spandrel_ribbed', label: 'Ribbed band', category: 'pillars', placement: 'wall', defaultWidth: 4.0, defaultHeight: 0.9, defaultDepth: 0.2, minWidth: 1, maxWidth: 20, minHeight: 0.4, maxHeight: 2.5, defaultColor: '#ecdfb8', defaultAccent: '#7a2430' },
+    { type: 'louvre_screen', label: 'Wood slats', category: 'pillars', placement: 'wall', defaultWidth: 2.4, defaultHeight: 3.0, defaultDepth: 0.25, minWidth: 0.8, maxWidth: 10, minHeight: 1, maxHeight: 12, defaultColor: '#8b5a2b', defaultAccent: null },
+    { type: 'balcony_parapet', label: 'Balcony rail', category: 'pillars', placement: 'wall', defaultWidth: 3.6, defaultHeight: 1.1, defaultDepth: 0.3, minWidth: 1, maxWidth: 16, minHeight: 0.6, maxHeight: 2.2, defaultColor: '#ecdfb8', defaultAccent: '#7a2430' },
+    // Doors & entrances
+    { type: 'door_glass', label: 'Glass door', category: 'doors', placement: 'wall', defaultWidth: 2.0, defaultHeight: 2.2, defaultDepth: 0.16, minWidth: 0.8, maxWidth: 6, minHeight: 1.8, maxHeight: 3.5, defaultColor: '#22303c', defaultAccent: '#1f2937' },
+    { type: 'door_wood', label: 'Wood door', category: 'doors', placement: 'wall', defaultWidth: 1.2, defaultHeight: 2.2, defaultDepth: 0.14, minWidth: 0.7, maxWidth: 4, minHeight: 1.8, maxHeight: 3.2, defaultColor: '#6b4a2f', defaultAccent: '#4a321f' },
+    { type: 'door_sliding', label: 'Sliding glass', category: 'doors', placement: 'wall', defaultWidth: 2.6, defaultHeight: 2.2, defaultDepth: 0.16, minWidth: 1.2, maxWidth: 6, minHeight: 1.8, maxHeight: 3.5, defaultColor: '#26404f', defaultAccent: '#c9ccd1' },
+    { type: 'canopy_slab', label: 'Slab canopy', category: 'doors', placement: 'wall', defaultWidth: 3.6, defaultHeight: 0.22, defaultDepth: 1.8, minWidth: 1.2, maxWidth: 14, minHeight: 0.12, maxHeight: 0.8, defaultColor: '#7a2430', defaultAccent: '#4a1820' },
+    { type: 'canopy_curved', label: 'Curved canopy', category: 'doors', placement: 'wall', defaultWidth: 3.6, defaultHeight: 0.45, defaultDepth: 1.8, minWidth: 1.2, maxWidth: 14, minHeight: 0.2, maxHeight: 1.2, defaultColor: '#7a2430', defaultAccent: '#4a1820' },
+    { type: 'steps', label: 'Entrance steps', category: 'doors', placement: 'wall', defaultWidth: 3.2, defaultHeight: 0.45, defaultDepth: 1.2, minWidth: 1.2, maxWidth: 12, minHeight: 0.2, maxHeight: 1.5, defaultColor: '#c9c6bf', defaultAccent: null },
+    { type: 'ramp', label: 'Wheelchair ramp', category: 'doors', placement: 'wall', defaultWidth: 4.5, defaultHeight: 0.9, defaultDepth: 1.4, minWidth: 2, maxWidth: 10, minHeight: 0.5, maxHeight: 1.5, defaultColor: '#b9b5ac', defaultAccent: '#c9ccd1' },
+    // Signs
+    { type: 'sign_board', label: 'Signboard', category: 'signs', placement: 'wall', defaultWidth: 4.5, defaultHeight: 0.8, defaultDepth: 0.16, minWidth: 1.2, maxWidth: 16, minHeight: 0.4, maxHeight: 2.5, hasLabel: true, defaultColor: '#7a2430', defaultAccent: '#ffffff' },
+    { type: 'banner', label: 'Wall banner', category: 'signs', placement: 'wall', defaultWidth: 2.6, defaultHeight: 1.0, defaultDepth: 0.08, minWidth: 1, maxWidth: 10, minHeight: 0.5, maxHeight: 3, hasLabel: true, defaultColor: '#2f5f8a', defaultAccent: '#ffffff' },
+    // Misc & accessories
+    { type: 'ac_unit', label: 'AC unit', category: 'misc', placement: 'wall', defaultWidth: 0.95, defaultHeight: 0.65, defaultDepth: 0.42, minWidth: 0.5, maxWidth: 2.2, minHeight: 0.4, maxHeight: 1.5, defaultColor: '#dadde0', defaultAccent: '#6f757c' },
+    { type: 'planter', label: 'Planter box', category: 'misc', placement: 'wall', defaultWidth: 1.8, defaultHeight: 0.75, defaultDepth: 0.65, minWidth: 0.6, maxWidth: 6, minHeight: 0.4, maxHeight: 1.6, defaultColor: '#c9c4b8', defaultAccent: '#4f7a3a' },
+    { type: 'bunting', label: 'Bunting flags', category: 'misc', placement: 'wall', defaultWidth: 4.5, defaultHeight: 0.45, defaultDepth: 0.4, minWidth: 1.5, maxWidth: 16, minHeight: 0.25, maxHeight: 1.0, defaultColor: '#b3262e', defaultAccent: '#2f9e5f' },
+    { type: 'kiosk', label: 'Info kiosk', category: 'misc', placement: 'wall', defaultWidth: 0.75, defaultHeight: 1.45, defaultDepth: 0.55, minWidth: 0.5, maxWidth: 1.6, minHeight: 1.0, maxHeight: 2.2, defaultColor: '#7a2430', defaultAccent: '#1f2937' },
+    { type: 'bench', label: 'Bench', category: 'misc', placement: 'wall', defaultWidth: 1.6, defaultHeight: 0.75, defaultDepth: 0.6, minWidth: 0.9, maxWidth: 3.5, minHeight: 0.45, maxHeight: 1.2, defaultColor: '#6b4834', defaultAccent: '#1f2937' },
+    { type: 'lamp', label: 'Wall light', category: 'misc', placement: 'wall', defaultWidth: 0.35, defaultHeight: 0.5, defaultDepth: 0.35, minWidth: 0.2, maxWidth: 1.0, minHeight: 0.25, maxHeight: 1.2, defaultColor: '#1f2937', defaultAccent: '#fff6d6' },
+    { type: 'water_tank', label: 'Roof tank', category: 'misc', placement: 'roof', defaultWidth: 1.8, defaultHeight: 1.9, defaultDepth: 1.8, minWidth: 0.8, maxWidth: 5, minHeight: 1.0, maxHeight: 5, defaultColor: '#9aa3a8', defaultAccent: '#6f757c' },
+];
+
+export const ITEM_BY_TYPE = Object.fromEntries(ITEM_CATALOG.map((item) => [item.type, item]));
+export const ITEM_TYPES = ITEM_CATALOG.map((item) => item.type);
 
 /** What the map draws when a colour is not chosen. */
 export const DEFAULT_WALL = '#d8d3c8';
 export const DEFAULT_FLAT_ROOF = '#d6d2c8';
 export const DEFAULT_SLOPED_ROOF = '#7a2430';
 export const DEFAULT_CANOPY = '#7a2430';
+export const DEFAULT_DOOR = '#22303c';
+export const DEFAULT_BAND = null;
 
 /**
  * A building's look, complete and safe to draw: unknown styles fall back to the defaults, bad colours
- * to null (the map's own colour), the sign is cut to SIGN_MAX.
+ * to null (the map's own colour), the sign is cut to SIGN_MAX. Every section is optional, so a look
+ * saved by an older Studio still reads: missing parts take their defaults.
  *
- * @returns {{ roof: {style: string, color: string|null}, walls: {color: string|null, accent: string|null},
- *   facade: string, entrance: {canopy: boolean, color: string, sign: string, ramp: boolean} }}
+ * @returns {{ roof: {style: string, color: string|null, material: string},
+ *   walls: {color: string|null, accent: string|null, band: string|null},
+ *   facade: string, windows: {awning: boolean, frame: string|null},
+ *   entrance: {canopy: boolean, canopyShape: string, color: string, sign: string, ramp: boolean,
+ *              steps: boolean, door: string, doorColor: string|null},
+ *   decor: {planters: boolean, ac: boolean, tank: boolean, bunting: boolean} }}
  */
+export function normalizeItem(raw, index = 0) {
+    if (!raw || typeof raw !== 'object') return null;
+    const spec = ITEM_BY_TYPE[raw.type];
+    if (!spec) return null;
+    const clamp = (v, lo, hi, fallback) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+    };
+    const hex = (v) => (typeof v === 'string' && HEX_COLOR.test(v) ? v.toLowerCase() : null);
+    const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim().slice(0, 32) : `item_${index}`;
+    return {
+        id,
+        type: spec.type,
+        edge: Math.max(0, Math.floor(Number(raw.edge) || 0)),
+        t: clamp(raw.t, 0, 1, 0.5),
+        floor: Math.max(0, Math.min(49, Math.floor(Number(raw.floor) || 0))),
+        rx: Number.isFinite(Number(raw.rx)) ? Math.round(Number(raw.rx) * 100) / 100 : 0,
+        rz: Number.isFinite(Number(raw.rz)) ? Math.round(Number(raw.rz) * 100) / 100 : 0,
+        width_m: Math.round(clamp(raw.width_m, spec.minWidth, spec.maxWidth, spec.defaultWidth) * 100) / 100,
+        height_m: Math.round(clamp(raw.height_m, spec.minHeight, spec.maxHeight, spec.defaultHeight) * 100) / 100,
+        depth_m: Math.round(clamp(raw.depth_m, 0.05, 5, spec.defaultDepth) * 100) / 100,
+        color: hex(raw.color),
+        accent: hex(raw.accent),
+        awning: Boolean(raw.awning),
+        label: typeof raw.label === 'string' ? raw.label.slice(0, SIGN_MAX) : '',
+    };
+}
+
 export function appearanceOf(building) {
     const a = building?.appearance || {};
     const pick = (v, list, fallback) => (list.some((o) => o.value === v) ? v : fallback);
     const hex = (v, fallback = null) => (typeof v === 'string' && HEX_COLOR.test(v) ? v.toLowerCase() : fallback);
+    const flag = (v) => Boolean(v);
+    const items = Array.isArray(a.items)
+        ? a.items.map((item, i) => normalizeItem(item, i)).filter(Boolean).slice(0, MAX_ITEMS)
+        : [];
     return {
-        roof: { style: pick(a.roof?.style, ROOF_STYLES, 'flat'), color: hex(a.roof?.color) },
-        walls: { color: hex(a.walls?.color), accent: hex(a.walls?.accent) },
+        roof: {
+            style: pick(a.roof?.style, ROOF_STYLES, 'flat'),
+            color: hex(a.roof?.color),
+            material: pick(a.roof?.material, ROOF_MATERIALS, 'metal'),
+        },
+        walls: { color: hex(a.walls?.color), accent: hex(a.walls?.accent), band: hex(a.walls?.band) },
         facade: pick(a.facade, FACADES, 'windows'),
+        windows: { awning: flag(a.windows?.awning), frame: hex(a.windows?.frame) },
         entrance: {
-            canopy: Boolean(a.entrance?.canopy),
+            canopy: flag(a.entrance?.canopy),
+            canopyShape: pick(a.entrance?.canopyShape, CANOPY_SHAPES, 'slab'),
             color: hex(a.entrance?.color, DEFAULT_CANOPY),
             sign: typeof a.entrance?.sign === 'string' ? a.entrance.sign.slice(0, SIGN_MAX) : '',
-            ramp: Boolean(a.entrance?.ramp),
+            ramp: flag(a.entrance?.ramp),
+            steps: flag(a.entrance?.steps),
+            door: pick(a.entrance?.door, DOOR_STYLES, 'glass'),
+            doorColor: hex(a.entrance?.doorColor),
         },
+        decor: {
+            planters: flag(a.decor?.planters),
+            ac: flag(a.decor?.ac),
+            tank: flag(a.decor?.tank),
+            bunting: flag(a.decor?.bunting),
+        },
+        items,
     };
 }
 
@@ -82,19 +222,58 @@ export const roofColorOf = (look) => look.roof.color || (look.roof.style === 'fl
 export const STYLE_PRESETS = [
     {
         name: 'Maroon bands & pillars', hint: 'like CCS',
-        appearance: { roof: { style: 'curved', color: '#7a2430' }, walls: { color: '#f1eee7', accent: '#7a2430' }, facade: 'pillars', entrance: { canopy: true, color: '#7a2430', sign: '', ramp: true } },
+        appearance: {
+            roof: { style: 'curved', color: '#7a2430', material: 'metal' },
+            walls: { color: '#f1eee7', accent: '#e3957a', band: '#7a2430' }, facade: 'pillars',
+            entrance: { canopy: true, canopyShape: 'slab', color: '#7a2430', sign: '', ramp: true, steps: true, door: 'glass' },
+            decor: { bunting: true, planters: true },
+        },
     },
     {
-        name: 'Cream with a maroon roof', hint: 'like the College of Medicine',
-        appearance: { roof: { style: 'hip', color: '#7a2430' }, walls: { color: '#ecdfb8', accent: '#7a2430' }, facade: 'arches', entrance: { canopy: true, color: '#7a2430', sign: '', ramp: true } },
+        name: 'Arched gallery, rusty roof', hint: 'like CAIS',
+        appearance: {
+            roof: { style: 'hip', color: '#8b4a32', material: 'metal' },
+            walls: { color: '#dcc58f', accent: null, band: '#c8b07f' }, facade: 'arches',
+            windows: { awning: false },
+            entrance: { canopy: false, color: '#7a2430', sign: '', ramp: true, door: 'glass' },
+            decor: { planters: true },
+        },
     },
     {
-        name: 'Cream arches, rusty roof', hint: 'like CAIS',
-        appearance: { roof: { style: 'hip', color: '#8b4a32' }, walls: { color: '#dcc58f', accent: null }, facade: 'arches', entrance: { canopy: false, color: '#7a2430', sign: '', ramp: false } },
+        name: 'Red hip roof, cream walls', hint: 'like the College of Medicine',
+        appearance: {
+            roof: { style: 'hip', color: '#b3262e', material: 'metal' },
+            walls: { color: '#ecdfb8', accent: '#7a2430', band: null }, facade: 'balcony',
+            entrance: { canopy: true, canopyShape: 'curved', color: '#7a2430', sign: '', ramp: true, steps: true, door: 'sliding' },
+        },
     },
     {
-        name: 'White with a red roof', hint: 'like the new building by CCS',
-        appearance: { roof: { style: 'hip', color: '#b3262e' }, walls: { color: '#f1eee7', accent: '#2f6fb3' }, facade: 'windows', entrance: { canopy: false, color: '#7a2430', sign: '', ramp: false } },
+        name: 'White, red roof, blue frames', hint: 'like the new building by CCS',
+        appearance: {
+            roof: { style: 'gable', color: '#b3262e', material: 'metal' },
+            walls: { color: '#f1eee7', accent: null, band: null }, facade: 'windows',
+            windows: { awning: true, frame: '#2f6fb3' },
+            entrance: { canopy: false, color: '#7a2430', sign: '', ramp: false, steps: true, door: 'glass' },
+        },
+    },
+    {
+        name: 'Concrete offices, glass front', hint: 'like the registrar',
+        appearance: {
+            roof: { style: 'flat', color: '#d6d2c8', material: 'concrete' },
+            walls: { color: '#e6e3da', accent: '#6f757c', band: null }, facade: 'glass',
+            entrance: { canopy: true, canopyShape: 'slab', color: '#6f757c', sign: '', ramp: true, steps: true, door: 'sliding' },
+            decor: { ac: true },
+        },
+    },
+    {
+        name: 'Cream arches, shed roof', hint: 'like the high school block',
+        appearance: {
+            roof: { style: 'shed', color: '#8b4a32', material: 'tile' },
+            walls: { color: '#ecdfb8', accent: '#7a2430', band: null }, facade: 'arches',
+            windows: { awning: true },
+            entrance: { canopy: true, canopyShape: 'slab', color: '#7a2430', sign: '', ramp: false, steps: true, door: 'wood', doorColor: '#6b4834' },
+            decor: { tank: true },
+        },
     },
 ];
 
@@ -181,6 +360,46 @@ function maxInset(ring) {
     return lo;
 }
 
+/** Direction of the outline's longest side: a gable's ridge and a shed's high edge run along it. */
+function longAxis(ring) {
+    let best = 0;
+    let c = 1;
+    let s = 0;
+    for (let i = 0; i < ring.length; i += 1) {
+        const a = ring[i];
+        const b = ring[(i + 1) % ring.length];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len > best) {
+            best = len;
+            const angle = Math.atan2(b.y - a.y, b.x - a.x);
+            c = Math.cos(angle);
+            s = Math.sin(angle);
+        }
+    }
+    return { c, s };
+}
+
+/** Half the outline's breadth across `axis` (metres). */
+function halfBreadth(ring, { c, s }) {
+    const v = ring.map((p) => -p.x * s + p.y * c);
+    return (Math.max(...v) - Math.min(...v)) / 2;
+}
+
+/**
+ * The outline pulled across `axis` into a thin ridge: down the middle for a gable (two slopes meeting at
+ * the ridge), against its low edge for a shed (one slope rising from the far eave to it). Same corner
+ * count and order as the outline, so the roof faces join up exactly as the ring-based roofs do.
+ */
+function ridgeRing(ring, { c, s }, toMiddle, keep = 0.04) {
+    const uv = ring.map((p) => ({ u: p.x * c + p.y * s, v: -p.x * s + p.y * c }));
+    const vs = uv.map((q) => q.v);
+    const base = toMiddle ? (Math.min(...vs) + Math.max(...vs)) / 2 : Math.min(...vs);
+    return uv.map((q) => {
+        const v = base + (q.v - base) * keep;
+        return { x: q.u * c - v * s, y: q.u * s + v * c };
+    });
+}
+
 const EAVE_M = 0.5;
 const HIP_SLOPE = 0.5;
 const CURVE_RISE = 0.7;
@@ -201,6 +420,16 @@ export function roofLayers(outline, style = 'flat') {
     const depth = maxInset(ring) * 0.94;
     if (!(depth > 0.5)) return flat;
     const eave = offsetRing(ring, -EAVE_M) || ring;
+    if (style === 'gable' || style === 'shed') {
+        const axis = longAxis(ring);
+        const breadth = halfBreadth(ring, axis);
+        const across = style === 'gable' ? breadth : breadth * 2;
+        if (!(across > 0.6)) return flat;
+        return {
+            rings: [{ pts: eave, h: -0.15 }, { pts: ridgeRing(ring, axis, style === 'gable'), h: Math.min(MAX_RISE_M, across * HIP_SLOPE) }],
+            rise: Math.min(MAX_RISE_M, across * HIP_SLOPE),
+        };
+    }
     if (style === 'curved') {
         const rise = Math.min(MAX_RISE_M, depth * CURVE_RISE);
         const rings = [{ pts: eave, h: -0.15 }];

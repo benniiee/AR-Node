@@ -20,10 +20,31 @@ class Building extends Model
 
     public const SOURCES = ['osm', 'custom'];
 
-    /** Building Studio: roof styles (flat, sloped on all four sides, curved) and the styles of its front. */
-    public const ROOF_STYLES = ['flat', 'hip', 'curved'];
+    /**
+     * Building Studio: roof shapes (flat, hip, gable, shed, curved), what a roof is made of, the styles of
+     * the front, the canopy's shape and what the doors are made of.
+     */
+    public const ROOF_STYLES = ['flat', 'hip', 'gable', 'shed', 'curved'];
 
-    public const FACADES = ['windows', 'arches', 'pillars'];
+    public const ROOF_MATERIALS = ['metal', 'tile', 'shingle', 'concrete'];
+
+    public const FACADES = ['windows', 'arches', 'pillars', 'balcony', 'glass', 'louvres'];
+
+    public const CANOPY_SHAPES = ['slab', 'curved'];
+
+    public const DOOR_STYLES = ['glass', 'wood', 'sliding'];
+
+    /** Individually placed Building Studio items (mirrors ITEM_TYPES in src/buildingAppearance.js). */
+    public const ITEM_TYPES = [
+        'window_standard', 'window_grille', 'window_awning', 'window_arch',
+        'pillar_square', 'pillar_round', 'spandrel_ribbed', 'louvre_screen', 'balcony_parapet',
+        'door_glass', 'door_wood', 'door_sliding', 'canopy_slab', 'canopy_curved', 'steps', 'ramp',
+        'sign_board', 'banner',
+        'ac_unit', 'planter', 'bunting', 'kiosk', 'bench', 'lamp', 'water_tank',
+    ];
+
+    /** Most individually placed items one building may have (mirrors MAX_ITEMS in src/buildingAppearance.js). */
+    public const MAX_ITEMS = 80;
 
     /** The longest sign over the entrance. */
     public const SIGN_MAX = 60;

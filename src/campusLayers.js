@@ -1031,15 +1031,19 @@ function drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, intera
     }).addTo(layer);
     const cableLine1 = mkLine('#222226', 0.9, 1);
     const cableLine2 = mkLine('#222226', 0.9, 1);
+    const palletSides = [0, 1].map(() => L.polygon([], {
+        color: '#4a3820', weight: 0.5, fillColor: '#a67f49', fillOpacity: 1, interactive: false,
+    }).addTo(layer));
+    const loadSides = [0, 1].map(() => L.polygon([], {
+        color: '#55524c', weight: 0.55, fillColor: shade, fillOpacity: 1, interactive: false,
+    }).addTo(layer));
+    const loadTop = L.polygon([], {
+        color: '#55524c', weight: 0.55, fillColor: lit, fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const loadSeams = mkLine('#55524c', 0.55, 0.55);
+    const slingLines = [mkLine('#222226', 0.65, 0.9), mkLine('#222226', 0.65, 0.9)];
     const hookBlockPoly = L.polygon([], {
         color: '#1b1d22', weight: 0.7, fillColor: SITE.crane, fillOpacity: 1, interactive: false,
-    }).addTo(layer);
-    const slingLines = [mkLine('#222226', 0.65, 0.9), mkLine('#222226', 0.65, 0.9)];
-    const loadTop = L.polygon([], {
-        color: '#55524c', weight: 0.5, fillColor: lit, fillOpacity: 1, interactive: false,
-    }).addTo(layer);
-    const loadFront = L.polygon([], {
-        color: '#55524c', weight: 0.5, fillColor: mixHex(shade, lit, 0.55), fillOpacity: 1, interactive: false,
     }).addTo(layer);
 
     const phase = rand() * Math.PI * 2;
@@ -1187,16 +1191,37 @@ function drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, intera
         ]);
 
         const pRing = [
-            move(move(hook, 90, -0.6), 0, -0.5),
-            move(move(hook, 90, 0.6), 0, -0.5),
-            move(move(hook, 90, 0.6), 0, 0.5),
-            move(move(hook, 90, -0.6), 0, 0.5),
+            move(move(hook, dir, -0.6), perp, -0.5),
+            move(move(hook, dir, 0.6), perp, -0.5),
+            move(move(hook, dir, 0.6), perp, 0.5),
+            move(move(hook, dir, -0.6), perp, 0.5),
         ];
-        const hookTipPt = at(hook, hy + 1.1);
-        slingLines[0].setLatLngs([at(pRing[0], hy + 0.8), hookTipPt, at(pRing[2], hy + 0.8)]);
-        slingLines[1].setLatLngs([at(pRing[1], hy + 0.8), hookTipPt, at(pRing[3], hy + 0.8)]);
-        loadTop.setLatLngs(pRing.map((q) => at(q, hy + 0.8)));
-        loadFront.setLatLngs([at(pRing[3], hy), at(pRing[2], hy), at(pRing[2], hy + 0.8), at(pRing[3], hy + 0.8)]);
+        const pWalls = visibleWalls(pRing, viewDeg);
+        const seamSegs = [];
+        for (let i = 0; i < 2; i += 1) {
+            const f = pWalls[i];
+            if (f) {
+                const kLight = wallLight(f.normalDeg, sun);
+                palletSides[i].setLatLngs([at(f.a, hy), at(f.b, hy), at(f.b, hy + 0.14), at(f.a, hy + 0.14)]);
+                palletSides[i].setStyle({ fillColor: mixHex('#856336', '#c2995b', kLight) });
+                loadSides[i].setLatLngs([at(f.a, hy + 0.14), at(f.b, hy + 0.14), at(f.b, hy + 0.88), at(f.a, hy + 0.88)]);
+                loadSides[i].setStyle({ fillColor: mixHex(shade, lit, kLight) });
+                const mid = { lat: (f.a.lat + f.b.lat) * 0.5, lng: (f.a.lng + f.b.lng) * 0.5 };
+                seamSegs.push([at(f.a, hy + 0.51), at(f.b, hy + 0.51)], [at(mid, hy + 0.14), at(mid, hy + 0.88)]);
+            } else {
+                palletSides[i].setLatLngs([]);
+                loadSides[i].setLatLngs([]);
+            }
+        }
+        seamSegs.push(
+            [at(move(hook, dir, -0.6), hy + 0.88), at(move(hook, dir, 0.6), hy + 0.88)],
+            [at(move(hook, perp, -0.5), hy + 0.88), at(move(hook, perp, 0.5), hy + 0.88)],
+        );
+        loadSeams.setLatLngs(seamSegs);
+        loadTop.setLatLngs(pRing.map((q) => at(q, hy + 0.88)));
+        const hookTipPt = at(hook, hy + 1.12);
+        slingLines[0].setLatLngs([at(pRing[0], hy + 0.88), hookTipPt, at(pRing[2], hy + 0.88)]);
+        slingLines[1].setLatLngs([at(pRing[1], hy + 0.88), hookTipPt, at(pRing[3], hy + 0.88)]);
     };
     updateCrane(0);
     if (Array.isArray(layer._cranes)) layer._cranes.push(updateCrane);

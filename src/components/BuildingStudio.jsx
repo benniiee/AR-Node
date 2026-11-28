@@ -422,9 +422,12 @@ function StudioView({
         s.doors = building.doors || [];
         s.clearGhost?.();
         const reach = Math.max(...building.polygon.map((p) => Math.hypot(...toLocalMeters(+p.lat, +p.lng, c.lat, c.lng))));
-        s.target.set(0, h * 0.45, 0);
         const fit = Math.max(reach * 2.1, h * 2.4) + 8;
-        if (s.dist === s.fit) s.dist = fit;
+        if (s.fittedBuildingId !== building.id) {
+            s.target.set(0, h * 0.45, 0);
+            s.dist = fit;
+            s.fittedBuildingId = building.id;
+        }
         s.fit = fit;
         s.dirty = true;
         // eslint-disable-next-line react-hooks/exhaustive-deps

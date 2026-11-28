@@ -944,20 +944,126 @@ function drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, intera
     for (let i = 0; i < 3; i += 1) box(move(move(base, front.normalDeg, 2.4), across, -3 - i * 1.5), 0.8);
 
     if (withWorkers) {
-        const worker25D = (p, hBase = 0, vest = '#f97316', helmet = '#facc15') => {
-            const foot = at(p, hBase);
-            const waist = at(p, hBase + 0.85);
-            const shoulder = at(p, hBase + 1.42);
-            const headPt = at(p, hBase + 1.66);
-            line([foot, waist], '#1e293b', 3.4);
-            line([waist, shoulder], vest, 4.4);
-            L.circleMarker(headPt, { radius: 2.8, color: '#3b2f05', weight: 0.7, fillColor: helmet, fillOpacity: 1, interactive: false }).addTo(layer);
+        const mkLine = (color, weight, opacity = 1) => L.polyline([], {
+            color, weight, opacity, interactive: false, lineCap: 'round', lineJoin: 'round',
+        }).addTo(layer);
+        const mkDot = (radius, fillColor, color = '#18181b', weight = 0.7) => L.circleMarker([0, 0], {
+            radius, color, weight, fillColor, fillOpacity: 1, interactive: false,
+        }).addTo(layer);
+
+        const workers25D = [];
+        const addWorker25D = ({ vest = '#f97316', helmet = '#facc15', shirt = '#334155', action = 'walk', ...anim }) => {
+            const legL = mkLine('#1e293b', 2.4);
+            const legR = mkLine('#1e293b', 2.4);
+            const torso = mkLine(vest, 4.6);
+            const stripe = mkLine('#e2e8f0', 4.6, 0.85);
+            const armL = mkLine(shirt, 2.0);
+            const armR = mkLine(shirt, 2.0);
+            const head = mkDot(2.3, '#d2a27c', '#1e293b', 0.5);
+            const hat = mkDot(2.9, helmet, '#3b2f05', 0.7);
+            const prop = action === 'carry' ? mkLine('#b3ada2', 4.8)
+                : action === 'lunch' ? { cup: mkDot(1.7, '#f8fafc', '#3f2312', 0.8), bread: mkDot(1.8, '#d97706', '#78350f', 0.7) }
+                    : null;
+            workers25D.push({
+                action, phase: rand() * Math.PI * 2,
+                legL, legR, torso, stripe, armL, armR, head, hat, prop, ...anim,
+            });
         };
+
         const cPt = { lat: b.polygon.reduce((s, p) => s + +p.lat, 0) / b.polygon.length, lng: b.polygon.reduce((s, p) => s + +p.lng, 0) / b.polygon.length };
-        worker25D(cPt, slabH, '#f97316', '#facc15');
-        worker25D(move(along(front, 0.35), front.normalDeg, 2.2), 0, '#f97316', '#facc15');
-        worker25D(move(along(front, 0.7), front.normalDeg, 3.6), 0, '#eab308', '#f8fafc');
-        worker25D(move(move(base, front.normalDeg, 1.2), across, -2.0), 0, '#f97316', '#facc15');
+        const w0 = walls[0];
+        const w1 = walls[Math.min(1, walls.length - 1)];
+        const midPt = (p, q, k) => ({ lat: p.lat + (q.lat - p.lat) * k, lng: p.lng + (q.lng - p.lng) * k });
+
+        // 1 & 2. Walking in other parts of the building (upper open slab).
+        addWorker25D({ action: 'walk', a: midPt(cPt, w0.a, 0.45), b: midPt(cPt, w0.b, 0.45), hBase: slabH, speed: 0.4 });
+        addWorker25D({ action: 'walk', vest: '#eab308', a: midPt(cPt, w1.a, 0.4), b: midPt(cPt, w1.b, 0.4), hBase: slabH, speed: 0.34 });
+        // 3 & 4. Walking along different ground sides.
+        addWorker25D({ action: 'walk', a: move(along(front, 0.12), front.normalDeg, 2.1), b: move(along(front, 0.52), front.normalDeg, 2.1), hBase: 0, speed: 0.45 });
+        addWorker25D({ action: 'walk', vest: '#eab308', a: move(along(w1, 0.18), w1.normalDeg, 2.2), b: move(along(w1, 0.82), w1.normalDeg, 2.2), hBase: 0, speed: 0.38 });
+        // 5 & 6. Carrying hollow blocks from pallets to the wall.
+        addWorker25D({ action: 'carry', helmet: '#f97316', a: move(move(base, front.normalDeg, 1.5), across, -2.5), b: move(along(front, 0.48), front.normalDeg, 1.7), hBase: 0, speed: 0.32 });
+        addWorker25D({ action: 'carry', vest: '#eab308', a: move(move(base, front.normalDeg, 2.6), across, -4.0), b: move(along(front, 0.28), front.normalDeg, 1.7), hBase: 0, speed: 0.28 });
+        // 7. Thinking (white-helmet foreman).
+        addWorker25D({ action: 'think', vest: '#eab308', helmet: '#f8fafc', shirt: '#1e3a8a', pos: move(move(base, front.normalDeg, 0.8), across, -1.2), bearing: (front.normalDeg + 180) % 360, hBase: 0 });
+        // 8. Looking up at the building.
+        addWorker25D({ action: 'inspect', pos: move(along(front, 0.72), front.normalDeg, 3.6), bearing: (front.normalDeg + 180) % 360, hBase: 0 });
+        // 9. Drinking coffee & eating bread/lunch beside the pallets.
+        addWorker25D({ action: 'lunch', shirt: '#475569', pos: move(move(base, front.normalDeg, 1.8), across, -4.6), bearing: (front.normalDeg + 210) % 360, hBase: 0 });
+
+        const updateWorkers = (timeSec) => {
+            for (const w of workers25D) {
+                const t = timeSec + w.phase;
+                let pos = w.pos;
+                let bearing = w.bearing || 0;
+                let stride = 0;
+                if (w.action === 'walk' || w.action === 'carry') {
+                    const mix = (Math.sin(t * w.speed) + 1) * 0.5;
+                    const dir = Math.cos(t * w.speed) >= 0 ? 1 : -1;
+                    pos = { lat: w.a.lat + (w.b.lat - w.a.lat) * mix, lng: w.a.lng + (w.b.lng - w.a.lng) * mix };
+                    const dLat = (w.b.lat - w.a.lat) * dir * 111320;
+                    const dLng = (w.b.lng - w.a.lng) * dir * 111320 * (kLng || 1);
+                    bearing = (Math.atan2(dLng, dLat) * 180) / Math.PI;
+                    stride = Math.sin(t * 5.2);
+                }
+                const right = (bearing + 90) % 360;
+                const bob = w.action === 'walk' || w.action === 'carry' ? Math.abs(stride) * 0.05 : 0;
+                const hipH = w.hBase + 0.86 + bob;
+                const shH = w.hBase + 1.42 + bob;
+                const fL = move(move(pos, right, -0.11), bearing, stride * 0.28);
+                const fR = move(move(pos, right, 0.11), bearing, -stride * 0.28);
+                const hL = move(pos, right, -0.11);
+                const hR = move(pos, right, 0.11);
+                w.legL.setLatLngs([at(fL, w.hBase), at(hL, hipH)]);
+                w.legR.setLatLngs([at(fR, w.hBase), at(hR, hipH)]);
+                w.torso.setLatLngs([at(pos, hipH), at(pos, shH)]);
+                w.stripe.setLatLngs([at(pos, hipH + 0.22), at(pos, hipH + 0.34)]);
+
+                const shL = move(pos, right, -0.24);
+                const shR = move(pos, right, 0.24);
+                let handL = move(move(pos, right, -0.26), bearing, -stride * 0.22);
+                let handR = move(move(pos, right, 0.26), bearing, stride * 0.22);
+                let handLH = w.hBase + 0.92;
+                let handRH = w.hBase + 0.92;
+                let headOff = 0;
+
+                if (w.action === 'carry') {
+                    handL = move(move(pos, right, -0.18), bearing, 0.28);
+                    handR = move(move(pos, right, 0.18), bearing, 0.28);
+                    handLH = w.hBase + 1.12 + bob;
+                    handRH = w.hBase + 1.12 + bob;
+                    const blkL = move(move(pos, right, -0.2), bearing, 0.34);
+                    const blkR = move(move(pos, right, 0.2), bearing, 0.34);
+                    w.prop.setLatLngs([at(blkL, w.hBase + 1.16 + bob), at(blkR, w.hBase + 1.16 + bob)]);
+                } else if (w.action === 'think') {
+                    handR = move(pos, bearing, 0.14);
+                    handRH = w.hBase + 1.5 + Math.sin(t * 1.4) * 0.03;
+                    handL = move(move(pos, right, -0.12), bearing, 0.12);
+                    handLH = w.hBase + 1.05;
+                    headOff = Math.sin(t * 0.8) * 0.04;
+                } else if (w.action === 'inspect') {
+                    handR = move(move(pos, right, 0.15), bearing, 0.24);
+                    handRH = w.hBase + 1.56 + Math.sin(t * 0.9) * 0.05;
+                    headOff = Math.sin(t * 0.6) * 0.06;
+                } else if (w.action === 'lunch') {
+                    const sip = Math.max(0, Math.sin(t * 1.4));
+                    const bite = Math.max(0, Math.sin(t * 1.4 + Math.PI));
+                    handR = move(move(pos, right, 0.16 - sip * 0.1), bearing, 0.18);
+                    handRH = w.hBase + 1.05 + sip * 0.45;
+                    handL = move(move(pos, right, -0.16 + bite * 0.1), bearing, 0.18);
+                    handLH = w.hBase + 1.05 + bite * 0.45;
+                    w.prop.cup.setLatLng(at(handR, handRH + 0.05));
+                    w.prop.bread.setLatLng(at(handL, handLH + 0.04));
+                }
+                w.armL.setLatLngs([at(shL, shH), at(handL, handLH)]);
+                w.armR.setLatLngs([at(shR, shH), at(handR, handRH)]);
+                const headPos = move(pos, right, headOff);
+                w.head.setLatLng(at(headPos, w.hBase + 1.56 + bob));
+                w.hat.setLatLng(at(headPos, w.hBase + 1.66 + bob));
+            }
+        };
+        updateWorkers(0);
+        if (Array.isArray(layer._cranes)) layer._cranes.push(updateWorkers);
     }
     if (!withCrane) return shapes;
 

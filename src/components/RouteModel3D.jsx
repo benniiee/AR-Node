@@ -577,11 +577,32 @@ export function drawConstructionSite(into, ring, height, floors, seed, style = '
             action: 'walk', a: w2a, b: w2b, y: 0, speed: 0.42,
         });
 
+        // 2b. Walking along a second upper-floor / interior path.
+        const w3a = { x: cx + (side3.a.x - cx) * 0.42, z: cz + (side3.a.z - cz) * 0.42 };
+        const w3b = { x: cx + (long.b.x - cx) * 0.42, z: cz + (long.b.z - cz) * 0.42 };
+        addWorker({ vest: 0xf97316, helmet: 0xfacc15, action: 'walk' }, {
+            action: 'walk', a: w3a, b: w3b, y: upperY, speed: 0.31,
+        });
+
+        // 2c. Walking along the front scaffolding walkway.
+        const w4a = { x: long.a.x + long.d.x * long.len * 0.1 + long.n.x * 2.1, z: long.a.z + long.d.z * long.len * 0.1 + long.n.z * 2.1 };
+        const w4b = { x: long.a.x + long.d.x * long.len * 0.55 + long.n.x * 2.1, z: long.a.z + long.d.z * long.len * 0.55 + long.n.z * 2.1 };
+        addWorker({ vest: 0xf97316, helmet: 0xfacc15, action: 'walk' }, {
+            action: 'walk', a: w4a, b: w4b, y: 0, speed: 0.46,
+        });
+
         // 3. Carrying blocks between the ground pallet area and the building wall.
         const cA = { x: sitePos.x - 2.2, z: sitePos.z + 1.8 };
         const cB = { x: long.a.x + long.d.x * long.len * 0.45 + long.n.x * 1.9, z: long.a.z + long.d.z * long.len * 0.45 + long.n.z * 1.9 };
         addWorker({ vest: 0xf97316, helmet: 0xf97316, action: 'carry' }, {
             action: 'carry', a: cA, b: cB, y: 0, speed: 0.32,
+        });
+
+        // 3b. Second worker carrying blocks from another pallet stack.
+        const c2A = { x: sitePos.x - 4.0, z: sitePos.z + 2.8 };
+        const c2B = { x: long.a.x + long.d.x * long.len * 0.25 + long.n.x * 1.9, z: long.a.z + long.d.z * long.len * 0.25 + long.n.z * 1.9 };
+        addWorker({ vest: 0xeab308, helmet: 0xfacc15, action: 'carry' }, {
+            action: 'carry', a: c2A, b: c2B, y: 0, speed: 0.27,
         });
 
         // 4. Thinking (foreman in white helmet, hand on chin).

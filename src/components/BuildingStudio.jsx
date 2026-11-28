@@ -6,7 +6,12 @@ import { buildScene } from './RouteModel3D';
 import { confirmAction } from './ConfirmDialog';
 import { buildingHeightM } from '../sunShadow';
 import { polygonCentroid } from '../campusGeometry';
-import { toLocalMeters } from '../geo';
+import { fromLocalMeters, toLocalMeters } from '../geo';
+import {
+    snapToOutline, placedDoors, doorFrames, doorWidth, DOOR_SNAP_M, DOOR_WIDTH_M, MIN_DOOR_WIDTH_M,
+    MAX_DOOR_WIDTH_M, MAX_DOORS, DOOR_HEIGHT_M,
+} from '../doors';
+import { suggestEntrances } from '../pathfinding';
 import {
     appearanceOf, roofColorOf, roofLayers, ROOF_STYLES, ROOF_MATERIALS, FACADES, CANOPY_SHAPES, DOOR_STYLES, FRAME_COLORS,
     ROOF_COLORS, WALL_COLORS, ACCENT_COLORS, STYLE_PRESETS, SIGN_MAX, DEFAULT_WALL,
@@ -23,17 +28,30 @@ import { buildStudioItemGroup, isRingCCW, itemBaseY, wallFrameForEdge } from './
 const reduceMotion = () => typeof window !== 'undefined'
     && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+function facingWords(deg) {
+    const dirs = ['North', 'North-east', 'East', 'South-east', 'South', 'South-west', 'West', 'North-west'];
+    return dirs[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
 /** The 3D view: the campus as the 3D views draw it, centred on the building being dressed. Drag to turn, wheel or pinch to zoom. */
 function StudioView({
     building, buildings, pathways, bridges, objects,
     selectedItemIndex = null, placingItem = null, movingItemIndex = null,
     onSelectItem, onPlaceAt, onMoveTo,
+    selectedDoorIndex = null, placingDoorMode = false, movingDoorIndex = null, newDoorWidth = DOOR_WIDTH_M,
+    onSelectDoor, onPlaceDoorAt, onMoveDoorTo,
 }) {
     const hostRef = useRef(null);
     const stateRef = useRef(null);
-    const interactRef = useRef({ placingItem, movingItemIndex, onSelectItem, onPlaceAt, onMoveTo });
-    interactRef.current = { placingItem, movingItemIndex, onSelectItem, onPlaceAt, onMoveTo };
-    const key = JSON.stringify([building.appearance, building.id, buildings.length, objects.length, selectedItemIndex]);
+    const interactRef = useRef({
+        placingItem, movingItemIndex, onSelectItem, onPlaceAt, onMoveTo,
+        placingDoorMode, movingDoorIndex, newDoorWidth, onSelectDoor, onPlaceDoorAt, onMoveDoorTo,
+    });
+    interactRef.current = {
+        placingItem, movingItemIndex, onSelectItem, onPlaceAt, onMoveTo,
+        placingDoorMode, movingDoorIndex, newDoorWidth, onSelectDoor, onPlaceDoorAt, onMoveDoorTo,
+    };
+    const key = JSON.stringify([building.appearance, building.doors, building.id, buildings.length, objects.length, selectedItemIndex, selectedDoorIndex]);
 
     useEffect(() => {
         const host = hostRef.current;
@@ -66,7 +84,8 @@ function StudioView({
             renderer, scene, camera, group, raf: 0, dirty: true, az: 0.6, el: 0.32, dist: 60, fit: 60,
             target: new THREE.Vector3(), pointers: new Map(), pinch: 0, down: null,
             ring: [], ccw: true, height: 3.2, levels: 1, storeyH: 3.2, roofRise: 0, cx: 0, cz: 0,
-            ghost: null, ghostKey: '',
+            originLL: null, polygon: null, doors: [],
+            ghost: null, ghostKey: '', keys: new Set(), lastFrame: performance.now(),
         };
         stateRef.current = s;
         const place = () => {
@@ -83,8 +102,26 @@ function StudioView({
         const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
         ro?.observe(host);
         resize();
-        const loop = () => {
+        const loop = (now = performance.now()) => {
             s.raf = requestAnimationFrame(loop);
+            const dt = Math.min(0.05, Math.max(0.001, (now - s.lastFrame) / 1000));
+            s.lastFrame = now;
+            if (s.keys.size > 0) {
+                const fwd = (s.keys.has('w') ? 1 : 0) - (s.keys.has('s') ? 1 : 0);
+                const strafe = (s.keys.has('d') ? 1 : 0) - (s.keys.has('a') ? 1 : 0);
+                const lift = (s.keys.has('e') ? 1 : 0) - (s.keys.has('q') ? 1 : 0);
+                if (fwd || strafe || lift) {
+                    const speed = (s.keys.has('shift') ? 2.2 : 1) * Math.max(8, s.dist * 0.45) * dt;
+                    const fx = -Math.sin(s.az);
+                    const fz = -Math.cos(s.az);
+                    const rx = Math.cos(s.az);
+                    const rz = -Math.sin(s.az);
+                    s.target.x = Math.max(-200, Math.min(200, s.target.x + (fx * fwd + rx * strafe) * speed));
+                    s.target.z = Math.max(-200, Math.min(200, s.target.z + (fz * fwd + rz * strafe) * speed));
+                    s.target.y = Math.max(0, Math.min(100, s.target.y + lift * speed * 0.65));
+                    s.dirty = true;
+                }
+            }
             if (!s.dirty) return;
             s.dirty = false;
             place();
@@ -118,6 +155,7 @@ function StudioView({
                     edge: 0,
                     t: 0.5,
                     floor: 0,
+                    y_offset: 0,
                     rx: Math.round((hit.point.x - s.cx) * 100) / 100,
                     rz: Math.round((hit.point.z - s.cz) * 100) / 100,
                 };
@@ -131,16 +169,67 @@ function StudioView({
             if (!frame) return null;
             const proj = ((hit.point.x - frame.a.x) * frame.tx + (hit.point.z - frame.a.z) * frame.tz) / frame.len;
             const t = Math.max(0.03, Math.min(0.97, Math.round(proj * 1000) / 1000));
-            const floor = Math.max(0, Math.min(s.levels - 1, Math.floor(Math.max(0, hit.point.y) / s.storeyH)));
-            return { placement: 'wall', edge, t, floor, rx: 0, rz: 0, frame };
+            const hitY = Math.max(0, hit.point.y);
+            const floor = Math.max(0, Math.min(s.levels - 1, Math.floor(hitY / s.storeyH)));
+            const floorGrounded = ['door_glass', 'door_wood', 'door_sliding', 'steps', 'ramp', 'planter', 'kiosk', 'bench', 'pillar_square', 'pillar_round'].includes(spec.type);
+            let y_offset = 0;
+            if (!floorGrounded) {
+                const itemH = itemTemplate.height_m || spec.defaultHeight;
+                const defaultBase = itemBaseY({ ...itemTemplate, floor, y_offset: 0 }, s.storeyH, s.height, s.roofRise);
+                const targetBase = Math.max(0, Math.min(s.height - itemH * 0.25, hitY - itemH / 2));
+                y_offset = Math.round((targetBase - defaultBase) * 100) / 100;
+            }
+            return { placement: 'wall', edge, t, floor, y_offset, rx: 0, rz: 0, frame };
+        };
+
+        const doorSpotAt = (ev) => {
+            if (!s.originLL || !s.polygon) return null;
+            const r = el.getBoundingClientRect();
+            raycaster.setFromCamera(new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera);
+            const walls = [];
+            group.traverse((o) => { if (o.isMesh && o.userData.studioWallEdge !== undefined) walls.push(o); });
+            const hit = raycaster.intersectObjects(walls, false)[0];
+            if (!hit) return null;
+            const p = fromLocalMeters(s.originLL.lat, s.originLL.lng, hit.point.x, -hit.point.z);
+            return { lat: p.latitude, lng: p.longitude };
         };
 
         const showGhost = (ev) => {
-            const { placingItem: pItem } = interactRef.current;
+            const { placingItem: pItem, placingDoorMode: pDoor, movingDoorIndex: mDoor, newDoorWidth: dWidth } = interactRef.current;
+            if (pDoor || mDoor !== null) {
+                const at = doorSpotAt(ev);
+                const activeW = mDoor !== null && s.doors?.[mDoor] ? doorWidth(s.doors[mDoor]) : dWidth;
+                const frame = at && s.polygon ? doorFrames(s.polygon, [{ ...at, width_m: activeW }])[0] : null;
+                if (!frame) { clearGhost(); return; }
+                const blocked = placedDoors(s.polygon, s.doors).some((d, i) => i !== mDoor
+                    && Math.hypot(...toLocalMeters(d.lat, d.lng, frame.center.lat, frame.center.lng)) < (d.width + frame.width) / 2);
+                const gk = `door:${frame.a.lat.toFixed(7)},${frame.a.lng.toFixed(7)},${frame.width},${blocked}`;
+                if (gk === s.ghostKey) return;
+                clearGhost();
+                const [ax, az] = toLocalMeters(frame.a.lat, frame.a.lng, s.originLL.lat, s.originLL.lng);
+                const [bx, bz] = toLocalMeters(frame.b.lat, frame.b.lng, s.originLL.lat, s.originLL.lng);
+                const len = Math.hypot(bx - ax, -(bz - az)) || 1;
+                const rad = (frame.normalDeg * Math.PI) / 180;
+                const nx = Math.sin(rad);
+                const nz = -Math.cos(rad);
+                const cx = (ax + bx) / 2;
+                const cz = (-az - bz) / 2;
+                const ghost = new THREE.Mesh(
+                    new THREE.BoxGeometry(len, DOOR_HEIGHT_M, 0.2),
+                    new THREE.MeshBasicMaterial({ color: blocked ? 0xef4444 : 0x4ade80, transparent: true, opacity: 0.5, depthWrite: false }),
+                );
+                ghost.position.set(cx + nx * 0.08, DOOR_HEIGHT_M / 2, cz + nz * 0.08);
+                ghost.rotation.y = Math.atan2(nx, nz);
+                s.ghost = ghost;
+                s.ghostKey = gk;
+                scene.add(ghost);
+                s.dirty = true;
+                return;
+            }
             if (!pItem) { clearGhost(); return; }
             const spot = hitSpotAt(ev, pItem);
             if (!spot) { clearGhost(); return; }
-            const gk = `${pItem.type}:${spot.edge}:${spot.t}:${spot.floor}:${spot.rx}:${spot.rz}`;
+            const gk = `${pItem.type}:${spot.edge}:${spot.t}:${spot.floor}:${spot.y_offset}:${spot.rx}:${spot.rz}`;
             if (gk === s.ghostKey) return;
             clearGhost();
             const preview = { ...pItem, ...spot };
@@ -160,19 +249,36 @@ function StudioView({
         };
 
         const handleTap = (ev) => {
-            const { placingItem: pItem, movingItemIndex: mIdx, onSelectItem: selectFn, onPlaceAt: placeFn, onMoveTo: moveFn } = interactRef.current;
+            const {
+                placingItem: pItem, movingItemIndex: mIdx, onSelectItem: selectFn, onPlaceAt: placeFn, onMoveTo: moveFn,
+                placingDoorMode: pDoor, movingDoorIndex: mDoor, onSelectDoor: selectDoorFn, onPlaceDoorAt: placeDoorFn, onMoveDoorTo: moveDoorFn,
+            } = interactRef.current;
+            if (pDoor || mDoor !== null) {
+                const at = doorSpotAt(ev);
+                if (at) {
+                    if (mDoor !== null && moveDoorFn) moveDoorFn(mDoor, at.lat, at.lng);
+                    else if (placeDoorFn) placeDoorFn(at.lat, at.lng);
+                    return;
+                }
+            }
             if (pItem) {
                 const spot = hitSpotAt(ev, pItem);
                 if (spot) {
-                    const clean = { edge: spot.edge, t: spot.t, floor: spot.floor, rx: spot.rx, rz: spot.rz };
+                    const clean = { edge: spot.edge, t: spot.t, floor: spot.floor, y_offset: spot.y_offset, rx: spot.rx, rz: spot.rz };
                     if (mIdx !== null && moveFn) moveFn(mIdx, clean);
                     else if (placeFn) placeFn(clean);
                     return;
                 }
             }
-            if (!selectFn) return;
             const r = el.getBoundingClientRect();
             raycaster.setFromCamera(new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera);
+            if (selectDoorFn) {
+                const doorMeshes = [];
+                group.traverse((o) => { if (o.isMesh && o.userData.studioDoorIndex !== undefined) doorMeshes.push(o); });
+                const doorHit = raycaster.intersectObjects(doorMeshes, false)[0];
+                if (doorHit) { selectDoorFn(doorHit.object.userData.studioDoorIndex); return; }
+            }
+            if (!selectFn) return;
             const itemMeshes = [];
             group.traverse((o) => { if (o.isMesh && o.userData.studioItemIndex !== undefined) itemMeshes.push(o); });
             const hit = raycaster.intersectObjects(itemMeshes, false)[0];
@@ -231,10 +337,23 @@ function StudioView({
         el.addEventListener('pointercancel', onUp);
         el.addEventListener('wheel', onWheel, { passive: false });
         el.addEventListener('pointerleave', onLeave);
+        const onKeyDown = (ev) => {
+            const tag = ev.target?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+            const k = ev.key.toLowerCase();
+            if (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q' || k === 'e' || k === 'shift') {
+                s.keys.add(k);
+            }
+        };
+        const onKeyUp = (ev) => { s.keys.delete(ev.key.toLowerCase()); };
+        const onWindowBlur = () => { s.keys.clear(); };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        window.addEventListener('blur', onWindowBlur);
         // A slow half turn on first look, so it reads as 3D.
         let frames = reduceMotion() ? 0 : 90;
         const spin = setInterval(() => {
-            if (frames-- <= 0 || s.pointers.size) { clearInterval(spin); return; }
+            if (frames-- <= 0 || s.pointers.size || s.keys.size) { clearInterval(spin); return; }
             s.az += 0.012;
             s.dirty = true;
         }, 16);
@@ -242,6 +361,9 @@ function StudioView({
             clearInterval(spin);
             cancelAnimationFrame(s.raf);
             ro?.disconnect();
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+            window.removeEventListener('blur', onWindowBlur);
             el.removeEventListener('pointerdown', onDown);
             el.removeEventListener('pointermove', onMove);
             el.removeEventListener('pointerup', onUp);
@@ -272,7 +394,7 @@ function StudioView({
             objects,
             follow: true,
             origin: c,
-            studio: { buildingId: building.id, selectedItemIndex },
+            studio: { buildingId: building.id, selectedItemIndex, selectedDoorIndex },
         });
         const h = buildingHeightM(building);
         const levels = Math.max(1, Number(building.floors) || Math.round(h / 3.2) || 1);
@@ -289,6 +411,9 @@ function StudioView({
         s.roofRise = rise;
         s.cx = ring.reduce((sum, p) => sum + p.x, 0) / Math.max(1, ring.length);
         s.cz = ring.reduce((sum, p) => sum + p.z, 0) / Math.max(1, ring.length);
+        s.originLL = c;
+        s.polygon = building.polygon;
+        s.doors = building.doors || [];
         s.clearGhost?.();
         const reach = Math.max(...building.polygon.map((p) => Math.hypot(...toLocalMeters(+p.lat, +p.lng, c.lat, c.lng))));
         s.target.set(0, h * 0.45, 0);
@@ -300,22 +425,24 @@ function StudioView({
     }, [key]);
 
     useEffect(() => {
-        if (!placingItem) stateRef.current?.clearGhost?.();
-    }, [placingItem]);
+        if (!placingItem && !placingDoorMode && movingDoorIndex === null) stateRef.current?.clearGhost?.();
+    }, [placingItem, placingDoorMode, movingDoorIndex]);
 
     const reset = () => {
         const s = stateRef.current;
         if (!s) return;
-        s.az = 0.6; s.el = 0.32; s.dist = s.fit; s.dirty = true;
+        s.az = 0.6; s.el = 0.32; s.dist = s.fit; s.target.set(0, s.height * 0.45, 0); s.dirty = true;
     };
     return (
         <div className="studio-view">
             <div ref={hostRef} className="studio-host" role="img" aria-label={`3D view of ${building.name} as it will look, among the campus. Drag to turn it.`} />
             <button type="button" className="studio-reset" onClick={reset}>Reset view</button>
             <span className="studio-tip" aria-hidden="true">
-                {placingItem
-                    ? (movingItemIndex !== null ? 'Tap a wall or roof to move · drag to turn' : 'Tap a wall or roof to place · drag to turn')
-                    : 'Tap any placed item to edit · drag to turn · scroll to zoom'}
+                {placingDoorMode || movingDoorIndex !== null
+                    ? (movingDoorIndex !== null ? 'Tap a wall to move door · WASD move · drag to turn' : 'Tap a wall to place a door · WASD move · drag to turn')
+                    : placingItem
+                        ? (movingItemIndex !== null ? 'Tap a wall or roof to move · WASD move · drag to turn' : 'Tap a wall or roof to place · WASD move · drag to turn')
+                        : 'WASD move · Q/E up/down · drag to turn · scroll to zoom'}
             </span>
         </div>
     );
@@ -362,6 +489,108 @@ function Swatches({ id, label, value, onChange, options, none = null, custom = t
     );
 }
 
+/** Floating 3D miniature preview when hovering or focusing an item in the Place items catalog. */
+function ItemHoverPreview({ hovered }) {
+    const hostRef = useRef(null);
+    const threeRef = useRef(null);
+
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host) return undefined;
+        let renderer;
+        try {
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        } catch {
+            return undefined;
+        }
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(140, 108, false);
+        renderer.domElement.style.cssText = 'display:block;width:140px;height:108px;';
+        host.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1c212b);
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7280, 1.3));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+        sun.position.set(4, 7, 8);
+        scene.add(sun);
+
+        const camera = new THREE.PerspectiveCamera(36, 140 / 108, 0.05, 100);
+        const group = new THREE.Group();
+        scene.add(group);
+
+        threeRef.current = { renderer, scene, camera, group };
+        return () => {
+            disposeTree(scene);
+            renderer.dispose();
+            renderer.forceContextLoss?.();
+            if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
+            threeRef.current = null;
+        };
+    }, []);
+
+    useEffect(() => {
+        const t = threeRef.current;
+        if (!t || !hovered?.item) return;
+        disposeTree(t.group);
+        t.group.clear();
+
+        const item = hovered.item;
+        const mesh = buildStudioItemGroup({
+            type: item.type,
+            width_m: item.defaultWidth,
+            height_m: item.defaultHeight,
+            depth_m: item.defaultDepth,
+            color: null,
+            accent: null,
+            awning: Boolean(item.hasAwning),
+            label: item.hasLabel ? 'PREVIEW' : '',
+        });
+        t.group.add(mesh);
+
+        // Subtle backing plate for wall-mounted items so depth & frames read clearly.
+        if (item.placement === 'wall') {
+            const backW = Math.max(1.2, item.defaultWidth * 1.15);
+            const backH = Math.max(1.2, item.defaultHeight * 1.15);
+            const back = new THREE.Mesh(
+                new THREE.PlaneGeometry(backW, backH),
+                new THREE.MeshStandardMaterial({ color: 0x3b4252, roughness: 0.95 }),
+            );
+            back.position.set(0, item.defaultHeight * 0.5, -0.02);
+            t.group.add(back);
+        }
+
+        const box = new THREE.Box3().setFromObject(mesh);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 0.8);
+        const dist = maxDim * 1.85;
+        const az = 0.45;
+        const el = 0.25;
+        t.camera.position.set(
+            center.x + dist * Math.sin(az) * Math.cos(el),
+            center.y + dist * Math.sin(el),
+            center.z + dist * Math.cos(az) * Math.cos(el),
+        );
+        t.camera.lookAt(center);
+        t.renderer.render(t.scene, t.camera);
+    }, [hovered]);
+
+    const visible = Boolean(hovered?.item);
+    const top = visible
+        ? Math.max(12, Math.min((typeof window !== 'undefined' ? window.innerHeight : 700) - 168, hovered.top - 48))
+        : 12;
+    return (
+        <div className="studio-hover-preview" style={{ top, display: visible ? 'flex' : 'none' }} aria-hidden="true">
+            <div ref={hostRef} className="studio-hover-canvas" />
+            <div className="studio-hover-meta">
+                <strong>{hovered?.item?.label || ''}</strong>
+                <span>{hovered?.item ? `${hovered.item.defaultWidth.toFixed(1)} × ${hovered.item.defaultHeight.toFixed(1)} m` : ''}</span>
+            </div>
+        </div>
+    );
+}
+
 /** Numeric stepper for width/height in metres. */
 function SizeStepper({ label, value, min, max, step = 0.2, onChange }) {
     const clamp = (v) => Math.round(Math.min(max, Math.max(min, v)) * 100) / 100;
@@ -377,48 +606,144 @@ function SizeStepper({ label, value, min, max, step = 0.2, onChange }) {
     );
 }
 
-export default function BuildingStudio({ building, buildings = [], pathways = [], bridges = [], objects = [], onSave, onClose }) {
+export default function BuildingStudio({
+    building, buildings = [], pathways = [], bridges = [], objects = [],
+    nodes = [], links = [], canManageDoors = false, onSave, onClose,
+}) {
     const original = appearanceOf(building);
-    const [look, setLook] = useState(original);
+    const originalDoors = (Array.isArray(building.doors) ? building.doors : [])
+        .filter((d) => d && Number.isFinite(+d.lat) && Number.isFinite(+d.lng))
+        .map((d) => ({ lat: +d.lat, lng: +d.lng, width_m: doorWidth(d) }));
+    const [draft, setDraft] = useState({ look: original, doors: originalDoors });
     const [past, setPast] = useState([]);
     const [future, setFuture] = useState([]);
     const [saving, setSaving] = useState(false);
-    const [tab, setTab] = useState('general'); // 'general' | 'items'
+    const [tab, setTab] = useState('general'); // 'general' | 'items' | 'doors'
     const [catFilter, setCatFilter] = useState('all');
     const [placingType, setPlacingType] = useState(null);
     const [selectedItemIndex, setSelectedItemIndex] = useState(null);
     const [movingItemIndex, setMovingItemIndex] = useState(null);
+    const [hoveredCatalog, setHoveredCatalog] = useState(null);
+    // Door management state (for the assigned department account).
+    const [placingDoor, setPlacingDoor] = useState(false);
+    const [movingDoor, setMovingDoor] = useState(null);
+    const [newDoorWidth, setNewDoorWidth] = useState(DOOR_WIDTH_M);
+    const [doorNote, setDoorNote] = useState(null);
+
+    const look = draft.look;
+    const doors = draft.doors;
     // The 3D view follows a step behind while a colour is being dragged, so the panel stays quick.
     const shown = useDeferredValue(look);
-    const dirty = JSON.stringify(look) !== JSON.stringify(original);
+    const dirty = JSON.stringify(draft) !== JSON.stringify({ look: original, doors: originalDoors });
 
-    const change = (next) => {
-        setPast((p) => [...p.slice(-49), look]);
+    const commit = (nextDraft) => {
+        setPast((p) => [...p.slice(-49), draft]);
         setFuture([]);
-        setLook(next);
+        setDraft(nextDraft);
+    };
+    const change = (nextLook) => commit({ look: nextLook, doors });
+    const setDoors = (nextDoorsOrFn) => {
+        const nextDoors = typeof nextDoorsOrFn === 'function' ? nextDoorsOrFn(doors) : nextDoorsOrFn;
+        commit({ look, doors: nextDoors });
     };
     const patch = (section, values) => change({ ...look, [section]: { ...look[section], ...values } });
     const undo = () => {
         if (!past.length) return;
-        setFuture((f) => [look, ...f]);
-        setLook(past[past.length - 1]);
+        setFuture((f) => [draft, ...f]);
+        setDraft(past[past.length - 1]);
         setPast((p) => p.slice(0, -1));
     };
     const redo = () => {
         if (!future.length) return;
-        setPast((p) => [...p, look]);
-        setLook(future[0]);
+        setPast((p) => [...p, draft]);
+        setDraft(future[0]);
         setFuture((f) => f.slice(1));
     };
     const close = async () => {
         if (dirty && !(await confirmAction({
-            title: 'Leave without saving?', message: 'Your changes to how the building looks are not saved yet.', confirmLabel: 'Leave', tone: 'danger',
+            title: 'Leave without saving?', message: 'Your changes to the building are not saved yet.', confirmLabel: 'Leave', tone: 'danger',
         }))) return;
         onClose();
     };
     const save = async () => {
         setSaving(true);
-        try { await onSave(look); } finally { setSaving(false); }
+        try { await onSave(look, doors); } finally { setSaving(false); }
+    };
+
+    const points = Array.isArray(building.polygon) ? building.polygon : [];
+    const frames = points.length >= 3 ? doorFrames(points, doors) : [];
+
+    const addDoorAt = (lat, lng) => {
+        const s = snapToOutline(points, lat, lng);
+        if (!s || s.distM > DOOR_SNAP_M) { setDoorNote('Tap on or right next to the building wall.'); return; }
+        const placed = placedDoors(points, doors);
+        if (placed.length >= MAX_DOORS) { setDoorNote(`A building can have up to ${MAX_DOORS} doors.`); return; }
+        const crowded = placed.some((d) => Math.hypot(...toLocalMeters(d.lat, d.lng, s.lat, s.lng)) < (d.width + newDoorWidth) / 2);
+        if (crowded) { setDoorNote('There is a door there already.'); return; }
+        setDoorNote(null);
+        setDoors((prev) => [...prev, { lat: s.lat, lng: s.lng, width_m: newDoorWidth }]);
+    };
+    const setDoorWidthAt = (k, width) => setDoors((prev) => prev.map((p, i) => (i === k ? { ...p, width_m: width } : p)));
+    const fitsDoor = (k, s, width) => !placedDoors(points, doors).some((d, i) => i !== k
+        && Math.hypot(...toLocalMeters(d.lat, d.lng, s.lat, s.lng)) < (d.width + width) / 2);
+    const moveDoorTo = (k, lat, lng) => {
+        const s = snapToOutline(points, lat, lng);
+        if (!s || s.distM > DOOR_SNAP_M) { setDoorNote('Tap on or right next to the building wall.'); return false; }
+        if (!fitsDoor(k, s, doorWidth(doors[k]))) { setDoorNote('That spot overlaps another door.'); return false; }
+        setDoorNote(null);
+        setDoors((prev) => prev.map((p, i) => (i === k ? { ...p, lat: s.lat, lng: s.lng } : p)));
+        setMovingDoor(null);
+        return true;
+    };
+    const slideDoor = (k, metres) => {
+        const f = frames[k];
+        if (!f) return;
+        const [ae, an] = toLocalMeters(f.a.lat, f.a.lng, f.center.lat, f.center.lng);
+        const [be, bn] = toLocalMeters(f.b.lat, f.b.lng, f.center.lat, f.center.lng);
+        const len = Math.hypot(be - ae, bn - an) || 1;
+        const p = fromLocalMeters(f.center.lat, f.center.lng, ((be - ae) / len) * metres, ((bn - an) / len) * metres);
+        moveDoorTo(k, p.latitude, p.longitude);
+    };
+    const toggleDoorMove = (k) => {
+        setPlacingDoor(false);
+        setPlacingType(null);
+        setMovingItemIndex(null);
+        setDoorNote(null);
+        setMovingDoor((m) => (m === k ? null : k));
+    };
+    const findEntrances = () => {
+        const borders = buildings.filter((b) => b.id !== building.id && Array.isArray(b.polygon) && b.polygon.length >= 3);
+        const found = suggestEntrances(points, nodes, { floor: 0, links, walls: borders });
+        const placed = placedDoors(points, doors);
+        const add = [];
+        for (const s of found) {
+            const taken = [...placed, ...add.map((a) => ({ ...a, width: newDoorWidth }))]
+                .some((d) => Math.hypot(...toLocalMeters(d.lat, d.lng, s.lat, s.lng)) < (d.width + newDoorWidth) / 2);
+            if (!taken && placed.length + add.length < MAX_DOORS) add.push(s);
+        }
+        setPlacingDoor(false);
+        setMovingDoor(null);
+        if (add.length) {
+            setDoors((prev) => [...prev, ...add.map((s) => ({ lat: s.lat, lng: s.lng, width_m: newDoorWidth }))]);
+            setDoorNote(`Added ${add.length} ${add.length === 1 ? 'door' : 'doors'} where paths come in. Check them, then Save.`);
+        } else {
+            setDoorNote(found.length
+                ? 'Every path that comes in already has a door.'
+                : 'No path crosses the outline yet. Lay route nodes up to the building first, or add doors by hand.');
+        }
+    };
+    const removeDoor = (k) => {
+        setDoors((prev) => prev.filter((_, i) => i !== k));
+        setDoorNote(null);
+        setMovingDoor(null);
+    };
+    const selectDoorFrom3D = (idx) => {
+        if (!canManageDoors) return;
+        setTab('doors');
+        setPlacingType(null);
+        setMovingItemIndex(null);
+        setSelectedItemIndex(null);
+        toggleDoorMove(idx);
     };
 
     const items = look.items || [];
@@ -455,6 +780,7 @@ export default function BuildingStudio({ building, buildings = [], pathways = []
             edge: spot.edge,
             t: spot.t,
             floor: spot.floor,
+            y_offset: spot.y_offset || 0,
             rx: spot.rx,
             rz: spot.rz,
             width_m: spec.defaultWidth,
@@ -471,7 +797,7 @@ export default function BuildingStudio({ building, buildings = [], pathways = []
     };
 
     const moveItemTo = (idx, spot) => {
-        updateItem(idx, { edge: spot.edge, t: spot.t, floor: spot.floor, rx: spot.rx, rz: spot.rz });
+        updateItem(idx, { edge: spot.edge, t: spot.t, floor: spot.floor, y_offset: spot.y_offset || 0, rx: spot.rx, rz: spot.rz });
         setMovingItemIndex(null);
     };
 
@@ -534,13 +860,13 @@ export default function BuildingStudio({ building, buildings = [], pathways = []
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    const hasDoors = Array.isArray(building.doors) && building.doors.length > 0;
+    const hasDoors = doors.length > 0;
     const filteredCatalog = catFilter === 'all' ? ITEM_CATALOG : ITEM_CATALOG.filter((it) => it.category === catFilter);
 
     return (
         <div className="studio" role="dialog" aria-modal="true" aria-labelledby="studio-title">
             <StudioView
-                building={{ ...building, appearance: shown }}
+                building={{ ...building, appearance: shown, doors }}
                 buildings={buildings}
                 pathways={pathways}
                 bridges={bridges}
@@ -551,7 +877,15 @@ export default function BuildingStudio({ building, buildings = [], pathways = []
                 onSelectItem={selectItemFrom3D}
                 onPlaceAt={placeItemAt}
                 onMoveTo={moveItemTo}
+                selectedDoorIndex={movingDoor}
+                placingDoorMode={canManageDoors && placingDoor}
+                movingDoorIndex={canManageDoors ? movingDoor : null}
+                newDoorWidth={newDoorWidth}
+                onSelectDoor={selectDoorFrom3D}
+                onPlaceDoorAt={addDoorAt}
+                onMoveDoorTo={moveDoorTo}
             />
+            <ItemHoverPreview hovered={tab === 'items' ? hoveredCatalog : null} />
             <aside className="studio-panel">
                 <header className="studio-head">
                     <div>
@@ -560,22 +894,111 @@ export default function BuildingStudio({ building, buildings = [], pathways = []
                     </div>
                     <button type="button" className="studio-x" onClick={close} aria-label="Close the Building Studio">×</button>
                 </header>
-                <div className="studio-tabs" role="tablist" aria-label="Studio editing mode">
+                <div className={`studio-tabs${canManageDoors ? ' has-3' : ''}`} role="tablist" aria-label="Studio editing mode">
                     <button
                         type="button" role="tab" aria-selected={tab === 'general'}
-                        onClick={() => { setTab('general'); setPlacingType(null); setMovingItemIndex(null); }}
+                        onClick={() => { setTab('general'); setPlacingType(null); setMovingItemIndex(null); setPlacingDoor(false); setMovingDoor(null); }}
                     >
                         General style
                     </button>
                     <button
                         type="button" role="tab" aria-selected={tab === 'items'}
-                        onClick={() => setTab('items')}
+                        onClick={() => { setTab('items'); setPlacingDoor(false); setMovingDoor(null); }}
                     >
                         Place items{items.length ? ` (${items.length})` : ''}
                     </button>
+                    {canManageDoors && (
+                        <button
+                            type="button" role="tab" aria-selected={tab === 'doors'}
+                            onClick={() => { setTab('doors'); setPlacingType(null); setMovingItemIndex(null); setSelectedItemIndex(null); }}
+                        >
+                            Doors{doors.length ? ` (${doors.length})` : ''}
+                        </button>
+                    )}
                 </div>
                 <div className="studio-body">
-                    {tab === 'general' ? (
+                    {tab === 'doors' && canManageDoors ? (
+                        <>
+                            <section aria-labelledby="studio-manage-doors">
+                                <h3 id="studio-manage-doors">Manage doors</h3>
+                                <SizeStepper
+                                    label="New door width"
+                                    value={newDoorWidth}
+                                    min={MIN_DOOR_WIDTH_M}
+                                    max={MAX_DOOR_WIDTH_M}
+                                    onChange={setNewDoorWidth}
+                                />
+                                <div className="studio-item-actions">
+                                    <button
+                                        type="button"
+                                        className={`ui-btn ui-btn-sm ${placingDoor ? 'ui-btn-primary' : 'ui-btn-secondary'}`}
+                                        aria-pressed={placingDoor}
+                                        onClick={() => { setMovingDoor(null); setPlacingDoor((v) => !v); setDoorNote(null); }}
+                                    >
+                                        {placingDoor ? 'Done adding doors' : 'Add door'}
+                                    </button>
+                                    <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={findEntrances}>
+                                        Find entrances
+                                    </button>
+                                </div>
+                                <p className="ui-hint" style={{ margin: 0 }} role="status">
+                                    {doorNote || (movingDoor !== null
+                                        ? `Moving Door ${movingDoor + 1}: tap a wall in the 3D view, or slide it below.`
+                                        : placingDoor
+                                            ? 'Tap any ground-floor wall in the 3D view to add a door.'
+                                            : 'Tap a door in 3D, or press Move, to reposition it. Find entrances adds doors where paths meet the building.')}
+                                </p>
+                            </section>
+                            <section aria-labelledby="studio-door-list">
+                                <h3 id="studio-door-list">Doors ({frames.length}/{MAX_DOORS})</h3>
+                                {frames.length === 0 ? (
+                                    <p className="ui-hint" style={{ margin: 0 }}>
+                                        No doors yet. Routes can enter this building from any side until you add one.
+                                    </p>
+                                ) : (
+                                    <ul className="studio-placed">
+                                        {frames.map((d, k) => (
+                                            <li key={`${d.center.lat}-${d.center.lng}-${k}`} className={movingDoor === k ? 'is-selected' : ''} style={{ flexDirection: 'column', alignItems: 'stretch', padding: 8, gap: 6 }}>
+                                                <div className="studio-item-head">
+                                                    <div>
+                                                        <strong style={{ fontSize: 13, color: '#fff' }}>Door {k + 1}{k === 0 ? ' (Main)' : ''}</strong>
+                                                        <div className="studio-item-meta">Faces {facingWords(d.normalDeg)}</div>
+                                                    </div>
+                                                    <div className="studio-item-actions">
+                                                        <button
+                                                            type="button"
+                                                            className={`studio-mini-btn${movingDoor === k ? ' is-on' : ''}`}
+                                                            onClick={() => toggleDoorMove(k)}
+                                                        >
+                                                            {movingDoor === k ? 'Done' : 'Move'}
+                                                        </button>
+                                                        <button type="button" className="studio-mini-btn is-danger" onClick={() => removeDoor(k)}>Remove</button>
+                                                    </div>
+                                                </div>
+                                                <SizeStepper
+                                                    label="Width"
+                                                    value={doorWidth(doors[k])}
+                                                    min={MIN_DOOR_WIDTH_M}
+                                                    max={MAX_DOOR_WIDTH_M}
+                                                    onChange={(w) => setDoorWidthAt(k, w)}
+                                                />
+                                                {movingDoor === k && (
+                                                    <div className="studio-stepper-row">
+                                                        <span className="studio-stepper-label">Slide along wall</span>
+                                                        <div className="studio-stepper">
+                                                            <button type="button" onClick={() => slideDoor(k, -0.25)} aria-label="Slide back 25 centimetres">‹</button>
+                                                            <span>0.25 m</span>
+                                                            <button type="button" onClick={() => slideDoor(k, 0.25)} aria-label="Slide forward 25 centimetres">›</button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </section>
+                        </>
+                    ) : tab === 'general' ? (
                         <>
                             <section aria-labelledby="studio-styles">
                                 <h3 id="studio-styles">Styles</h3>
@@ -719,6 +1142,26 @@ export default function BuildingStudio({ building, buildings = [], pathways = []
                                                     <button type="button" onClick={() => slideItem(activeSelectedIndex, 0.25)} aria-label="Slide right 25 centimetres">›</button>
                                                 </div>
                                             </div>
+                                            <div className="studio-stepper-row">
+                                                <span className="studio-stepper-label">Vertical height</span>
+                                                <div className="studio-stepper">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateItem(activeSelectedIndex, { y_offset: Math.round(Math.max(-10, (selectedItem.y_offset || 0) - 0.2) * 100) / 100 })}
+                                                        aria-label="Move down 20 centimetres"
+                                                    >
+                                                        ↓
+                                                    </button>
+                                                    <span>{(selectedItem.y_offset || 0) >= 0 ? '+' : ''}{(selectedItem.y_offset || 0).toFixed(1)} m</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateItem(activeSelectedIndex, { y_offset: Math.round(Math.min(50, (selectedItem.y_offset || 0) + 0.2) * 100) / 100 })}
+                                                        aria-label="Move up 20 centimetres"
+                                                    >
+                                                        ↑
+                                                    </button>
+                                                </div>
+                                            </div>
                                             {maxFloor > 0 && (
                                                 <div className="studio-stepper-row">
                                                     <span className="studio-stepper-label">Floor</span>
@@ -781,15 +1224,19 @@ export default function BuildingStudio({ building, buildings = [], pathways = []
                                         </button>
                                     ))}
                                 </div>
-                                <div className="studio-catalog-grid">
+                                <div className="studio-catalog-grid" onMouseLeave={() => setHoveredCatalog(null)}>
                                     {filteredCatalog.map((item) => {
                                         const active = placingType === item.type;
+                                        const showPreview = (e) => setHoveredCatalog({ item, top: e.currentTarget.getBoundingClientRect().top });
                                         return (
                                             <button
                                                 key={item.type} type="button"
                                                 className={`studio-catalog-btn${active ? ' is-active' : ''}`}
                                                 aria-pressed={active}
                                                 disabled={items.length >= MAX_ITEMS && !active}
+                                                onMouseEnter={showPreview}
+                                                onFocus={showPreview}
+                                                onBlur={() => setHoveredCatalog((prev) => (prev?.item?.type === item.type ? null : prev))}
                                                 onClick={() => {
                                                     setMovingItemIndex(null);
                                                     setPlacingType(active ? null : item.type);
@@ -897,6 +1344,7 @@ export const STUDIO_CSS = `
     .studio-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 18px; border-top: 1px solid ${C.hairline}; flex-wrap: wrap; }
     .studio-history, .studio-actions { display: flex; gap: 8px; }
     .studio-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px 18px; border-bottom: 1px solid ${C.hairline}; }
+    .studio-tabs.has-3 { grid-template-columns: repeat(3, 1fr); }
     .studio-tabs button { min-height: 36px; border-radius: 8px; border: 1px solid ${C.border}; background: ${C.surface}; color: ${C.muted}; font-size: 13px; font-weight: 600; cursor: pointer; }
     .studio-tabs button[aria-selected="true"] { border-color: ${C.accent}; background: ${C.surfaceHover}; color: #fff; }
     .studio-catalog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -927,9 +1375,16 @@ export const STUDIO_CSS = `
     .studio-placed-pick { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 0; background: transparent; color: #fff; text-align: left; cursor: pointer; padding: 4px; }
     .studio-placed-pick span { font-size: 13px; font-weight: 600; }
     .studio-placed-pick small { font-size: 11px; color: ${C.muted}; }
+    .studio-hover-preview { position: fixed; right: 392px; z-index: 4010; width: 156px; padding: 8px; border-radius: ${RADIUS}px;
+        background: ${C.bar}; border: 1px solid ${C.border}; box-shadow: 0 10px 28px rgba(0,0,0,0.45); pointer-events: none; display: flex; flex-direction: column; gap: 6px; }
+    .studio-hover-canvas { width: 140px; height: 108px; border-radius: 6px; overflow: hidden; background: #1c212b; }
+    .studio-hover-meta { display: flex; flex-direction: column; gap: 1px; }
+    .studio-hover-meta strong { font-size: 12px; color: #fff; line-height: 1.2; }
+    .studio-hover-meta span { font-size: 11px; color: ${C.muted}; }
     @media (pointer: coarse) { .studio-swatch { width: 40px; height: 40px; } .studio-reset { min-height: 44px; } }
     @media (max-width: 820px) {
         .studio { grid-template-columns: 1fr; grid-template-rows: 42vh minmax(0, 1fr); }
         .studio-panel { border-left: 0; border-top: 1px solid ${C.hairline}; }
+        .studio-hover-preview { display: none; }
     }
 `;

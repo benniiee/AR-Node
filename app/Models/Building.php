@@ -28,17 +28,19 @@ class Building extends Model
 
     public const ROOF_MATERIALS = ['metal', 'tile', 'shingle', 'concrete'];
 
-    public const FACADES = ['windows', 'arches', 'pillars', 'balcony', 'glass', 'louvres'];
+    public const FACADES = ['none', 'windows', 'arches', 'pillars', 'balcony', 'glass', 'louvres'];
 
     public const CANOPY_SHAPES = ['slab', 'curved'];
 
-    public const DOOR_STYLES = ['glass', 'wood', 'sliding'];
+    public const DOOR_STYLES = ['glass', 'wood', 'sliding', 'double_wood', 'arched', 'steel', 'roll_up'];
 
     /** Individually placed Building Studio items (mirrors ITEM_TYPES in src/buildingAppearance.js). */
     public const ITEM_TYPES = [
-        'window_standard', 'window_grille', 'window_awning', 'window_arch',
+        'window_standard', 'window_tall', 'window_ribbon', 'window_grille', 'window_diamond',
+        'window_jalousie', 'window_clerestory', 'window_grid', 'window_awning', 'window_arch',
         'pillar_square', 'pillar_round', 'spandrel_ribbed', 'louvre_screen', 'balcony_parapet',
-        'door_glass', 'door_wood', 'door_sliding', 'canopy_slab', 'canopy_curved', 'steps', 'ramp',
+        'door_glass', 'door_wood', 'door_sliding', 'door_double_wood', 'door_arched', 'door_steel', 'door_roll_up',
+        'canopy_slab', 'canopy_curved', 'steps', 'ramp',
         'sign_board', 'banner',
         'ac_unit', 'planter', 'bunting', 'kiosk', 'bench', 'lamp', 'water_tank',
     ];

@@ -19,6 +19,7 @@ export const ROOF_MATERIALS = [
 ];
 
 export const FACADES = [
+    { value: 'none', label: 'None' },
     { value: 'windows', label: 'Windows' },
     { value: 'arches', label: 'Arches' },
     { value: 'pillars', label: 'Pillars' },
@@ -38,6 +39,10 @@ export const DOOR_STYLES = [
     { value: 'glass', label: 'Glass doors' },
     { value: 'wood', label: 'Wooden doors' },
     { value: 'sliding', label: 'Sliding glass' },
+    { value: 'double_wood', label: 'Double wood' },
+    { value: 'arched', label: 'Arched door' },
+    { value: 'steel', label: 'Steel security' },
+    { value: 'roll_up', label: 'Roll-up shutter' },
 ];
 
 /** Colours a window frame / door leaf may be given; any colour is allowed too. */
@@ -97,7 +102,13 @@ export const ITEM_CATEGORIES = [
 export const ITEM_CATALOG = [
     // Windows
     { type: 'window_standard', label: 'Framed window', category: 'windows', placement: 'wall', defaultWidth: 1.6, defaultHeight: 1.5, defaultDepth: 0.16, minWidth: 0.6, maxWidth: 8, minHeight: 0.5, maxHeight: 4, hasAwning: true, defaultColor: '#1f2937', defaultAccent: '#2f6fb3' },
+    { type: 'window_tall', label: 'Tall casement', category: 'windows', placement: 'wall', defaultWidth: 1.1, defaultHeight: 2.1, defaultDepth: 0.16, minWidth: 0.6, maxWidth: 4, minHeight: 1.0, maxHeight: 4.5, hasAwning: true, defaultColor: '#1f2937', defaultAccent: '#2f6fb3' },
+    { type: 'window_ribbon', label: 'Ribbon window', category: 'windows', placement: 'wall', defaultWidth: 3.8, defaultHeight: 1.1, defaultDepth: 0.16, minWidth: 1.5, maxWidth: 12, minHeight: 0.5, maxHeight: 3, hasAwning: true, defaultColor: '#1f2937', defaultAccent: '#d6d2c8' },
     { type: 'window_grille', label: 'Grille window', category: 'windows', placement: 'wall', defaultWidth: 2.8, defaultHeight: 1.3, defaultDepth: 0.14, minWidth: 0.8, maxWidth: 10, minHeight: 0.6, maxHeight: 3.5, hasAwning: true, defaultColor: '#1f2937', defaultAccent: '#d6d2c8' },
+    { type: 'window_diamond', label: 'Diamond grille', category: 'windows', placement: 'wall', defaultWidth: 3.2, defaultHeight: 1.3, defaultDepth: 0.14, minWidth: 1.0, maxWidth: 12, minHeight: 0.6, maxHeight: 3.5, hasAwning: true, defaultColor: '#1f2937', defaultAccent: '#d6d2c8' },
+    { type: 'window_jalousie', label: 'Jalousie slats', category: 'windows', placement: 'wall', defaultWidth: 1.8, defaultHeight: 1.4, defaultDepth: 0.16, minWidth: 0.8, maxWidth: 6, minHeight: 0.6, maxHeight: 3.5, hasAwning: true, defaultColor: '#374151', defaultAccent: '#d6d2c8' },
+    { type: 'window_clerestory', label: 'Tilted vent', category: 'windows', placement: 'wall', defaultWidth: 2.6, defaultHeight: 0.65, defaultDepth: 0.16, minWidth: 0.8, maxWidth: 8, minHeight: 0.4, maxHeight: 1.6, hasAwning: false, defaultColor: '#31424f', defaultAccent: '#1f2937' },
+    { type: 'window_grid', label: 'Grid pane', category: 'windows', placement: 'wall', defaultWidth: 2.0, defaultHeight: 1.2, defaultDepth: 0.14, minWidth: 0.8, maxWidth: 6, minHeight: 0.6, maxHeight: 3, hasAwning: false, defaultColor: '#2b2420', defaultAccent: '#4a321f' },
     { type: 'window_awning', label: 'Louver vent', category: 'windows', placement: 'wall', defaultWidth: 2.2, defaultHeight: 0.7, defaultDepth: 0.14, minWidth: 0.6, maxWidth: 6, minHeight: 0.4, maxHeight: 2, hasAwning: false, defaultColor: '#1f2937', defaultAccent: '#1f2937' },
     { type: 'window_arch', label: 'Arch opening', category: 'windows', placement: 'wall', defaultWidth: 3.2, defaultHeight: 2.4, defaultDepth: 0.25, minWidth: 1.2, maxWidth: 8, minHeight: 1.2, maxHeight: 5, hasAwning: false, defaultColor: '#1f2937', defaultAccent: '#ecdfb8' },
     // Pillars & structure
@@ -110,6 +121,10 @@ export const ITEM_CATALOG = [
     { type: 'door_glass', label: 'Glass door', category: 'doors', placement: 'wall', defaultWidth: 2.0, defaultHeight: 2.2, defaultDepth: 0.16, minWidth: 0.8, maxWidth: 6, minHeight: 1.8, maxHeight: 3.5, defaultColor: '#22303c', defaultAccent: '#1f2937' },
     { type: 'door_wood', label: 'Wood door', category: 'doors', placement: 'wall', defaultWidth: 1.2, defaultHeight: 2.2, defaultDepth: 0.14, minWidth: 0.7, maxWidth: 4, minHeight: 1.8, maxHeight: 3.2, defaultColor: '#6b4a2f', defaultAccent: '#4a321f' },
     { type: 'door_sliding', label: 'Sliding glass', category: 'doors', placement: 'wall', defaultWidth: 2.6, defaultHeight: 2.2, defaultDepth: 0.16, minWidth: 1.2, maxWidth: 6, minHeight: 1.8, maxHeight: 3.5, defaultColor: '#26404f', defaultAccent: '#c9ccd1' },
+    { type: 'door_double_wood', label: 'Double wood', category: 'doors', placement: 'wall', defaultWidth: 2.0, defaultHeight: 2.2, defaultDepth: 0.16, minWidth: 1.2, maxWidth: 5, minHeight: 1.8, maxHeight: 3.5, defaultColor: '#6b4a2f', defaultAccent: '#3d2817' },
+    { type: 'door_arched', label: 'Arched door', category: 'doors', placement: 'wall', defaultWidth: 2.0, defaultHeight: 2.5, defaultDepth: 0.18, minWidth: 1.0, maxWidth: 5, minHeight: 2.0, maxHeight: 4.0, defaultColor: '#22303c', defaultAccent: '#ecdfb8' },
+    { type: 'door_steel', label: 'Steel door', category: 'doors', placement: 'wall', defaultWidth: 1.2, defaultHeight: 2.2, defaultDepth: 0.16, minWidth: 0.8, maxWidth: 4, minHeight: 1.8, maxHeight: 3.2, defaultColor: '#6f757c', defaultAccent: '#1f2937' },
+    { type: 'door_roll_up', label: 'Roll-up shutter', category: 'doors', placement: 'wall', defaultWidth: 3.0, defaultHeight: 2.5, defaultDepth: 0.22, minWidth: 1.4, maxWidth: 8, minHeight: 1.8, maxHeight: 4.5, defaultColor: '#9aa3a8', defaultAccent: '#4b5563' },
     { type: 'canopy_slab', label: 'Slab canopy', category: 'doors', placement: 'wall', defaultWidth: 3.6, defaultHeight: 0.22, defaultDepth: 1.8, minWidth: 1.2, maxWidth: 14, minHeight: 0.12, maxHeight: 0.8, defaultColor: '#7a2430', defaultAccent: '#4a1820' },
     { type: 'canopy_curved', label: 'Curved canopy', category: 'doors', placement: 'wall', defaultWidth: 3.6, defaultHeight: 0.45, defaultDepth: 1.8, minWidth: 1.2, maxWidth: 14, minHeight: 0.2, maxHeight: 1.2, defaultColor: '#7a2430', defaultAccent: '#4a1820' },
     { type: 'steps', label: 'Entrance steps', category: 'doors', placement: 'wall', defaultWidth: 3.2, defaultHeight: 0.45, defaultDepth: 1.2, minWidth: 1.2, maxWidth: 12, minHeight: 0.2, maxHeight: 1.5, defaultColor: '#c9c6bf', defaultAccent: null },
@@ -166,6 +181,7 @@ export function normalizeItem(raw, index = 0) {
         edge: Math.max(0, Math.floor(Number(raw.edge) || 0)),
         t: clamp(raw.t, 0, 1, 0.5),
         floor: Math.max(0, Math.min(49, Math.floor(Number(raw.floor) || 0))),
+        y_offset: Math.round(clamp(raw.y_offset, -10, 50, 0) * 100) / 100,
         rx: Number.isFinite(Number(raw.rx)) ? Math.round(Number(raw.rx) * 100) / 100 : 0,
         rz: Number.isFinite(Number(raw.rz)) ? Math.round(Number(raw.rz) * 100) / 100 : 0,
         width_m: Math.round(clamp(raw.width_m, spec.minWidth, spec.maxWidth, spec.defaultWidth) * 100) / 100,

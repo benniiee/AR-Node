@@ -54,34 +54,59 @@ export function itemBaseY(item, storeyH, wallHeight, roofRise = 0) {
         return wallHeight + roofRise;
     }
     const floorBase = (item.floor || 0) * storeyH;
+    const offset = Number(item.y_offset) || 0;
+    let base = floorBase;
     switch (item.type) {
         case 'window_standard':
+        case 'window_tall':
+        case 'window_ribbon':
         case 'window_grille':
-            return floorBase + Math.max(0.55, storeyH * 0.28);
+        case 'window_diamond':
+        case 'window_jalousie':
+        case 'window_clerestory':
+        case 'window_grid':
+            base = floorBase + (item.type === 'window_clerestory'
+                ? Math.max(1.2, storeyH * 0.58)
+                : item.type === 'window_tall'
+                    ? Math.max(0.35, storeyH * 0.18)
+                    : Math.max(0.55, storeyH * 0.28));
+            break;
         case 'window_awning':
-            return floorBase + Math.max(1.2, storeyH * 0.56);
+            base = floorBase + Math.max(1.2, storeyH * 0.56);
+            break;
         case 'window_arch':
-            return floorBase + Math.max(0.15, storeyH * 0.08);
+            base = floorBase + Math.max(0.15, storeyH * 0.08);
+            break;
         case 'spandrel_ribbed':
-            return floorBase + Math.max(0, storeyH - item.height_m * 0.95);
+            base = floorBase + Math.max(0, storeyH - item.height_m * 0.95);
+            break;
         case 'balcony_parapet':
-            return floorBase;
+            base = floorBase;
+            break;
         case 'canopy_slab':
         case 'canopy_curved':
-            return floorBase + Math.min(2.65, storeyH * 0.78);
+            base = floorBase + Math.min(2.65, storeyH * 0.78);
+            break;
         case 'sign_board':
-            return floorBase + Math.min(2.9, storeyH * 0.85);
+            base = floorBase + Math.min(2.9, storeyH * 0.85);
+            break;
         case 'banner':
-            return floorBase + Math.max(1.2, storeyH * 0.52);
+            base = floorBase + Math.max(1.2, storeyH * 0.52);
+            break;
         case 'ac_unit':
-            return floorBase + Math.max(1.6, storeyH * 0.62);
+            base = floorBase + Math.max(1.6, storeyH * 0.62);
+            break;
         case 'bunting':
-            return floorBase + Math.min(3.1, storeyH * 0.88);
+            base = floorBase + Math.min(3.1, storeyH * 0.88);
+            break;
         case 'lamp':
-            return floorBase + Math.min(2.4, storeyH * 0.72);
+            base = floorBase + Math.min(2.4, storeyH * 0.72);
+            break;
         default:
-            return floorBase;
+            base = floorBase;
+            break;
     }
+    return Math.max(0, base + offset);
 }
 
 function makeItemSignTexture(text, bg, fg) {
@@ -169,6 +194,117 @@ export function buildStudioItemGroup(item, { ghost = false, blocked = false, sel
             if (item.awning) {
                 addBox(w + 0.24, 0.1, 0.48, concreteMat, 0, h + 0.06, 0.24);
             }
+            break;
+        }
+        case 'window_tall': {
+            addBox(w, h, 0.06, glassMat, 0, h / 2, 0.04);
+            const t = 0.075;
+            addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
+            addBox(w, t, d, frameMat, 0, t / 2, d / 2);
+            addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
+            addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
+            addBox(w, t * 0.75, d * 0.9, frameMat, 0, h * 0.62, d / 2);
+            addBox(w, t * 0.65, d * 0.85, frameMat, 0, h * 0.3, d / 2);
+            if (item.awning) {
+                addBox(w + 0.26, 0.11, 0.52, concreteMat, 0, h + 0.06, 0.26);
+            }
+            break;
+        }
+        case 'window_ribbon': {
+            addBox(w, h, 0.06, glassMat, 0, h / 2, 0.04);
+            const t = 0.07;
+            addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
+            addBox(w, t, d, frameMat, 0, t / 2, d / 2);
+            addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
+            addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
+            const panes = Math.max(3, Math.round(w / 0.95));
+            for (let i = 1; i < panes; i += 1) {
+                addBox(0.055, h, d * 0.9, frameMat, -w / 2 + (i / panes) * w, h / 2, d / 2);
+            }
+            if (item.awning) {
+                addBox(w + 0.24, 0.1, 0.48, concreteMat, 0, h + 0.06, 0.24);
+            }
+            break;
+        }
+        case 'window_diamond': {
+            addBox(w, h, 0.05, glassMat, 0, h / 2, 0.04);
+            const t = 0.08;
+            addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
+            addBox(w, t, d, frameMat, 0, t / 2, d / 2);
+            addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
+            addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
+            // Criss-cross diamond lattice bars.
+            const cols = Math.max(4, Math.round(w / 0.45));
+            const diagLen = Math.hypot(w / cols, h - t) * 1.15;
+            const angle = Math.atan2(h - t, w / cols);
+            for (let i = 0; i < cols; i += 1) {
+                const cx = -w / 2 + ((i + 0.5) / cols) * w;
+                const d1 = new THREE.Mesh(new THREE.BoxGeometry(diagLen, 0.025, 0.025), steelMat);
+                d1.position.set(cx, h / 2, d * 0.8);
+                d1.rotation.z = angle;
+                g.add(d1);
+                const d2 = new THREE.Mesh(new THREE.BoxGeometry(diagLen, 0.025, 0.025), steelMat);
+                d2.position.set(cx, h / 2, d * 0.8);
+                d2.rotation.z = -angle;
+                g.add(d2);
+            }
+            if (item.awning) {
+                addBox(w + 0.24, 0.1, 0.48, concreteMat, 0, h + 0.06, 0.24);
+            }
+            break;
+        }
+        case 'window_jalousie': {
+            addBox(w, h, 0.05, glassMat, 0, h / 2, 0.04);
+            const t = 0.07;
+            addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
+            addBox(w, t, d, frameMat, 0, t / 2, d / 2);
+            addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
+            addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
+            const blades = Math.max(4, Math.round(h / 0.16));
+            for (let j = 1; j < blades; j += 1) {
+                const blade = new THREE.Mesh(new THREE.BoxGeometry(w - t * 1.6, 0.09, 0.025), steelMat);
+                blade.position.set(0, (j / blades) * h, d * 0.65);
+                blade.rotation.x = 0.45;
+                g.add(blade);
+            }
+            const bars = Math.max(2, Math.round(w / 0.65));
+            for (let i = 1; i < bars; i += 1) {
+                addBox(0.03, h - t, 0.03, frameMat, -w / 2 + (i / bars) * w, h / 2, d * 0.85);
+            }
+            if (item.awning) {
+                addBox(w + 0.24, 0.1, 0.48, concreteMat, 0, h + 0.06, 0.24);
+            }
+            break;
+        }
+        case 'window_clerestory': {
+            const t = 0.06;
+            addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
+            addBox(w, t, d, frameMat, 0, t / 2, d / 2);
+            addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
+            addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
+            const flaps = Math.max(2, Math.round(w / 0.65));
+            const flapW = (w - t * 2) / flaps;
+            for (let i = 0; i < flaps; i += 1) {
+                const fx = -w / 2 + t + (i + 0.5) * flapW;
+                if (i > 0) addBox(0.04, h, d * 0.9, frameMat, -w / 2 + t + i * flapW, h / 2, d / 2);
+                const flap = new THREE.Mesh(new THREE.BoxGeometry(flapW * 0.92, h * 0.82, 0.03), glassMat);
+                flap.position.set(fx, h * 0.48, d * 0.85);
+                flap.rotation.x = -0.35;
+                g.add(flap);
+            }
+            break;
+        }
+        case 'window_grid': {
+            addBox(w, h, 0.05, glassMat, 0, h / 2, 0.04);
+            const t = 0.07;
+            addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
+            addBox(w, t, d, frameMat, 0, t / 2, d / 2);
+            addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
+            addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
+            for (const fx of [-w / 6, w / 6]) {
+                addBox(0.04, h - t, d * 0.85, frameMat, fx, h / 2, d / 2);
+            }
+            addBox(w - t, 0.04, d * 0.85, frameMat, 0, h * 0.5, d / 2);
             break;
         }
         case 'window_grille': {
@@ -272,16 +408,61 @@ export function buildStudioItemGroup(item, { ghost = false, blocked = false, sel
         }
         case 'door_glass':
         case 'door_wood':
-        case 'door_sliding': {
+        case 'door_sliding':
+        case 'door_double_wood': {
             addBox(w, h, 0.06, glassMat, 0, h / 2, 0.04);
             const t = 0.08;
             addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
             addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
             addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
             addBox(0.07, h * 0.94, 0.05, steelMat, 0, h * 0.47, d * 0.75);
-            if (item.type === 'door_sliding') {
+            if (item.type === 'door_sliding' || item.type === 'door_double_wood') {
                 addBox(0.05, 0.7, 0.06, steelMat, 0.22, h * 0.48, d * 0.9);
                 addBox(0.05, 0.7, 0.06, steelMat, -0.22, h * 0.48, d * 0.9);
+            }
+            if (item.type === 'door_double_wood') {
+                addBox(w * 0.36, h * 0.32, 0.04, frameMat, -w * 0.24, h * 0.65, d * 0.45);
+                addBox(w * 0.36, h * 0.32, 0.04, frameMat, w * 0.24, h * 0.65, d * 0.45);
+            }
+            break;
+        }
+        case 'door_arched': {
+            const pierW = 0.14;
+            const archR = Math.max(0.35, (w - pierW * 2) / 2);
+            const straightH = Math.max(1.0, h - archR);
+            addBox(w - pierW, h * 0.92, 0.06, glassMat, 0, h * 0.46, 0.04);
+            addBox(pierW, straightH, d, frameMat, -w / 2 + pierW / 2, straightH / 2, d / 2);
+            addBox(pierW, straightH, d, frameMat, w / 2 - pierW / 2, straightH / 2, d / 2);
+            addBox(0.06, h * 0.85, 0.05, steelMat, 0, h * 0.425, d * 0.7);
+            const segs = 6;
+            for (let s = 0; s < segs; s += 1) {
+                const am = ((s + 0.5) / segs) * Math.PI;
+                const segLen = (archR + pierW * 0.4) * (Math.PI / segs) * 1.1;
+                const seg = new THREE.Mesh(new THREE.BoxGeometry(segLen, pierW, d), frameMat);
+                seg.position.set(Math.cos(am) * (archR + pierW * 0.35), straightH + Math.sin(am) * archR, d / 2);
+                seg.rotation.z = am - Math.PI / 2;
+                g.add(seg);
+            }
+            break;
+        }
+        case 'door_steel': {
+            addBox(w, h, 0.08, mainMat, 0, h / 2, 0.04);
+            const t = 0.08;
+            addBox(w, t, d, frameMat, 0, h - t / 2, d / 2);
+            addBox(t, h, d, frameMat, -w / 2 + t / 2, h / 2, d / 2);
+            addBox(t, h, d, frameMat, w / 2 - t / 2, h / 2, d / 2);
+            for (let l = 0; l < 4; l += 1) {
+                addBox(w * 0.55, 0.04, 0.03, frameMat, 0, 0.35 + l * 0.09, d * 0.72);
+            }
+            addBox(0.14, 0.05, 0.06, steelMat, w * 0.32, 1.0, d * 0.8);
+            break;
+        }
+        case 'door_roll_up': {
+            addBox(w, h, 0.06, mainMat, 0, h / 2, 0.04);
+            addBox(w + 0.16, 0.28, d * 1.3, frameMat, 0, h - 0.14, d * 0.65);
+            const slats = Math.max(5, Math.round(h / 0.25));
+            for (let s = 1; s < slats; s += 1) {
+                addBox(w, 0.035, 0.03, frameMat, 0, (s / slats) * (h - 0.25), d * 0.55);
             }
             break;
         }

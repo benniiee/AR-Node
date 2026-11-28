@@ -577,6 +577,7 @@ function facade25D(layer, w, look, at, H, levels, kLng) {
     const storeyH = H / levels;
     const pt = (t, hM) => at({ lat: w.a.lat + (w.b.lat - w.a.lat) * t, lng: w.a.lng + (w.b.lng - w.a.lng) * t }, hM / H);
     const facade = look.facade;
+    if (facade === 'none') return;
     const arched = facade === 'arches' || facade === 'balcony';
     const frame = look.windows.frame;
     const openings = [];

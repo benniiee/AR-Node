@@ -332,6 +332,9 @@ function facadeTexture(look) {
         // The storey band along the foot: the accent, or the department's band colour.
         g.fillStyle = band || darker(wall, 0.18);
         g.fillRect(0, band ? 112 : 119, 128, band ? 16 : 9);
+        if (look.facade === 'none') {
+            return;
+        }
         if (look.facade === 'arches' || look.facade === 'balcony') {
             g.fillStyle = '#3b3631';
             g.beginPath();
@@ -572,12 +575,22 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
     const canopyMat = new THREE.MeshStandardMaterial({ color: entrance.color, roughness: 0.6 });
     const concrete = new THREE.MeshStandardMaterial({ color: 0xb9b5ac, roughness: 0.95 });
     const steel = new THREE.MeshStandardMaterial({ color: 0xc9ccd1, roughness: 0.4, metalness: 0.6 });
-    // The doors themselves: glass, timber or sliding glass (Building Studio).
-    const doorColor = entrance.doorColor
-        || (entrance.door === 'wood' ? '#6b4a2f' : entrance.door === 'sliding' ? '#26404f' : DEFAULT_DOOR);
+    // The doors themselves: glass, timber, sliding, double wood, arched, steel or roll-up (Building Studio).
+    const defaultDoorHex = entrance.door === 'wood' || entrance.door === 'double_wood'
+        ? '#6b4a2f'
+        : entrance.door === 'sliding'
+            ? '#26404f'
+            : entrance.door === 'steel'
+                ? '#6f757c'
+                : entrance.door === 'roll_up'
+                    ? '#9aa3a8'
+                    : DEFAULT_DOOR;
+    const doorColor = entrance.doorColor || defaultDoorHex;
+    const isGlazedDoor = entrance.door === 'glass' || entrance.door === 'sliding' || entrance.door === 'arched';
     const doorMat = new THREE.MeshStandardMaterial({
-        color: doorColor, roughness: entrance.door === 'glass' || entrance.door === 'sliding' ? 0.28 : 0.8,
-        metalness: entrance.door === 'wood' ? 0.05 : 0.25,
+        color: doorColor,
+        roughness: isGlazedDoor ? 0.28 : (entrance.door === 'steel' || entrance.door === 'roll_up' ? 0.45 : 0.8),
+        metalness: entrance.door === 'wood' || entrance.door === 'double_wood' ? 0.05 : (entrance.door === 'steel' || entrance.door === 'roll_up' ? 0.45 : 0.25),
     });
     doors.forEach((door, i) => {
         const len = Math.hypot(door.b.x - door.a.x, door.b.z - door.a.z) || 1;
@@ -587,20 +600,47 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
         const c = { x: (door.a.x + door.b.x) / 2, z: (door.a.z + door.b.z) / 2 };
         const turn = Math.atan2(-d.z, d.x);
         const canopyY = DOOR_HEIGHT_M + 0.45;
-        // The doorway itself, dark glass a little out from the wall's painted front.
+        // The doorway itself, a little out from the wall's painted front.
         const doorway = new THREE.Mesh(new THREE.PlaneGeometry(len, DOOR_HEIGHT_M), doorMat);
         doorway.position.set(c.x + n.x * 0.04, DOOR_HEIGHT_M / 2, c.z + n.z * 0.04);
         doorway.lookAt(doorway.position.x + n.x, doorway.position.y, doorway.position.z + n.z);
+        if (studio) {
+            doorway.userData.studioDoorIndex = i;
+        }
         into.add(doorway);
-        // The meeting stile between the leaves, and a pull handle on sliding doors.
-        const stile = new THREE.Mesh(new THREE.BoxGeometry(0.07, DOOR_HEIGHT_M * 0.92, 0.05), steel);
-        stile.position.set(c.x + n.x * 0.1, DOOR_HEIGHT_M * 0.48, c.z + n.z * 0.1);
-        stile.rotation.y = turn;
-        into.add(stile);
-        if (entrance.door === 'sliding') {
-            const pull = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), steel);
-            pull.position.set(c.x + n.x * 0.14 + d.x * 0.22, 1.05, c.z + n.z * 0.14 + d.z * 0.22);
-            into.add(pull);
+        if (studio && studio.selectedDoorIndex === i) {
+            const selBox = new THREE.Mesh(
+                new THREE.BoxGeometry(len + 0.16, DOOR_HEIGHT_M + 0.12, 0.22),
+                new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true }),
+            );
+            selBox.position.set(c.x + n.x * 0.1, DOOR_HEIGHT_M / 2, c.z + n.z * 0.1);
+            selBox.rotation.y = turn;
+            into.add(selBox);
+        }
+        if (entrance.door === 'roll_up') {
+            const hood = new THREE.Mesh(new THREE.BoxGeometry(len + 0.12, 0.26, 0.24), new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.6 }));
+            hood.position.set(c.x + n.x * 0.12, DOOR_HEIGHT_M - 0.12, c.z + n.z * 0.12);
+            hood.rotation.y = turn;
+            into.add(hood);
+        } else {
+            // The meeting stile between the leaves, and pull handles / details per style.
+            const stile = new THREE.Mesh(new THREE.BoxGeometry(0.07, DOOR_HEIGHT_M * 0.92, 0.05), steel);
+            stile.position.set(c.x + n.x * 0.1, DOOR_HEIGHT_M * 0.48, c.z + n.z * 0.1);
+            stile.rotation.y = turn;
+            into.add(stile);
+            if (entrance.door === 'sliding' || entrance.door === 'double_wood') {
+                for (const side of [-1, 1]) {
+                    const pull = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), steel);
+                    pull.position.set(c.x + n.x * 0.14 + d.x * 0.22 * side, 1.05, c.z + n.z * 0.14 + d.z * 0.22 * side);
+                    into.add(pull);
+                }
+            }
+            if (entrance.door === 'arched') {
+                const archBar = new THREE.Mesh(new THREE.BoxGeometry(len + 0.1, 0.12, 0.14), concrete);
+                archBar.position.set(c.x + n.x * 0.08, DOOR_HEIGHT_M + 0.06, c.z + n.z * 0.08);
+                archBar.rotation.y = turn;
+                into.add(archBar);
+            }
         }
         if (entrance.steps) {
             // Two shallow steps up to the threshold, as most of the campus blocks have.

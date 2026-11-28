@@ -3343,11 +3343,16 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                         <BuildingStudio
                             building={buildings.find((b) => b.id === studioId)}
                             buildings={buildings} pathways={pathways} bridges={bridges} objects={campusObjects}
+                            nodes={nodes} links={links} canManageDoors={!isAdmin}
                             onClose={() => setStudioId(null)}
-                            onSave={async (appearance) => {
+                            onSave={async (appearance, nextDoors) => {
                                 const b = buildings.find((x) => x.id === studioId);
                                 try {
-                                    await api.updateBuilding(studioId, { appearance });
+                                    const payload = { appearance };
+                                    if (!isAdmin && Array.isArray(nextDoors)) {
+                                        payload.doors = nextDoors;
+                                    }
+                                    await api.updateBuilding(studioId, payload);
                                     setStudioId(null);
                                     await loadData();
                                     showToast(`${b?.short_name || b?.name || 'The building'} has its new look`);

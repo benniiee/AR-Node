@@ -2,7 +2,7 @@ import React, { useDeferredValue, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { C, RADIUS } from '../uiTokens';
 import { disposeTree } from './StairPreview3D';
-import { buildScene } from './RouteModel3D';
+import { buildScene, animateCranes } from './RouteModel3D';
 import { confirmAction } from './ConfirmDialog';
 import { buildingHeightM } from '../sunShadow';
 import { polygonCentroid } from '../campusGeometry';
@@ -121,6 +121,9 @@ function StudioView({
                     s.target.y = Math.max(0, Math.min(100, s.target.y + lift * speed * 0.65));
                     s.dirty = true;
                 }
+            }
+            if (!reduceMotion() && animateCranes(s.group, now / 1000)) {
+                s.dirty = true;
             }
             if (!s.dirty) return;
             s.dirty = false;

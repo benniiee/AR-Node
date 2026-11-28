@@ -353,6 +353,8 @@ function labelHtml(b) {
 // liftScale: extra height for a laid-back map (vertical reads shorter there).
 export function drawBuildings(layer, buildings, { popup = null, skipId = null, skipIds = null, theme = 'dark', roofs = false, extrude = false, sun = null, xray = null, viewDeg = 0, liftScale = 1 } = {}) {
     ensureStyles();
+    layer._stopCranes?.();
+    layer._cranes = [];
     layer.clearLayers();
     // skipIds: buildings drawn by someone else (e.g. cut away at a floor by drawFloorGuide).
     const list = (buildings || []).filter((b) => b.id !== skipId && !(skipIds && skipIds.has(b.id))
@@ -562,6 +564,26 @@ export function drawBuildings(layer, buildings, { popup = null, skipId = null, s
             for (const shape of hit) { shape.on('mouseover', on); shape.on('mouseout', off); }
         }
         placeLabel();
+    }
+    const cranes = layer._cranes;
+    const reduce = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (cranes?.length && !reduce && typeof window !== 'undefined') {
+        let raf = 0;
+        let lastTick = 0;
+        const step = (now) => {
+            raf = window.requestAnimationFrame(step);
+            if (!layer._map || document.hidden || now - lastTick < 48) return;
+            lastTick = now;
+            const sec = now / 1000;
+            for (const update of cranes) update(sec);
+        };
+        raf = window.requestAnimationFrame(step);
+        const stop = () => {
+            window.cancelAnimationFrame(raf);
+            layer.off('remove', stop);
+        };
+        layer.on('remove', stop);
+        layer._stopCranes = stop;
     }
 }
 
@@ -914,39 +936,270 @@ function drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, intera
     const inward = (front.normalDeg + 180 + (rand() - 0.5) * 60) % 360;
     const mastH = H + 9;
     const across = (front.normalDeg + 90) % 360;
-    const m1 = move(base, across, -0.8);
-    const m2 = move(base, across, 0.8);
     const yellow = (pts, weight = 1.6) => { line(pts, SITE.craneEdge, weight + 1.2, 0.8); line(pts, SITE.crane, weight); };
     for (let i = 0; i < 3; i += 1) box(move(move(base, front.normalDeg, 2.4), across, -3 - i * 1.5), 0.8);
-    // Mast: two legs and the zig-zag lattice between them.
-    const zig = [];
-    for (let y = 0.6, k = 0; y <= mastH; y += 1.6, k += 1) zig.push(at(k % 2 ? m2 : m1, y));
-    yellow(zig, 0.9);
-    yellow([at(m1, 0.6), at(m1, mastH)]);
-    yellow([at(m2, 0.6), at(m2, mastH)]);
+
+    // Concrete foundation pad + base anchor struts.
+    const padRing = [
+        move(move(base, across, -1.7), front.normalDeg, -1.7),
+        move(move(base, across, 1.7), front.normalDeg, -1.7),
+        move(move(base, across, 1.7), front.normalDeg, 1.7),
+        move(move(base, across, -1.7), front.normalDeg, 1.7),
+    ];
+    for (const f of visibleWalls(padRing, viewDeg)) {
+        L.polygon([at(f.a, 0), at(f.b, 0), at(f.b, 0.55), at(f.a, 0.55)], {
+            color: '#55524c', weight: 0.6, fillColor: mixHex('#8b867d', SITE.concrete, wallLight(f.normalDeg, sun)), fillOpacity: 1, interactive: false,
+        }).addTo(layer);
+    }
+    L.polygon(padRing.map((q) => at(q, 0.55)), {
+        color: '#55524c', weight: 0.6, fillColor: SITE.concrete, fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+
+    // 4-cornered mast with horizontal cross-ties, X-bracing, and base stabilizer struts.
+    const mW = 0.8;
+    const mFL = move(move(base, across, -mW), front.normalDeg, mW);
+    const mFR = move(move(base, across, mW), front.normalDeg, mW);
+    const mBL = move(move(base, across, -mW), front.normalDeg, -mW);
+    const mBR = move(move(base, across, mW), front.normalDeg, -mW);
+    for (const corner of [mFL, mFR, mBL, mBR]) {
+        yellow([at(corner, 0.55), at(corner, mastH)], 1.5);
+    }
+    yellow([at(move(move(base, across, -1.45), front.normalDeg, 1.45), 0.55), at(mFL, 2.2)], 1.0);
+    yellow([at(move(move(base, across, 1.45), front.normalDeg, 1.45), 0.55), at(mFR, 2.2)], 1.0);
+    for (let y = 0.6; y < mastH - 0.1; y += 1.6) {
+        const yNext = Math.min(mastH, y + 1.6);
+        yellow([at(mFL, y), at(mFR, y), at(mBR, y), at(mBL, y), at(mFL, y)], 0.85);
+        yellow([at(mFL, y), at(mFR, yNext)], 0.75);
+        yellow([at(mFR, y), at(mFL, yNext)], 0.75);
+        yellow([at(mBL, y), at(mBR, yNext)], 0.65);
+    }
+
+    // Dark steel slewing ring / turntable collar at mast top.
+    const ringPts = [
+        move(move(base, across, -1.05), front.normalDeg, -1.05),
+        move(move(base, across, 1.05), front.normalDeg, -1.05),
+        move(move(base, across, 1.05), front.normalDeg, 1.05),
+        move(move(base, across, -1.05), front.normalDeg, 1.05),
+    ];
+    L.polygon(ringPts.map((q) => at(q, mastH + 0.15)), {
+        color: '#1b1d22', weight: 0.8, fillColor: '#2c3038', fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+
     // Jib over the building and the counter-jib behind, with the counterweight and the ties to the head.
     const extent = Math.max(...b.polygon.map((q) => Math.hypot((q.lat - base.lat) * 111320, (q.lng - base.lng) * 111320 * (kLng || 1))));
     const jibL = Math.min(45, Math.max(14, extent * 0.85));
-    const backL = Math.max(6, jibL * 0.3);
-    const tip = move(base, inward, jibL);
-    const tail = move(base, inward, -backL);
-    const jibZig = [];
-    for (let x = 0, k = 0; x <= jibL; x += 1.8, k += 1) jibZig.push(at(move(base, inward, x), mastH + 0.3 + (k % 2 ? 1.1 - (0.8 * x) / jibL : 0)));
-    yellow(jibZig, 0.8);
-    yellow([at(tail, mastH + 0.3), at(tip, mastH + 0.3)], 1.8);
-    yellow([at(move(base, inward, -1), mastH + 1.4), at(tip, mastH + 0.6)], 1);
-    yellow([at(base, mastH + 5), at(move(base, inward, jibL * 0.7), mastH + 1.2)], 0.8);
-    yellow([at(base, mastH + 5), at(tail, mastH + 0.5)], 0.8);
-    yellow([at(m1, mastH), at(base, mastH + 5), at(m2, mastH)], 1.2);
-    const weight = move(base, inward, -backL + 1.2);
-    L.polygon([at(move(weight, across, -0.7), mastH - 1.2), at(move(weight, across, 0.7), mastH - 1.2), at(move(weight, across, 0.7), mastH + 0.3), at(move(weight, across, -0.7), mastH + 0.3)], {
+    const backL = Math.max(6.5, jibL * 0.32);
+
+    // Moving upper assembly (cat-head, jib, counter-jib, cab, counterweight, trolley, dual cables, hook block, hanging pallet) updated in place via setLatLngs.
+    const mkLine = (color, weight, opacity = 1) => L.polyline([], { color, weight, opacity, interactive: false, lineCap: 'round', lineJoin: 'round' }).addTo(layer);
+    const mkYellow = (weight = 1.6) => [mkLine(SITE.craneEdge, weight + 1.2, 0.8), mkLine(SITE.crane, weight)];
+    const catHeadL = mkYellow(1.35);
+    const catHeadR = mkYellow(1.35);
+    const jibWebBack = mkYellow(0.85);
+    const jibWebFront = mkYellow(0.95);
+    const counterWeb = mkYellow(0.9);
+    const boomFrontPair = mkYellow(1.9);
+    const boomBackPair = mkYellow(1.65);
+    const topBoomPair = mkYellow(1.6);
+    const tieFront1 = mkYellow(0.95);
+    const tieFront2 = mkYellow(0.95);
+    const tieBack1 = mkYellow(0.95);
+    const tieBack2 = mkYellow(0.95);
+    const beaconGlow = L.circleMarker([0, 0], {
+        radius: 3.2, color: '#fca5a5', weight: 1, fillColor: '#ef4444', fillOpacity: 0.95, interactive: false,
+    }).addTo(layer);
+    const cabBody = L.polygon([], {
+        color: '#3f3d38', weight: 0.7, fillColor: '#e9e4d6', fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const cabGlass = L.polygon([], {
+        color: '#162836', weight: 0.5, fillColor: '#254a63', fillOpacity: 0.95, interactive: false,
+    }).addTo(layer);
+    const winchPoly = L.polygon([], {
+        color: '#1b1d22', weight: 0.6, fillColor: '#2f343d', fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const weightFront = L.polygon([], {
+        color: '#55524c', weight: 0.6, fillColor: mixHex('#7b766d', SITE.concrete, 0.55), fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const weightTop = L.polygon([], {
         color: '#55524c', weight: 0.6, fillColor: SITE.concrete, fillOpacity: 1, interactive: false,
     }).addTo(layer);
-    // The trolley's cable down to a pallet of blocks on the hook.
-    const hook = move(base, inward, jibL * (0.45 + rand() * 0.4));
-    const hookY = Math.max(2, H * (0.4 + rand() * 0.5));
-    line([at(hook, mastH + 0.3), at(hook, hookY + 0.8)], '#222226', 0.8);
-    box(hook, 0.8, hookY);
+    const trolleyBody = L.polygon([], {
+        color: '#1b1d22', weight: 0.7, fillColor: '#2c3038', fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const trolleyFrame = L.polygon([], {
+        color: SITE.craneEdge, weight: 0.7, fillColor: SITE.crane, fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const cableLine1 = mkLine('#222226', 0.9, 1);
+    const cableLine2 = mkLine('#222226', 0.9, 1);
+    const hookBlockPoly = L.polygon([], {
+        color: '#1b1d22', weight: 0.7, fillColor: SITE.crane, fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const slingLines = [mkLine('#222226', 0.65, 0.9), mkLine('#222226', 0.65, 0.9)];
+    const loadTop = L.polygon([], {
+        color: '#55524c', weight: 0.5, fillColor: lit, fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+    const loadFront = L.polygon([], {
+        color: '#55524c', weight: 0.5, fillColor: mixHex(shade, lit, 0.55), fillOpacity: 1, interactive: false,
+    }).addTo(layer);
+
+    const phase = rand() * Math.PI * 2;
+    const hookMin = Math.max(1.8, H * 0.3);
+    const hookMax = Math.max(2.6, Math.min(mastH - 2.8, H * 0.92));
+
+    const updateCrane = (timeSec) => {
+        const t = timeSec + phase;
+        const dir = inward + Math.sin(t * 0.25) * 28;
+        const perp = (dir + 90) % 360;
+        const jibY = mastH + 0.35;
+        const headY = mastH + 5.2;
+        const jibW = 0.6;
+        const jibH0 = 1.55;
+        const jibHTip = 0.92;
+        const jibHBack = 0.78;
+        const tip = move(base, dir, jibL);
+        const tail = move(base, dir, -backL);
+        const headPt = at(base, headY);
+
+        for (const l of catHeadL) l.setLatLngs([at(move(base, perp, -jibW), jibY), headPt, at(move(base, dir, 0.8), jibY)]);
+        for (const l of catHeadR) l.setLatLngs([at(move(base, perp, jibW), jibY), headPt, at(move(base, dir, -0.8), jibY)]);
+        beaconGlow.setLatLng(headPt);
+
+        // Dense 3D triangular truss along the main jib (front web, back web, bottom cross-ties, and tip cap).
+        const webBackSegs = [];
+        const webFrontSegs = [];
+        const jibBay = 1.15;
+        for (let x = 0; x < jibL - 0.05; x += jibBay) {
+            const x2 = Math.min(jibL, x + jibBay);
+            const xm = (x + x2) * 0.5;
+            const h1 = jibH0 - ((jibH0 - jibHTip) * x) / jibL;
+            const hm = jibH0 - ((jibH0 - jibHTip) * xm) / jibL;
+            const p1 = move(base, dir, x);
+            const p2 = move(base, dir, x2);
+            const pm = move(base, dir, xm);
+            const b1L = at(move(p1, perp, -jibW), jibY);
+            const b1R = at(move(p1, perp, jibW), jibY);
+            const b2L = at(move(p2, perp, -jibW), jibY);
+            const b2R = at(move(p2, perp, jibW), jibY);
+            const t1 = at(p1, jibY + h1);
+            const tm = at(pm, jibY + hm);
+            // Back face diagonals + bottom cross-tie + diagonal floor brace.
+            webBackSegs.push([b1L, tm], [tm, b2L], [b1L, b1R], [b1L, b2R]);
+            // Front face diagonals + vertical post + top-to-bottom rib.
+            webFrontSegs.push([b1R, t1], [b1R, tm], [tm, b2R]);
+        }
+        // Sturdy jib tip triangular frame.
+        const tipL = at(move(tip, perp, -jibW), jibY);
+        const tipR = at(move(tip, perp, jibW), jibY);
+        const tipT = at(tip, jibY + jibHTip);
+        webFrontSegs.push([tipL, tipR], [tipL, tipT], [tipR, tipT]);
+        for (const l of jibWebBack) l.setLatLngs(webBackSegs);
+        for (const l of jibWebFront) l.setLatLngs(webFrontSegs);
+
+        // Dense counter-jib truss.
+        const cSegs = [];
+        const cBay = 1.15;
+        for (let x = 0; x < backL - 0.05; x += cBay) {
+            const x2 = Math.min(backL, x + cBay);
+            const xm = (x + x2) * 0.5;
+            const h1 = jibH0 - ((jibH0 - jibHBack) * x) / backL;
+            const hm = jibH0 - ((jibH0 - jibHBack) * xm) / backL;
+            const p1 = move(base, dir, -x);
+            const p2 = move(base, dir, -x2);
+            const pm = move(base, dir, -xm);
+            const b1L = at(move(p1, perp, -jibW), jibY);
+            const b1R = at(move(p1, perp, jibW), jibY);
+            const b2L = at(move(p2, perp, -jibW), jibY);
+            const b2R = at(move(p2, perp, jibW), jibY);
+            const t1 = at(p1, jibY + h1);
+            const tm = at(pm, jibY + hm);
+            cSegs.push([b1L, b1R], [b1L, tm], [tm, b2L], [b1R, t1], [b1R, tm], [tm, b2R]);
+        }
+        cSegs.push([at(move(tail, perp, -jibW), jibY), at(move(tail, perp, jibW), jibY)]);
+        for (const l of counterWeb) l.setLatLngs(cSegs);
+
+        for (const l of boomFrontPair) l.setLatLngs([at(move(tail, perp, jibW), jibY), at(move(tip, perp, jibW), jibY)]);
+        for (const l of boomBackPair) l.setLatLngs([at(move(tail, perp, -jibW), jibY), at(move(tip, perp, -jibW), jibY)]);
+        for (const l of topBoomPair) l.setLatLngs([at(tail, jibY + jibHBack), at(base, jibY + jibH0), at(tip, jibY + jibHTip)]);
+
+        const f1 = jibL * 0.42;
+        const f2 = jibL * 0.78;
+        const b1 = backL * 0.55;
+        for (const l of tieFront1) l.setLatLngs([headPt, at(move(base, dir, f1), jibY + jibH0 - ((jibH0 - jibHTip) * f1) / jibL)]);
+        for (const l of tieFront2) l.setLatLngs([headPt, at(move(base, dir, f2), jibY + jibH0 - ((jibH0 - jibHTip) * f2) / jibL)]);
+        for (const l of tieBack1) l.setLatLngs([headPt, at(move(base, dir, -b1), jibY + jibH0 - ((jibH0 - jibHBack) * b1) / backL)]);
+        for (const l of tieBack2) l.setLatLngs([headPt, at(tail, jibY + jibHBack)]);
+
+        // Operator cab beside the mast.
+        const cabCenter = move(move(base, dir, 0.7), perp, 1.25);
+        const cA = move(move(cabCenter, dir, -0.7), perp, -0.55);
+        const cB = move(move(cabCenter, dir, 0.7), perp, -0.55);
+        const cC = move(move(cabCenter, dir, 0.7), perp, 0.55);
+        const cD = move(move(cabCenter, dir, -0.7), perp, 0.55);
+        cabBody.setLatLngs([at(cA, mastH - 1.2), at(cB, mastH - 1.2), at(cC, mastH + 0.3), at(cD, mastH + 0.3)]);
+        cabGlass.setLatLngs([at(cA, mastH - 0.55), at(cB, mastH - 0.55), at(cC, mastH + 0.12), at(cD, mastH + 0.12)]);
+
+        // Winch housing on counter-jib.
+        const winchC = move(base, dir, -2.0);
+        winchPoly.setLatLngs([
+            at(move(move(winchC, dir, -0.8), perp, -0.5), jibY + 0.05),
+            at(move(move(winchC, dir, 0.8), perp, -0.5), jibY + 0.05),
+            at(move(move(winchC, dir, 0.8), perp, 0.5), jibY + 0.95),
+            at(move(move(winchC, dir, -0.8), perp, 0.5), jibY + 0.95),
+        ]);
+
+        // 2.5D concrete counterweight block.
+        const wPos = move(base, dir, -backL + 1.3);
+        const wFL = move(move(wPos, dir, 0.95), perp, -0.7);
+        const wFR = move(move(wPos, dir, 0.95), perp, 0.7);
+        const wBL = move(move(wPos, dir, -0.95), perp, -0.7);
+        const wBR = move(move(wPos, dir, -0.95), perp, 0.7);
+        weightFront.setLatLngs([at(wFL, jibY - 1.35), at(wFR, jibY - 1.35), at(wFR, jibY + 0.15), at(wFL, jibY + 0.15)]);
+        weightTop.setLatLngs([at(wFL, jibY + 0.15), at(wFR, jibY + 0.15), at(wBR, jibY + 0.15), at(wBL, jibY + 0.15)]);
+
+        const reach = jibL * (0.42 + 0.44 * (0.5 + 0.5 * Math.sin(t * 0.35 + 1.1)));
+        const hook = move(base, dir, reach);
+        const hy = hookMin + (hookMax - hookMin) * (0.5 + 0.5 * Math.sin(t * 0.5 + 2.3));
+
+        // Compact steel trolley carriage riding under the jib chords + dual hoist cables + hook block + slings.
+        const tB0 = move(hook, dir, -0.45);
+        const tB1 = move(hook, dir, 0.45);
+        trolleyBody.setLatLngs([
+            at(move(tB0, perp, -0.48), jibY - 0.32),
+            at(move(tB1, perp, -0.48), jibY - 0.32),
+            at(move(tB1, perp, 0.48), jibY - 0.02),
+            at(move(tB0, perp, 0.48), jibY - 0.02),
+        ]);
+        trolleyFrame.setLatLngs([
+            at(move(tB0, perp, jibW), jibY - 0.24),
+            at(move(tB1, perp, jibW), jibY - 0.24),
+            at(move(tB1, perp, jibW), jibY + 0.06),
+            at(move(tB0, perp, jibW), jibY + 0.06),
+        ]);
+        const c1 = move(hook, perp, -0.1);
+        const c2 = move(hook, perp, 0.1);
+        cableLine1.setLatLngs([at(c1, jibY - 0.28), at(c1, hy + 1.45)]);
+        cableLine2.setLatLngs([at(c2, jibY - 0.28), at(c2, hy + 1.45)]);
+        hookBlockPoly.setLatLngs([
+            at(move(hook, perp, -0.22), hy + 1.12),
+            at(move(hook, perp, 0.22), hy + 1.12),
+            at(move(hook, perp, 0.22), hy + 1.48),
+            at(move(hook, perp, -0.22), hy + 1.48),
+        ]);
+
+        const pRing = [
+            move(move(hook, 90, -0.6), 0, -0.5),
+            move(move(hook, 90, 0.6), 0, -0.5),
+            move(move(hook, 90, 0.6), 0, 0.5),
+            move(move(hook, 90, -0.6), 0, 0.5),
+        ];
+        const hookTipPt = at(hook, hy + 1.1);
+        slingLines[0].setLatLngs([at(pRing[0], hy + 0.8), hookTipPt, at(pRing[2], hy + 0.8)]);
+        slingLines[1].setLatLngs([at(pRing[1], hy + 0.8), hookTipPt, at(pRing[3], hy + 0.8)]);
+        loadTop.setLatLngs(pRing.map((q) => at(q, hy + 0.8)));
+        loadFront.setLatLngs([at(pRing[3], hy), at(pRing[2], hy), at(pRing[2], hy + 0.8), at(pRing[3], hy + 0.8)]);
+    };
+    updateCrane(0);
+    if (Array.isArray(layer._cranes)) layer._cranes.push(updateCrane);
     return shapes;
 }
 

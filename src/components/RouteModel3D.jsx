@@ -252,64 +252,247 @@ export function drawConstructionSite(into, ring, height, floors, seed) {
         0,
         long.a.z + long.d.z * long.len * along + long.n.z * 5,
     );
-    // Local +x is the jib: pointing back over the building, swung a little to one side.
-    crane.rotation.y = Math.atan2(long.n.z, -long.n.x) + (rand() - 0.5) * 1.2;
+    const baseYaw = Math.atan2(long.n.z, -long.n.x) + (rand() - 0.5) * 1.2;
     into.add(crane);
     const mastH = height + 9;
-    const w = 0.8;
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.6, 3.2), concrete);
-    pad.position.y = 0.3;
+    const w = 0.85;
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x262930, roughness: 0.55, metalness: 0.45 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x1e3a4c, roughness: 0.15, metalness: 0.55 });
+    const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff1a1a, emissiveIntensity: 0.9, roughness: 0.3 });
+
+    // Heavy concrete foundation pad + base anchor struts.
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.55, 3.6), concrete);
+    pad.position.y = 0.275;
     crane.add(pad);
-    const lattice = [];
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.22, 2.1), darkSteel);
+    collar.position.y = 0.62;
+    crane.add(collar);
+
+    const mastChords = [];
+    const mastBraces = [];
     const corners = [[-w, -w], [w, -w], [w, w], [-w, w]];
-    for (const [x, z] of corners) lattice.push([V(x, 0.6, z), V(x, mastH, z)]);
-    for (let y = 0.6; y < mastH; y += 1.6) {
+    for (const [x, z] of corners) {
+        mastChords.push([V(x, 0.6, z), V(x, mastH, z)]);
+        mastBraces.push([V(x * 1.75, 0.55, z * 1.75), V(x, 2.2, z)]);
+    }
+    for (let y = 0.6; y < mastH - 0.1; y += 1.6) {
+        const yNext = Math.min(mastH, y + 1.6);
         corners.forEach(([x, z], i) => {
             const [x2, z2] = corners[(i + 1) % 4];
-            lattice.push([V(x, y, z), V(x2, y, z2)], [V(x, y, z), V(x2, Math.min(mastH, y + 1.6), z2)]);
+            mastBraces.push(
+                [V(x, y, z), V(x2, y, z2)],
+                [V(x, y, z), V(x2, yNext, z2)],
+                [V(x2, y, z2), V(x, yNext, z)],
+            );
         });
     }
-    // The jib (a triangular lattice) and the shorter counter-jib behind the mast.
+    addBars(crane, mastChords, 0.14, yellow);
+    addBars(crane, mastBraces, 0.085, yellow);
+
+    // Slewing upper assembly (turntable, cat-head, jib, counter-jib, cab, trolley, hoist) rotates smoothly around the mast.
+    const slew = new THREE.Group();
+    slew.rotation.y = baseYaw;
+    crane.add(slew);
+
+    // Slewing ring + machinery deck + safety handrails.
+    const slewRing = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.12, 0.42, 16), darkSteel);
+    slewRing.position.y = mastH - 0.05;
+    slew.add(slewRing);
+    const slewDeck = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 2.3), yellow);
+    slewDeck.position.y = mastH + 0.22;
+    slew.add(slewDeck);
+
+    const jibLattice = [];
+    const jibThin = [];
     const extent = Math.max(...ring.map((p) => Math.hypot(p.x - crane.position.x, p.z - crane.position.z)));
     const jibL = Math.min(45, Math.max(14, extent * 0.85));
-    const backL = Math.max(6, jibL * 0.3);
-    const jibY = mastH + 0.3;
-    for (const z of [-0.5, 0.5]) lattice.push([V(-backL, jibY, z), V(jibL, jibY, z)]);
-    lattice.push([V(-1, jibY + 1.1, 0), V(jibL, jibY + 0.3, 0)]);
-    for (let x = 0; x < jibL - 0.1; x += 1.8) {
-        const top = jibY + 1.1 - (0.8 * x) / jibL;
-        for (const z of [-0.5, 0.5]) lattice.push([V(x, jibY, z), V(x + 0.9, top, 0)], [V(x + 0.9, top, 0), V(x + 1.8, jibY, z)]);
-        lattice.push([V(x, jibY, -0.5), V(x, jibY, 0.5)]);
+    const backL = Math.max(6.5, jibL * 0.32);
+    const jibY = mastH + 0.38;
+
+    // Main jib & counter-jib bottom chords + top chords (deep triangular Warren/Pratt truss).
+    const jibW = 0.6;
+    const jibH0 = 1.55;
+    const jibHTip = 0.92;
+    const jibHBack = 0.78;
+    for (const z of [-jibW, jibW]) jibLattice.push([V(-backL, jibY, z), V(jibL, jibY, z)]);
+    jibLattice.push([V(0, jibY + jibH0, 0), V(jibL, jibY + jibHTip, 0)]);
+    jibLattice.push([V(0, jibY + jibH0, 0), V(-backL, jibY + jibHBack, 0)]);
+    for (let x = 0; x < jibL - 0.05; x += 1.15) {
+        const x2 = Math.min(jibL, x + 1.15);
+        const xm = (x + x2) * 0.5;
+        const t1 = jibY + jibH0 - ((jibH0 - jibHTip) * x) / jibL;
+        const tm = jibY + jibH0 - ((jibH0 - jibHTip) * xm) / jibL;
+        for (const z of [-jibW, jibW]) {
+            jibThin.push([V(x, jibY, z), V(x, t1, 0)], [V(x, jibY, z), V(xm, tm, 0)], [V(xm, tm, 0), V(x2, jibY, z)]);
+        }
+        jibThin.push([V(x, jibY, -jibW), V(x, jibY, jibW)], [V(x, jibY, -jibW), V(x2, jibY, jibW)]);
     }
-    // The tower head and the ties down to both arms.
-    lattice.push([V(-w, mastH, 0), V(0, mastH + 5, 0)], [V(w, mastH, 0), V(0, mastH + 5, 0)]);
-    lattice.push([V(0, mastH + 5, 0), V(jibL * 0.7, jibY + 0.9, 0)], [V(0, mastH + 5, 0), V(-backL, jibY + 0.2, 0)]);
-    addBars(crane, lattice, 0.12, yellow);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.5, 1.2), new THREE.MeshStandardMaterial({ color: 0xe9e4d6, roughness: 0.5 }));
-    cab.position.set(0.8, mastH - 0.6, 1.25);
-    crane.add(cab);
-    const weight = new THREE.Mesh(new THREE.BoxGeometry(2, 1.6, 1.4), concrete);
-    weight.position.set(-backL + 1.2, jibY - 0.6, 0);
-    crane.add(weight);
-    // The trolley part way along, its cable and hook, lifting a pallet of hollow blocks.
+    jibThin.push(
+        [V(jibL, jibY, -jibW), V(jibL, jibY, jibW)],
+        [V(jibL, jibY, -jibW), V(jibL, jibY + jibHTip, 0)],
+        [V(jibL, jibY, jibW), V(jibL, jibY + jibHTip, 0)],
+    );
+
+    // Counter-jib cross-bracing.
+    for (let x = 0; x < backL - 0.05; x += 1.15) {
+        const x2 = Math.min(backL, x + 1.15);
+        const xm = (x + x2) * 0.5;
+        const t1 = jibY + jibH0 - ((jibH0 - jibHBack) * x) / backL;
+        const tm = jibY + jibH0 - ((jibH0 - jibHBack) * xm) / backL;
+        for (const z of [-jibW, jibW]) {
+            jibThin.push([V(-x, jibY, z), V(-x, t1, 0)], [V(-x, jibY, z), V(-xm, tm, 0)], [V(-xm, tm, 0), V(-x2, jibY, z)]);
+        }
+        jibThin.push([V(-x, jibY, -jibW), V(-x, jibY, jibW)]);
+    }
+    jibThin.push([V(-backL, jibY, -jibW), V(-backL, jibY, jibW)]);
+
+    // 4-legged A-frame tower head (cat-head) + pendant tie rods + safety rails.
+    const headY = mastH + 5.2;
+    for (const [cx, cz] of [[-0.75, -jibW], [0.75, -jibW], [0.75, jibW], [-0.75, jibW]]) {
+        jibLattice.push([V(cx, jibY, cz), V(0, headY, 0)]);
+    }
+    const f1 = jibL * 0.42;
+    const f2 = jibL * 0.78;
+    const b1 = backL * 0.55;
+    jibThin.push(
+        [V(0, headY, 0), V(f1, jibY + jibH0 - ((jibH0 - jibHTip) * f1) / jibL, 0)],
+        [V(0, headY, 0), V(f2, jibY + jibH0 - ((jibH0 - jibHTip) * f2) / jibL, 0)],
+        [V(0, headY, 0), V(-b1, jibY + jibH0 - ((jibH0 - jibHBack) * b1) / backL, 0)],
+        [V(0, headY, 0), V(-backL, jibY + jibHBack, 0)],
+    );
+    // Safety handrail along the slewing deck.
+    for (const z of [-1.1, 1.1]) {
+        jibThin.push([V(-1.15, mastH + 1.05, z), V(1.15, mastH + 1.05, z)]);
+        for (const x of [-1.15, 0, 1.15]) jibThin.push([V(x, mastH + 0.3, z), V(x, mastH + 1.05, z)]);
+    }
+    addBars(slew, jibLattice, 0.13, yellow);
+    addBars(slew, jibThin, 0.075, yellow);
+
+    // Red aviation warning light at the top of the cat-head.
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), beaconMat);
+    beacon.position.set(0, headY + 0.16, 0);
+    slew.add(beacon);
+
+    // Operator cab with wrap-around tinted glass windows and roof cap.
+    const cabGroup = new THREE.Group();
+    cabGroup.position.set(0.75, mastH - 0.55, 1.32);
+    const cabBody = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.55, 1.25), new THREE.MeshStandardMaterial({ color: 0xe9e4d6, roughness: 0.45 }));
+    const cabGlass = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.75, 1.3), glassMat);
+    cabGlass.position.y = 0.18;
+    const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.14, 1.38), yellow);
+    cabRoof.position.y = 0.82;
+    cabGroup.add(cabBody, cabGlass, cabRoof);
+    slew.add(cabGroup);
+
+    // Hoist winch machinery housing + segmented concrete counterweight blocks.
+    const winch = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.05, 1.1), darkSteel);
+    winch.position.set(-2.1, jibY + 0.55, 0);
+    slew.add(winch);
+    for (let i = 0; i < 3; i += 1) {
+        const block = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.65, 1.45), concrete);
+        block.position.set(-backL + 0.85 + i * 0.7, jibY - 0.52, 0);
+        slew.add(block);
+    }
+
+    // Trolley + dual hoist cables + hook block + hanging pallet of hollow blocks, animated along the jib.
     const reach = jibL * (0.45 + rand() * 0.4);
     const hookY = Math.max(2, height * (0.4 + rand() * 0.5));
-    addBars(crane, [[V(reach, jibY - 0.1, 0), V(reach, hookY + 0.9, 0)]], 0.04, new THREE.MeshStandardMaterial({ color: 0x222226 }));
-    const trolley = new THREE.Mesh(new THREE.BoxGeometry(1, 0.35, 1.1), yellow);
-    trolley.position.set(reach, jibY - 0.15, 0);
-    crane.add(trolley);
+    const trolleyGroup = new THREE.Group();
+    trolleyGroup.position.set(reach, 0, 0);
+    slew.add(trolleyGroup);
+    const trolley = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.34, 1.22), yellow);
+    trolley.position.set(0, jibY - 0.14, 0);
+    trolleyGroup.add(trolley);
+    for (const [wx, wz] of [[-0.42, -0.55], [0.42, -0.55], [-0.42, 0.55], [0.42, 0.55]]) {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.12, 8), darkSteel);
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(wx, jibY - 0.02, wz);
+        trolleyGroup.add(wheel);
+    }
+    const cableMat = new THREE.MeshStandardMaterial({ color: 0x222226, metalness: 0.4 });
+    const cable = new THREE.Group();
+    for (const cz of [-0.1, 0.1]) {
+        const lineMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1, 6), cableMat);
+        lineMesh.position.z = cz;
+        cable.add(lineMesh);
+    }
+    const cableLen = Math.max(0.5, jibY - 0.15 - (hookY + 1.35));
+    cable.scale.y = cableLen;
+    cable.position.set(0, jibY - 0.15 - cableLen / 2, 0);
+    trolleyGroup.add(cable);
+
     const blockMat = new THREE.MeshStandardMaterial({ color: blocks ? 0xffffff : 0xb3ada2, map: blocks, roughness: 0.95 });
-    const pallet = (x, y, z) => {
+    const makePallet = (withHook = false) => {
+        const g = new THREE.Group();
         const stack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 1), blockMat);
-        stack.position.set(x, y + 0.52, z);
+        stack.position.set(0, 0.52, 0);
         const base = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.12, 1.05), plank);
-        base.position.set(x, y + 0.06, z);
-        crane.add(stack, base);
+        base.position.set(0, 0.06, 0);
+        g.add(stack, base);
+        if (withHook) {
+            const hookBody = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.28), yellow);
+            hookBody.position.set(0, 1.34, 0);
+            const hookTip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 6), darkSteel);
+            hookTip.position.set(0, 1.1, 0);
+            g.add(hookBody, hookTip);
+            addBars(g, [
+                [V(0, 1.06, 0), V(-0.56, 0.9, -0.46)],
+                [V(0, 1.06, 0), V(0.56, 0.9, -0.46)],
+                [V(0, 1.06, 0), V(0.56, 0.9, 0.46)],
+                [V(0, 1.06, 0), V(-0.56, 0.9, 0.46)],
+            ], 0.02, cableMat);
+        }
+        return g;
     };
-    pallet(reach, hookY, 0);
+    const load = makePallet(true);
+    load.position.set(0, hookY, 0);
+    trolleyGroup.add(load);
+
+    // Register for gentle real-time slewing, trolley travel, and hoisting.
+    if (!into.userData.cranes) into.userData.cranes = [];
+    into.userData.cranes.push({
+        slew,
+        trolleyGroup,
+        cable,
+        load,
+        baseYaw,
+        jibY,
+        phase: rand() * Math.PI * 2,
+        reachMin: jibL * 0.35,
+        reachMax: jibL * 0.88,
+        hookMin: Math.max(1.8, height * 0.3),
+        hookMax: Math.max(2.6, Math.min(jibY - 2.8, height * 0.92)),
+    });
+
     // Pallets of blocks waiting on the ground by the crane.
     const piles = 3 + Math.floor(rand() * 3);
-    for (let i = 0; i < piles; i += 1) pallet(-3 - (i % 3) * 1.5, 0, 2.6 + Math.floor(i / 3) * 1.3);
+    for (let i = 0; i < piles; i += 1) {
+        const groundPallet = makePallet(false);
+        groundPallet.position.set(-3 - (i % 3) * 1.5, 0, 2.6 + Math.floor(i / 3) * 1.3);
+        crane.add(groundPallet);
+    }
+}
+
+/**
+ * Gently animates all under-construction tower cranes in `root` (slewing jib, gliding trolley,
+ * and hoisting load). Safe to call every frame.
+ */
+export function animateCranes(root, timeSec) {
+    const cranes = root?.userData?.cranes;
+    if (!Array.isArray(cranes) || !cranes.length) return false;
+    for (const c of cranes) {
+        const t = timeSec + c.phase;
+        c.slew.rotation.y = c.baseYaw + Math.sin(t * 0.22) * 0.48;
+        const reachMix = 0.5 + 0.5 * Math.sin(t * 0.31 + 1.1);
+        c.trolleyGroup.position.x = c.reachMin + (c.reachMax - c.reachMin) * reachMix;
+        const hookMix = 0.5 + 0.5 * Math.sin(t * 0.45 + 2.3);
+        const hy = c.hookMin + (c.hookMax - c.hookMin) * hookMix;
+        c.load.position.y = hy;
+        const cableLen = Math.max(0.5, c.jibY - 0.15 - (hy + 1.35));
+        c.cable.scale.y = cableLen;
+        c.cable.position.y = c.jibY - 0.15 - cableLen / 2;
+    }
+    return true;
 }
 
 /** A #rrggbb colour darkened by a share `k` (0..1), as a CSS colour for canvas painting. */
@@ -897,6 +1080,7 @@ function screenLabel(text, opts = {}, size = 0.05) {
  * look: the signed-in student's gender, for the uniform on the figure at the start (person).
  */
 export function buildScene(group, { route, buildings, links, pathways = [], bridges = [], objects = [], nodes = [], follow = false, origin = null, look = null, studio = null }) {
+    group.userData.cranes = [];
     const path = route?.path || [];
     const byId = new Map((buildings || []).map((b) => [b.id, b]));
     const inside = new Map();
@@ -1735,6 +1919,9 @@ export default function RouteModel3D({ route, buildings, links, bridges = [], ob
             const dt = s.last ? Math.min(0.05, (now - s.last) / 1000) : 0;
             s.last = now;
             roam(dt);
+            if (!reduceMotion && animateCranes(s.group, now / 1000)) {
+                s.dirty = true;
+            }
             if (!s.dirty) return;
             s.dirty = false;
             place();

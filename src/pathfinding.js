@@ -110,8 +110,18 @@ function isGabrielEdge(a, b, nodes, abDist, borders = []) {
     const midElev = ((a.elevation || 0) + (b.elevation || 0)) / 2;
     const radius = abDist / 2;
 
+    // Cheap reject before the trig-heavy distance: a node outside the circle's bounding box cannot be
+    // inside the circle. (1 degree of latitude is 111320 m; a degree of longitude shrinks with cos(lat).)
+    // This is the difference between a few comparisons and a haversine per node per candidate edge.
+    const dLatMax = radius / 111320;
+    const dLngMax = radius / (111320 * Math.cos((midLat * Math.PI) / 180) || 1);
+
     for (const n of nodes) {
         if (n.id === a.id || n.id === b.id) continue;
+        const dLat = n.latitude - midLat;
+        if (dLat > dLatMax || dLat < -dLatMax) continue;
+        const dLng = n.longitude - midLng;
+        if (dLng > dLngMax || dLng < -dLngMax) continue;
         const dMid = haversineDistance(
             midLat, midLng, midElev,
             n.latitude, n.longitude, n.elevation || 0
@@ -155,11 +165,20 @@ export function segmentCrossesBorder(a, b, borders) {
     // The step's floor: a's, or b's when a is a point without one (the user's GPS fix).
     const stepFloor = a?.floor_level !== undefined && a?.floor_level !== null ? floorOf(a) : floorOf(b);
 
+    // The step's own bounding box. A wall whose box does not overlap it cannot be crossed, so the
+    // polygon tests and the per-segment intersection maths are skipped for that wall entirely.
+    const segMinLat = Math.min(segA.lat, segB.lat);
+    const segMaxLat = Math.max(segA.lat, segB.lat);
+    const segMinLng = Math.min(segA.lng, segB.lng);
+    const segMaxLng = Math.max(segA.lng, segB.lng);
+
     for (const border of borders) {
         const wall = border.coordinates;
         if (!wall || wall.length < 2) continue;
         // A wall of one floor only (a bridge deck's outline): other floors pass under or over it.
         if (border.floor !== undefined && border.floor !== null && border.floor !== stepFloor) continue;
+        const box = borderBounds(border);
+        if (segMaxLat < box.minLat || segMinLat > box.maxLat || segMaxLng < box.minLng || segMinLng > box.maxLng) continue;
         // A drawn wall (fence, road edge) under a raised bridge deck: a step along the deck passes over it.
         if (border.overDecks && border.overDecks.some((d) => d.floor === stepFloor
             && insidePolygon(segA, d.polygon) && insidePolygon(segB, d.polygon))) continue;
@@ -176,6 +195,30 @@ export function segmentCrossesBorder(a, b, borders) {
         }
     }
     return false;
+}
+
+// Every wall's lat/lng bounding box, worked out once per wall object and reused for every step of the
+// graph build (the same wall is tested against thousands of candidate edges).
+const borderBoxes = new WeakMap();
+
+function borderBounds(border) {
+    const cached = borderBoxes.get(border);
+    if (cached) return cached;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+    for (const p of border.coordinates) {
+        const lat = Number(p.lat);
+        const lng = Number(p.lng);
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+    }
+    const box = { minLat, maxLat, minLng, maxLng };
+    borderBoxes.set(border, box);
+    return box;
 }
 
 /** How far (m) a walkway may clip into a closed building's drawn outline and still pass: about a walkway's
@@ -556,10 +599,67 @@ function findNearbyRouteNodes(nodes, lat, lng, elevation, borders = [], k = 5, f
     return valid.filter((e, i) => i < k || e.dist <= ENTRY_REACH_M);
 }
 
-// ── Dijkstra: plain shortest path ─────────────────────────────────────
-// (No hop-count tiebreak needed anymore - the Gabriel graph itself removes
-// the shortcut edges that used to make that hack necessary.)
-function dijkstra(adjacency, start, end) {
+// ── Binary min-heap ────────────────────────────────────────────────────
+// The open set of A*. A sorted array with shift() moves every remaining element on every pop,
+// which is what made the old queue slow; a heap is O(log n) per push and pop.
+class MinHeap {
+    constructor() {
+        this.ids = [];
+        this.keys = [];
+    }
+
+    get size() {
+        return this.ids.length;
+    }
+
+    push(id, key) {
+        const { ids, keys } = this;
+        let i = ids.length;
+        ids.push(id);
+        keys.push(key);
+        while (i > 0) {
+            const parent = (i - 1) >> 1;
+            if (keys[parent] <= key) break;
+            ids[i] = ids[parent];
+            keys[i] = keys[parent];
+            i = parent;
+        }
+        ids[i] = id;
+        keys[i] = key;
+    }
+
+    pop() {
+        const { ids, keys } = this;
+        const topId = ids[0];
+        const topKey = keys[0];
+        const lastId = ids.pop();
+        const lastKey = keys.pop();
+        const size = ids.length;
+        if (size > 0) {
+            let i = 0;
+            for (;;) {
+                const left = i * 2 + 1;
+                if (left >= size) break;
+                const right = left + 1;
+                const child = right < size && keys[right] < keys[left] ? right : left;
+                if (keys[child] >= lastKey) break;
+                ids[i] = ids[child];
+                keys[i] = keys[child];
+                i = child;
+            }
+            ids[i] = lastId;
+            keys[i] = lastKey;
+        }
+        return [topId, topKey];
+    }
+}
+
+// ── A* over the walking graph ─────────────────────────────────────────
+// Dijkstra with an admissible straight-line estimate towards the destination. Every edge costs at
+// least its own distance (the rain, shade and off-path factors are all >= 1), so the estimate can
+// never overshoot and A* only expands nodes that could still be on the way. `estimate(id)` may be
+// null (plain Dijkstra).
+function dijkstra(adjacency, start, end, estimate = null) {
     const dist = {};
     const prev = {};
 
@@ -570,14 +670,26 @@ function dijkstra(adjacency, start, end) {
     if (!(start in dist)) { dist[start] = Infinity; prev[start] = null; }
     if (!(end in dist)) { dist[end] = Infinity; prev[end] = null; }
 
+    // One straight-line estimate per node, worked out on first use: a route asks about a few
+    // hundred nodes at most.
+    const estimates = {};
+    const h = (id) => {
+        if (!estimate) return 0;
+        if (!(id in estimates)) estimates[id] = estimate(id);
+        return estimates[id];
+    };
+
     dist[start] = 0;
-    const queue = [[start, 0]];
+    const open = new MinHeap();
+    open.push(start, h(start));
 
-    while (queue.length > 0) {
-        queue.sort((a, b) => a[1] - b[1]);
-        const [current, curDist] = queue.shift();
+    while (open.size > 0) {
+        const [current, key] = open.pop();
+        const curDist = dist[current];
 
-        if (curDist > dist[current]) continue;
+        if (!Number.isFinite(curDist)) continue;
+        // A stale heap entry: the node has been reached more cheaply since it was pushed.
+        if (key > curDist + h(current) + 1e-9) continue;
 
         if (current === end) {
             const path = [];
@@ -590,11 +702,11 @@ function dijkstra(adjacency, start, end) {
         }
 
         for (const [neighborId, edgeDist] of Object.entries(adjacency[current] || {})) {
-            const newDist = dist[current] + edgeDist;
+            const newDist = curDist + edgeDist;
             if (newDist < (dist[neighborId] ?? Infinity)) {
                 dist[neighborId] = newDist;
                 prev[neighborId] = current;
-                queue.push([neighborId, newDist]);
+                open.push(neighborId, newDist + h(neighborId));
             }
         }
     }
@@ -623,6 +735,20 @@ function snapPathToRoad(path, nodes, userLat, userLng, userElevation, borders, u
     };
     const inPath = new Set(path.map(String));
 
+    // One local plane for the whole snap. Converting every node relative to every hop's start was the
+    // hot part of snapping; a shared origin gives the same differences with a single trig call per node.
+    const ref = nodes[0] || { latitude: userLat, longitude: userLng };
+    const xyCache = new Map();
+    const xyOf = (id, n) => {
+        const key = String(id);
+        let p = xyCache.get(key);
+        if (!p) {
+            p = toLocalMeters(Number(n.latitude), Number(n.longitude), Number(ref.latitude), Number(ref.longitude));
+            xyCache.set(key, p);
+        }
+        return p;
+    };
+
     const snapped = [path[0]];
     for (let i = 0; i < path.length - 1; i++) {
         const aId = path[i];
@@ -648,13 +774,20 @@ function snapPathToRoad(path, nodes, userLat, userLng, userElevation, borders, u
             snapped.push(bId);
             continue;
         }
-        const [ax, ay] = toLocalMeters(a.latitude, a.longitude, a.latitude, a.longitude);
-        const [bx, by] = toLocalMeters(b.latitude, b.longitude, a.latitude, a.longitude);
+        const [ax, ay] = xyOf(aId, a);
+        const [bx, by] = xyOf(bId, b);
         const dx = bx - ax;
         const dy = by - ay;
         const len2 = dx * dx + dy * dy;
         const endExcl = Math.min(SNAP_END_EXCL_M, 0.25 * hopLen);
         const found = [];
+        const aLike = { latitude: a.latitude, longitude: a.longitude, elevation: a.elevation || 0 };
+        // The 10 m band around this hop, in local metres: anything outside it is rejected with two
+        // comparisons instead of a projection, two distances and up to two wall crossings.
+        const minX = Math.min(ax, bx) - SNAP_RADIUS_M;
+        const maxX = Math.max(ax, bx) + SNAP_RADIUS_M;
+        const minY = Math.min(ay, by) - SNAP_RADIUS_M;
+        const maxY = Math.max(ay, by) + SNAP_RADIUS_M;
 
         for (const n of nodes) {
             // A wall's turning point is a corner to go round, not road to follow: never snapped in.
@@ -662,18 +795,18 @@ function snapPathToRoad(path, nodes, userLat, userLng, userElevation, borders, u
             if (inPath.has(String(n.id))) continue;
             // Only nodes of the floor this hop is on.
             if (Number.isFinite(floorB) && floorOf(n) !== floorB) continue;
-            const [cx, cy] = toLocalMeters(n.latitude, n.longitude, a.latitude, a.longitude);
+            const [cx, cy] = xyOf(n.id, n);
+            if (cx < minX || cx > maxX || cy < minY || cy > maxY) continue;
             const t = ((cx - ax) * dx + (cy - ay) * dy) / len2;
             if (t < SNAP_T_MIN || t > SNAP_T_MAX) continue;
             const px = ax + t * dx;
             const py = ay + t * dy;
             const perp = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2);
             if (perp > SNAP_RADIUS_M) continue;
-            const dA = haversineDistance(a.latitude, a.longitude, a.elevation || 0, n.latitude, n.longitude, n.elevation || 0);
-            const dB = haversineDistance(n.latitude, n.longitude, n.elevation || 0, b.latitude, b.longitude, b.elevation || 0);
+            const dA = Math.hypot(cx - ax, cy - ay);
+            const dB = Math.hypot(bx - cx, by - cy);
             if (dA < endExcl || dB < endExcl) continue;
             if (dA + dB - hopLen > SNAP_DETOUR_M) continue;
-            const aLike = { latitude: a.latitude, longitude: a.longitude, elevation: a.elevation || 0 };
             if (segmentCrossesBorder(aLike, n, borders)) continue;
             if (segmentCrossesBorder(n, b, borders)) continue;
             found.push({ id: String(n.id), t });
@@ -780,7 +913,6 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
 
     // options.shade — { map, penalty }: on a hot day, sunny exposed edges cost more (shadeRouting.js).
     const shade = options.shade && options.shade.map && options.shade.penalty > 1 ? options.shade : null;
-    const graph = buildGraph(routableNodes, borders, rainMultiplier, links, shade);
 
     // Standing on an upper floor, the user's own height is that floor's, not
     // the ground's, so entry distances are measured flat.
@@ -805,25 +937,87 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
         };
     }
 
-    // Connect user to the nearby route nodes so Dijkstra can pick the
-    // entry point that yields the shortest overall route to the destination.
-    // (Entries whose straight line from the user cuts through a border are
-    // already excluded, so the path can no longer start on the wrong side
-    // of a building and detour through far-away nodes.)
-    // The user stands outside, so an entry into a sheltered node is an
-    // "entrance" and takes half the rain penalty — same rule as the server.
-    graph['__user__'] = {};
-    // The first step from where you stand costs like any other: rain, sun on a hot day, and (when it
-    // ends on the outdoor network) walking off the paths to get onto it.
-    const here = { latitude: userLat, longitude: userLng, path_type: 'outside' };
-    for (const entry of nearbyEntries) {
-        const ontoNetwork = entry.node.pathway_id != null || entry.node.wall_end;
-        graph['__user__'][entry.node.id] = entry.dist
-            * edgeRainFactor('outside', entry.node.path_type, rainMultiplier)
-            * (shade ? edgeShadeFactor(here, entry.node, shade.map, shade.penalty) : 1)
-            * (ontoNetwork ? OFF_PATH_FACTOR : 1);
+    // ── Which nodes a route can possibly need ──────────────────────────
+    // The user's campus comes from the nearest labelled node; the destination's from the node or its
+    // building. Two places of one campus never need the other campus, so that campus's nodes are left
+    // out of the graph. Kept conservative: nodes without a campus (doors, pathway waypoints, wall ends)
+    // always stay in, and a route that still fails is retried on the whole map, so this can only ever
+    // make a route faster, never wrong.
+    const campusOf = (value) => (value != null && String(value) !== '' ? String(value) : null);
+    let userCampus = null;
+    let nearestCampusM = 150;
+    for (const n of routableNodes) {
+        if (!n.campus) continue;
+        const d = haversineDistance(userLat, userLng, 0, n.latitude, n.longitude, n.elevation || 0);
+        if (d < nearestCampusM) {
+            nearestCampusM = d;
+            userCampus = String(n.campus);
+        }
     }
-    let path = dijkstra(graph, '__user__', String(destination.id));
+    const destBuilding = options.buildings
+        ? options.buildings.find((b) => String(b.id) === String(destination.building_id))
+        : null;
+    const destCampus = campusOf(destination.campus) || campusOf(destBuilding && destBuilding.campus);
+    const keepCampuses = userCampus && destCampus ? new Set([userCampus, destCampus]) : null;
+    const campusKey = keepCampuses ? [...keepCampuses].sort().join('') : '';
+    const graphNodes = keepCampuses && routableNodes.length > 40
+        ? routableNodes.filter((n) => !n.campus || keepCampuses.has(String(n.campus)))
+        : routableNodes;
+
+    // ── Graph cache ────────────────────────────────────────────────────
+    // The edge set and its costs depend on the map, the weather, the sun's shade and the closures —
+    // never on where the user stands. Keeping it in the route worker (routeSolver.prepareMap) means a
+    // reroute after walking 2 m costs a shortest-path search, not a whole Gabriel graph rebuild.
+    const shadeKey = options.shadeKey != null ? String(options.shadeKey) : (shade ? 'shade' : 'dry');
+    const closedKey = closed.size ? [...closed].sort().join(',') : '';
+    const graphKey = `${campusKey}|${rainNow ? 'wet' : 'dry'}|${rainMultiplier}|${shadeKey}|${closedKey}`;
+    const graphCache = options.graphCache && typeof options.graphCache.get === 'function' ? options.graphCache : null;
+    // Connect user to the nearby route nodes so the search can pick the entry point that yields the
+    // shortest overall route to the destination. (Entries whose straight line from the user cuts through
+    // a border are already excluded, so the path can no longer start on the wrong side of a building and
+    // detour through far-away nodes.) The user stands outside, so an entry into a sheltered node is an
+    // "entrance" and takes half the rain penalty — same rule as the server.
+    const here = { latitude: userLat, longitude: userLng, path_type: 'outside' };
+    const attachUser = (graph) => {
+        graph['__user__'] = {};
+        // The first step from where you stand costs like any other: rain, sun on a hot day, and (when
+        // it ends on the outdoor network) walking off the paths to get onto it.
+        for (const entry of nearbyEntries) {
+            const ontoNetwork = entry.node.pathway_id != null || entry.node.wall_end;
+            graph['__user__'][entry.node.id] = entry.dist
+                * edgeRainFactor('outside', entry.node.path_type, rainMultiplier)
+                * (shade ? edgeShadeFactor(here, entry.node, shade.map, shade.penalty) : 1)
+                * (ontoNetwork ? OFF_PATH_FACTOR : 1);
+        }
+        return graph;
+    };
+    const graphFor = (graphNodeList) => {
+        const key = graphNodeList === graphNodes ? graphKey : `${graphKey}|all`;
+        const cachedGraph = graphCache ? graphCache.get(key) : null;
+        if (cachedGraph) return attachUser(cachedGraph);
+        const built = attachUser(buildGraph(graphNodeList, borders, rainMultiplier, links, shade));
+        if (graphCache) graphCache.set(key, built);
+        return built;
+    };
+
+    // A* needs a straight-line estimate that can never overshoot the real walking cost (edge costs are
+    // distance times factors >= 1). Planar metres are used, which are never longer than the geodesic.
+    const nodeById = new Map();
+    for (const n of nodes) nodeById.set(String(n.id), n);
+    const estimateTo = (id) => {
+        if (id === '__user__') return 0;
+        const n = nodeById.get(String(id));
+        if (!n) return 0;
+        const [e, nn] = toLocalMeters(Number(n.latitude), Number(n.longitude), Number(destination.latitude), Number(destination.longitude));
+        return Math.hypot(e, nn);
+    };
+
+    let path = dijkstra(graphFor(graphNodes), '__user__', String(destination.id), estimateTo);
+    if (path === null && graphNodes !== routableNodes) {
+        // The shortlist was too narrow (a route that has to leave both campuses, or a stair link
+        // outside them): retry on the whole walking network before saying there is no way.
+        path = dijkstra(graphFor(routableNodes), '__user__', String(destination.id), estimateTo);
+    }
 
     if (path === null) {
         const needsStairs = userFloor !== null && userFloor !== destFloor;
@@ -886,7 +1080,7 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
                 step_distance_m: 0, accumulated_distance_m: 0,
             });
         } else {
-            const node = nodes.find((n) => String(n.id) === String(nodeId));
+            const node = nodeById.get(String(nodeId));
             if (node) {
                 let stepDist = 0;
                 if (i > 0) {
@@ -895,14 +1089,14 @@ export function computeRoute(nodes, destinationId, userLat, userLng, userElevati
                     if (prevId === '__user__') {
                         prevLat = userLat; prevLng = userLng; prevElev = userElevation;
                     } else {
-                        const prev = nodes.find((n) => String(n.id) === String(prevId));
+                        const prev = nodeById.get(String(prevId));
                         prevLat = prev.latitude; prevLng = prev.longitude; prevElev = prev.elevation || 0;
                     }
                     stepDist = haversineDistance(prevLat, prevLng, prevElev || 0, node.latitude, node.longitude, node.elevation || 0);
                     // A floor change is a staircase: its walked length is
                     // the incline, the same figure Dijkstra costed.
                     if (prevId !== '__user__') {
-                        const prevNode = nodes.find((n) => String(n.id) === String(prevId));
+                        const prevNode = nodeById.get(String(prevId));
                         if (prevNode && floorOf(prevNode) !== floorOf(node)) {
                             const link = linkByPair.get(linkKey(prevNode.id, node.id));
                             stepDist = stairLength(prevNode, node, link?.angle_deg, link);

@@ -110,7 +110,7 @@ function StudioView({
             if (s.keys.size > 0) {
                 const fwd = (s.keys.has('w') ? 1 : 0) - (s.keys.has('s') ? 1 : 0);
                 const strafe = (s.keys.has('d') ? 1 : 0) - (s.keys.has('a') ? 1 : 0);
-                const lift = (s.keys.has('e') ? 1 : 0) - (s.keys.has('q') ? 1 : 0);
+                const lift = (s.keys.has('e') || s.keys.has(' ') ? 1 : 0) - (s.keys.has('q') || s.keys.has('control') ? 1 : 0);
                 if (fwd || strafe || lift) {
                     const speed = (s.keys.has('shift') ? 2.2 : 1) * Math.max(8, s.dist * 0.45) * dt;
                     const fx = -Math.sin(s.az);
@@ -343,13 +343,14 @@ function StudioView({
         el.addEventListener('pointerleave', onLeave);
         const onKeyDown = (ev) => {
             const tag = ev.target?.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-            const k = ev.key.toLowerCase();
-            if (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q' || k === 'e' || k === 'shift') {
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || ev.metaKey || ev.altKey) return;
+            const k = ev.key === ' ' ? ' ' : ev.key === 'Control' ? 'control' : ev.key.toLowerCase();
+            if (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q' || k === 'e' || k === 'shift' || k === ' ' || k === 'control') {
+                ev.preventDefault();
                 s.keys.add(k);
             }
         };
-        const onKeyUp = (ev) => { s.keys.delete(ev.key.toLowerCase()); };
+        const onKeyUp = (ev) => { s.keys.delete(ev.key === ' ' ? ' ' : ev.key === 'Control' ? 'control' : ev.key.toLowerCase()); };
         const onWindowBlur = () => { s.keys.clear(); };
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
@@ -460,7 +461,7 @@ function StudioView({
                     ? (movingDoorIndex !== null ? 'Tap a wall to move door · WASD move · drag to turn' : 'Tap a wall to place a door · WASD move · drag to turn')
                     : placingItem
                         ? (movingItemIndex !== null ? 'Tap a wall or roof to move · WASD move · drag to turn' : 'Tap a wall or roof to place · WASD move · drag to turn')
-                        : 'WASD move · Q/E up/down · drag to turn · scroll to zoom'}
+                        : 'WASD move · Space/Ctrl up/down · Q/E up/down · drag to turn · scroll to zoom'}
             </span>
         </div>
     );

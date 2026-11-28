@@ -1843,7 +1843,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
                 dg.setAttribute('position', new THREE.Float32BufferAttribute([
                     a.x, 0.02, a.z, c.x, 0.02, c.z, c.x, doorH, c.z, a.x, 0.02, a.z, c.x, doorH, c.z, a.x, doorH, a.z,
                 ], 3));
-                group.add(new THREE.Mesh(dg, new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })));
+                group.add(new THREE.Mesh(dg, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false })));
             }
             // Indoor staircases & corridor links + rooms/nodes.
             const sNodeById = new Map((nodes || []).map((n) => [n.id, n]));

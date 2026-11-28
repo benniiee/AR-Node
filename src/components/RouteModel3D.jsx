@@ -10,8 +10,8 @@ import { makeLabel, disposeTree } from './StairPreview3D';
 import { pointInPolygon, bridgeDeckHeightM, pathwayWidthM } from '../campusGeometry';
 import { convexHull, clipToConvex, cutStairwells } from '../planarGeometry';
 import { treeModel, trunkTopM, seededRandom, shedRoof, gateEnds, objectRect, parkingLayout } from '../campusObjects';
-import { appearanceOf, roofLayers, roofColorOf, DEFAULT_WALL, DEFAULT_DOOR, BAY_M } from '../buildingAppearance';
-import { drawStudioItems } from './buildingItems3D';
+import { appearanceOf, roofLayers, roofColorOf, DEFAULT_WALL, DEFAULT_DOOR, BAY_M, ITEM_BY_TYPE } from '../buildingAppearance';
+import { drawStudioItems, itemBaseY } from './buildingItems3D';
 
 // ── The route in 3D (/map → "Route in 3D") ───────────────────────────
 // For a student who wants a closer look than the 2.5D map gives: the
@@ -683,10 +683,20 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
         ...(xray ? { transparent: true, opacity: 0.2, depthWrite: false } : {}),
     });
     if (studio) {
-        // Cut real doorway openings into the studio walls so glass doors and interiors are visible through them,
-        // while keeping one mesh per wall edge for raycasting (studioWallEdge).
+        // Cut real doorway and window openings into the studio walls so glass doors/windows and interiors are visible
+        // through them, while keeping one mesh per wall edge for raycasting (studioWallEdge).
         const doorH = Math.min(DOOR_HEIGHT_M, height * 0.85);
-        const spans = new Map();
+        const holes = new Map();
+        const addHole = (edge, t0, t1, y0, y1) => {
+            if (edge == null || !ring[edge]) return;
+            const ct0 = Math.max(0, Math.min(1, t0));
+            const ct1 = Math.max(0, Math.min(1, t1));
+            const cy0 = Math.max(0, Math.min(height, y0));
+            const cy1 = Math.max(0, Math.min(height, y1));
+            if (ct1 - ct0 < 1e-4 || cy1 - cy0 < 1e-4) return;
+            if (!holes.has(edge)) holes.set(edge, []);
+            holes.get(edge).push({ t0: ct0, t1: ct1, y0: cy0, y1: cy1 });
+        };
         for (const d of doors) {
             if (d.edge == null || !ring[d.edge]) continue;
             const a = ring[d.edge];
@@ -695,20 +705,33 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
             const ez = b.z - a.z;
             const len2 = ex * ex + ez * ez;
             if (!(len2 > 1e-6)) continue;
-            const tA = Math.max(0, Math.min(1, ((d.a.x - a.x) * ex + (d.a.z - a.z) * ez) / len2));
-            const tB = Math.max(0, Math.min(1, ((d.b.x - a.x) * ex + (d.b.z - a.z) * ez) / len2));
-            if (!spans.has(d.edge)) spans.set(d.edge, []);
-            spans.get(d.edge).push([Math.min(tA, tB), Math.max(tA, tB)]);
+            const tA = ((d.a.x - a.x) * ex + (d.a.z - a.z) * ez) / len2;
+            const tB = ((d.b.x - a.x) * ex + (d.b.z - a.z) * ez) / len2;
+            addHole(d.edge, Math.min(tA, tB), Math.max(tA, tB), 0, doorH);
+        }
+        for (const item of look.items || []) {
+            if (!item || (!item.type?.startsWith('window_') && !item.type?.startsWith('door_'))) continue;
+            const spec = ITEM_BY_TYPE[item.type];
+            if (!spec || spec.placement === 'roof') continue;
+            const edge = ((Number(item.edge) || 0) % ring.length + ring.length) % ring.length;
+            const a = ring[edge];
+            const b = ring[(edge + 1) % ring.length];
+            const edgeLen = Math.hypot(b.x - a.x, b.z - a.z);
+            if (!(edgeLen > 1e-4)) continue;
+            const w = item.width_m || spec.defaultWidth;
+            const h = item.height_m || spec.defaultHeight;
+            const y0 = itemBaseY(item, storeyH, height, 0);
+            const tCenter = item.t ?? 0.5;
+            const halfT = (w / 2) / edgeLen;
+            addHole(edge, tCenter - halfT, tCenter + halfT, y0, y0 + h);
         }
         ring.forEach((a, i) => {
             const b = ring[(i + 1) % ring.length];
             const edgeLen = Math.hypot(b.x - a.x, b.z - a.z);
             const uMax = edgeLen / BAY_M;
-            const vMax = height / storeyH;
-            const vDoor = doorH / storeyH;
             const pos = [];
             const uv = [];
-            const pushSeg = (t0, t1, y0, y1, v0, v1) => {
+            const pushSeg = (t0, t1, y0, y1) => {
                 if (t1 - t0 < 1e-4 || y1 - y0 < 1e-4) return;
                 const x0 = a.x + (b.x - a.x) * t0;
                 const z0 = a.z + (b.z - a.z) * t0;
@@ -716,16 +739,31 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
                 const z1 = a.z + (b.z - a.z) * t1;
                 const u0 = t0 * uMax;
                 const u1 = t1 * uMax;
+                const v0 = y0 / storeyH;
+                const v1 = y1 / storeyH;
                 pos.push(x0, y0, z0, x1, y0, z1, x1, y1, z1, x0, y0, z0, x1, y1, z1, x0, y1, z0);
                 uv.push(u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1);
             };
-            let from = 0;
-            for (const [t0, t1] of (spans.get(i) || []).sort((x, y) => x[0] - y[0])) {
-                pushSeg(from, t0, 0, height, 0, vMax);
-                pushSeg(t0, t1, doorH, height, vDoor, vMax);
-                from = Math.max(from, t1);
+            let rects = [{ t0: 0, t1: 1, y0: 0, y1: height }];
+            for (const h of holes.get(i) || []) {
+                const next = [];
+                for (const r of rects) {
+                    if (r.t1 <= h.t0 + 1e-4 || r.t0 >= h.t1 - 1e-4 || r.y1 <= h.y0 + 1e-4 || r.y0 >= h.y1 - 1e-4) {
+                        next.push(r);
+                        continue;
+                    }
+                    if (h.t0 > r.t0 + 1e-4) next.push({ t0: r.t0, t1: h.t0, y0: r.y0, y1: r.y1 });
+                    if (r.t1 > h.t1 + 1e-4) next.push({ t0: h.t1, t1: r.t1, y0: r.y0, y1: r.y1 });
+                    const ot0 = Math.max(r.t0, h.t0);
+                    const ot1 = Math.min(r.t1, h.t1);
+                    if (h.y0 > r.y0 + 1e-4) next.push({ t0: ot0, t1: ot1, y0: r.y0, y1: h.y0 });
+                    if (r.y1 > h.y1 + 1e-4) next.push({ t0: ot0, t1: ot1, y0: h.y1, y1: r.y1 });
+                }
+                rects = next;
             }
-            pushSeg(from, 1, 0, height, 0, vMax);
+            for (const r of rects) {
+                pushSeg(r.t0, r.t1, r.y0, r.y1);
+            }
             if (pos.length) {
                 const wg = new THREE.BufferGeometry();
                 wg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

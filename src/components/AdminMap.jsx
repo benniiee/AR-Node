@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import L from 'leaflet';
 import { api } from '../api';
 import { useWeather } from '../useWeather';
@@ -3338,7 +3339,7 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                     </ActionBar>
                 )}
 
-                {studioId != null && buildings.some((b) => b.id === studioId) && (
+                {studioId != null && buildings.some((b) => b.id === studioId) && createPortal(
                     <div style={{ position: 'fixed', inset: 0, zIndex: 4000, background: C.page }}>
                         <BuildingStudio
                             building={buildings.find((b) => b.id === studioId)}
@@ -3359,7 +3360,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                                 } catch (err) { onError(err.message); }
                             }}
                         />
-                    </div>
+                    </div>,
+                    document.body,
                 )}
 
                 {surface === 'manage' && manageBuilding && (

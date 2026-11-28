@@ -1305,7 +1305,7 @@ export const STUDIO_CSS = `
     .studio-reset { position: absolute; top: 12px; left: 12px; min-height: 36px; padding: 6px 14px; border-radius: 10px; border: 1px solid ${C.hairline};
         background: ${C.glass}; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
     .studio-reset:focus-visible, .studio-x:focus-visible, .studio-preset:focus-visible, .studio-swatch:focus-visible { outline: 2px solid ${C.focus}; outline-offset: 2px; }
-    .studio-tip { position: absolute; left: 12px; bottom: 12px; padding: 4px 10px; border-radius: 6px; background: rgba(10,10,12,0.6); color: #fff; font-size: 12px; pointer-events: none; }
+    .studio-tip { position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 24px); padding: 4px 10px; border-radius: 6px; background: rgba(10,10,12,0.6); color: #fff; font-size: 12px; pointer-events: none; }
     .studio-panel { display: flex; flex-direction: column; min-height: 0; background: ${C.bar}; border-left: 1px solid ${C.hairline}; }
     .studio-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid ${C.hairline}; }
     .studio-kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${C.accent}; }

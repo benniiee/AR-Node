@@ -174,7 +174,12 @@ export function buildStudioItemGroup(item, { ghost = false, blocked = false, sel
         return mesh;
     };
 
-    const glassMat = makeMat(primary, { roughness: 0.18, metalness: 0.35 });
+    const isGlassDoor = ['door_glass', 'door_sliding', 'door_double_wood', 'door_arched', 'door_frameless'].includes(item.type);
+    const glassMat = makeMat(primary, {
+        roughness: 0.18,
+        metalness: 0.35,
+        ...(isGlassDoor && !ghost ? { transparent: true, opacity: 0.32, depthWrite: false } : {}),
+    });
     const frameMat = makeMat(secondary, { roughness: 0.45, metalness: 0.25 });
     const mainMat = makeMat(primary, { roughness: 0.75 });
     const accentMat = makeMat(secondary, { roughness: 0.5 });

@@ -150,34 +150,50 @@ export function createBuildingLayer() {
             roof.renderOrder = -10;
             group.add(roof);
 
-            // Doors: a lit green opening with a bright frame on its wall, so
-            // the way in is obvious when the route walks up to the building.
+            // Entrance checkpoints: a ground pad + floating beacon marker right in front of each door
+            // so the real doorway stays unobstructed in camera mode.
             for (const d of frames) {
                 const a = anchorENU(anchor, { latitude: d.a.lat, longitude: d.a.lng });
                 const c = anchorENU(anchor, { latitude: d.b.lat, longitude: d.b.lng });
-                const nx = Math.sin((d.normalDeg * Math.PI) / 180) * 0.05;
-                const nz = -Math.cos((d.normalDeg * Math.PI) / 180) * 0.05;
-                const y0 = AR_GROUND_Y;
-                const y1 = AR_GROUND_Y + doorH;
-                const pane = new THREE.BufferGeometry();
-                pane.setAttribute('position', new THREE.Float32BufferAttribute([
-                    a.x + nx, y0, a.z + nz, c.x + nx, y0, c.z + nz, c.x + nx, y1, c.z + nz,
-                    a.x + nx, y0, a.z + nz, c.x + nx, y1, c.z + nz, a.x + nx, y1, a.z + nz,
-                ], 3));
-                const door = new THREE.Mesh(pane, new THREE.MeshBasicMaterial({
-                    color: DOOR_COLOR, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide,
+                const rad = (d.normalDeg * Math.PI) / 180;
+                const nx = Math.sin(rad);
+                const nz = -Math.cos(rad);
+                const px = (a.x + c.x) * 0.5 + nx * 0.85;
+                const pz = (a.z + c.z) * 0.5 + nz * 0.85;
+
+                const ringGeo = new THREE.RingGeometry(0.32, 0.44, 24);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMesh = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+                    color: DOOR_COLOR, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false,
                 }));
-                door.renderOrder = 3;
-                group.add(door);
-                const frame = new THREE.BufferGeometry();
-                frame.setAttribute('position', new THREE.Float32BufferAttribute([
-                    a.x + nx, y0, a.z + nz, a.x + nx, y1, a.z + nz,
-                    a.x + nx, y1, a.z + nz, c.x + nx, y1, c.z + nz,
-                    c.x + nx, y1, c.z + nz, c.x + nx, y0, c.z + nz,
-                ], 3));
-                const lines = new THREE.LineSegments(frame, new THREE.LineBasicMaterial({ color: DOOR_COLOR, transparent: true, opacity: 0.95, depthWrite: false }));
-                lines.renderOrder = 4;
-                group.add(lines);
+                ringMesh.position.set(px, AR_GROUND_Y + 0.04, pz);
+                ringMesh.renderOrder = 3;
+                group.add(ringMesh);
+
+                const padGeo = new THREE.CircleGeometry(0.24, 24);
+                padGeo.rotateX(-Math.PI / 2);
+                const padMesh = new THREE.Mesh(padGeo, new THREE.MeshBasicMaterial({
+                    color: DOOR_COLOR, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false,
+                }));
+                padMesh.position.set(px, AR_GROUND_Y + 0.04, pz);
+                padMesh.renderOrder = 3;
+                group.add(padMesh);
+
+                const stem = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.018, 0.018, 0.52, 8),
+                    new THREE.MeshBasicMaterial({ color: DOOR_COLOR, transparent: true, opacity: 0.75, depthWrite: false }),
+                );
+                stem.position.set(px, AR_GROUND_Y + 0.3, pz);
+                stem.renderOrder = 4;
+                group.add(stem);
+
+                const diamond = new THREE.Mesh(
+                    new THREE.OctahedronGeometry(0.16, 0),
+                    new THREE.MeshBasicMaterial({ color: DOOR_COLOR, transparent: true, opacity: 0.92 }),
+                );
+                diamond.position.set(px, AR_GROUND_Y + 0.68, pz);
+                diamond.renderOrder = 4;
+                group.add(diamond);
             }
 
             // Name above the roof centre.

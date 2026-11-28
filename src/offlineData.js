@@ -53,21 +53,30 @@ async function fetchJson(fetchImpl, url, headers) {
     return res.json();
 }
 
+function hasAuthHeader(headers) {
+    if (!headers || typeof headers !== 'object') return false;
+    return Object.keys(headers).some((k) => k.toLowerCase() === 'authorization' && Boolean(headers[k]));
+}
+
 /**
  * Static file first, API second. The static answer is only accepted when
  * `validateStatic` says it is complete; the API answer is accepted as is (it is
  * the source of truth), and its error is the one reported when both fail.
+ * When `skipStatic` is true (e.g. a signed-in student requesting the full
+ * member map rather than the public visitor snapshot), go straight to the API.
  *
  * @returns {Promise<{data: object, via: 'static'|'api'}>}
  */
 export async function fetchWithFallback({
-    fetchImpl = (...a) => fetch(...a), base = '', headers = {}, staticPath, apiPath, validateStatic = () => true,
+    fetchImpl = (...a) => fetch(...a), base = '', headers = {}, staticPath, apiPath, validateStatic = () => true, skipStatic = false,
 }) {
-    try {
-        const data = await fetchJson(fetchImpl, `${base}${staticPath}`, headers);
-        if (validateStatic(data)) return { data, via: 'static' };
-    } catch {
-        // fall through to the API
+    if (!skipStatic && staticPath) {
+        try {
+            const data = await fetchJson(fetchImpl, `${base}${staticPath}`, headers);
+            if (validateStatic(data)) return { data, via: 'static' };
+        } catch {
+            // fall through to the API
+        }
     }
 
     const data = await fetchJson(fetchImpl, `${base}${apiPath}`, headers);
@@ -95,7 +104,13 @@ async function safeGet(store, key) {
 export async function loadMapData({ fetchImpl, base = '', headers = {}, store = null } = {}) {
     try {
         const { data, via } = await fetchWithFallback({
-            fetchImpl, base, headers, staticPath: STATIC_MAP_PATH, apiPath: API_MAP_PATH, validateStatic: isValidMap,
+            fetchImpl,
+            base,
+            headers,
+            staticPath: STATIC_MAP_PATH,
+            apiPath: API_MAP_PATH,
+            validateStatic: isValidMap,
+            skipStatic: hasAuthHeader(headers),
         });
 
         return { data, source: 'network', via };
@@ -137,7 +152,15 @@ export async function downloadOfflineData({
     fetchImpl, base = '', headers = {}, store = null, now = () => Date.now(),
 } = {}) {
     const [mapRes, weatherRes] = await Promise.allSettled([
-        fetchWithFallback({ fetchImpl, base, headers, staticPath: STATIC_MAP_PATH, apiPath: API_MAP_PATH, validateStatic: isValidMap }),
+        fetchWithFallback({
+            fetchImpl,
+            base,
+            headers,
+            staticPath: STATIC_MAP_PATH,
+            apiPath: API_MAP_PATH,
+            validateStatic: isValidMap,
+            skipStatic: hasAuthHeader(headers),
+        }),
         fetchWithFallback({ fetchImpl, base, headers, staticPath: STATIC_WEATHER_PATH, apiPath: API_WEATHER_PATH, validateStatic: isWeatherObject }),
     ]);
 

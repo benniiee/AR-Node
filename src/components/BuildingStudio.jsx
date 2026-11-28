@@ -35,7 +35,8 @@ function facingWords(deg) {
 
 /** The 3D view: the campus as the 3D views draw it, centred on the building being dressed. Drag to turn, wheel or pinch to zoom. */
 function StudioView({
-    building, buildings, pathways, bridges, objects,
+    building, buildings, pathways, bridges, objects, nodes = [], links = [],
+    showInterior = false, onToggleInterior,
     selectedItemIndex = null, placingItem = null, movingItemIndex = null,
     onSelectItem, onPlaceAt, onMoveTo,
     selectedDoorIndex = null, placingDoorMode = false, movingDoorIndex = null, newDoorWidth = DOOR_WIDTH_M,
@@ -51,7 +52,7 @@ function StudioView({
         placingItem, movingItemIndex, onSelectItem, onPlaceAt, onMoveTo,
         placingDoorMode, movingDoorIndex, newDoorWidth, onSelectDoor, onPlaceDoorAt, onMoveDoorTo,
     };
-    const key = JSON.stringify([building.appearance, building.doors, building.id, buildings.length, objects.length, selectedItemIndex, selectedDoorIndex]);
+    const key = JSON.stringify([building.appearance, building.doors, building.id, buildings.length, objects.length, nodes.length, links.length, selectedItemIndex, selectedDoorIndex, showInterior]);
 
     useEffect(() => {
         const host = hostRef.current;
@@ -391,13 +392,14 @@ function StudioView({
         buildScene(s.group, {
             route: null,
             buildings: [building, ...others],
-            links: [],
+            links,
+            nodes,
             pathways,
             bridges,
             objects,
             follow: true,
             origin: c,
-            studio: { buildingId: building.id, selectedItemIndex, selectedDoorIndex },
+            studio: { buildingId: building.id, selectedItemIndex, selectedDoorIndex, showInterior },
         });
         const h = buildingHeightM(building);
         const levels = Math.max(1, Number(building.floors) || Math.round(h / 3.2) || 1);
@@ -439,7 +441,20 @@ function StudioView({
     return (
         <div className="studio-view">
             <div ref={hostRef} className="studio-host" role="img" aria-label={`3D view of ${building.name} as it will look, among the campus. Drag to turn it.`} />
-            <button type="button" className="studio-reset" onClick={reset}>Reset view</button>
+            <div className="studio-view-actions">
+                <button type="button" className="studio-reset" onClick={reset}>Reset view</button>
+                {onToggleInterior && (
+                    <button
+                        type="button"
+                        className={`studio-reset${showInterior ? ' is-on' : ''}`}
+                        aria-pressed={showInterior}
+                        onClick={onToggleInterior}
+                        title="See floors, staircases, rooms, and doors inside the building"
+                    >
+                        {showInterior ? 'Inside view: On' : 'Inside view'}
+                    </button>
+                )}
+            </div>
             <span className="studio-tip" aria-hidden="true">
                 {placingDoorMode || movingDoorIndex !== null
                     ? (movingDoorIndex !== null ? 'Tap a wall to move door · WASD move · drag to turn' : 'Tap a wall to place a door · WASD move · drag to turn')
@@ -632,6 +647,7 @@ export default function BuildingStudio({
     const [movingDoor, setMovingDoor] = useState(null);
     const [newDoorWidth, setNewDoorWidth] = useState(DOOR_WIDTH_M);
     const [doorNote, setDoorNote] = useState(null);
+    const [showInterior, setShowInterior] = useState(true);
 
     const look = draft.look;
     const doors = draft.doors;
@@ -874,6 +890,10 @@ export default function BuildingStudio({
                 pathways={pathways}
                 bridges={bridges}
                 objects={objects}
+                nodes={nodes}
+                links={links}
+                showInterior={showInterior}
+                onToggleInterior={() => setShowInterior((v) => !v)}
                 selectedItemIndex={activeSelectedIndex}
                 placingItem={placingTemplate}
                 movingItemIndex={activeMovingIndex}
@@ -1305,8 +1325,10 @@ export const STUDIO_CSS = `
     .studio-host { position: absolute; inset: 0; }
     .studio-host[data-nogl] { display: flex; align-items: center; justify-content: center; }
     .studio-host[data-nogl]::after { content: 'The Building Studio needs WebGL'; color: ${C.muted}; font-size: 14px; }
-    .studio-reset { position: absolute; top: 12px; left: 12px; min-height: 36px; padding: 6px 14px; border-radius: 10px; border: 1px solid ${C.hairline};
+    .studio-view-actions { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 2; }
+    .studio-reset { position: relative; min-height: 36px; padding: 6px 14px; border-radius: 10px; border: 1px solid ${C.hairline};
         background: ${C.glass}; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .studio-reset.is-on { background: rgba(22, 101, 52, 0.92); border-color: ${C.brand}; color: #dcfce7; }
     .studio-reset:focus-visible, .studio-x:focus-visible, .studio-preset:focus-visible, .studio-swatch:focus-visible { outline: 2px solid ${C.focus}; outline-offset: 2px; }
     .studio-tip { position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 24px); padding: 4px 10px; border-radius: 6px; background: rgba(10,10,12,0.6); color: #fff; font-size: 12px; pointer-events: none; }
     .studio-panel { display: flex; flex-direction: column; min-height: 0; background: ${C.bar}; border-left: 1px solid ${C.hairline}; }

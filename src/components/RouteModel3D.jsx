@@ -672,27 +672,83 @@ function signTexture(text, edge) {
 export function drawBuildingExterior(into, { ring, height, floors, look, doors = [], studio = null }) {
     const levels = Math.max(1, Number(floors) || Math.round(height / 3.2) || 1);
     const storeyH = height / levels;
+    const xray = Boolean(studio?.showInterior);
     // Walls: one mesh, every side a quad with the front tile repeated along it and up it.
     const facade = facadeTexture(look);
     const wallMat = new THREE.MeshStandardMaterial({
-        color: facade ? 0xffffff : (look.walls.color || DEFAULT_WALL), map: facade, roughness: 0.9, side: THREE.DoubleSide,
+        color: facade ? 0xffffff : (look.walls.color || DEFAULT_WALL),
+        map: facade,
+        roughness: 0.9,
+        side: THREE.DoubleSide,
+        ...(xray ? { transparent: true, opacity: 0.2, depthWrite: false } : {}),
     });
     if (studio) {
-        // Individual wall quads so Building Studio can raycast which wall edge and height was clicked.
+        // Cut real doorway openings into the studio walls so glass doors and interiors are visible through them,
+        // while keeping one mesh per wall edge for raycasting (studioWallEdge).
+        const doorH = Math.min(DOOR_HEIGHT_M, height * 0.85);
+        const spans = new Map();
+        for (const d of doors) {
+            if (d.edge == null || !ring[d.edge]) continue;
+            const a = ring[d.edge];
+            const b = ring[(d.edge + 1) % ring.length];
+            const ex = b.x - a.x;
+            const ez = b.z - a.z;
+            const len2 = ex * ex + ez * ez;
+            if (!(len2 > 1e-6)) continue;
+            const tA = Math.max(0, Math.min(1, ((d.a.x - a.x) * ex + (d.a.z - a.z) * ez) / len2));
+            const tB = Math.max(0, Math.min(1, ((d.b.x - a.x) * ex + (d.b.z - a.z) * ez) / len2));
+            if (!spans.has(d.edge)) spans.set(d.edge, []);
+            spans.get(d.edge).push([Math.min(tA, tB), Math.max(tA, tB)]);
+        }
         ring.forEach((a, i) => {
             const b = ring[(i + 1) % ring.length];
-            const u = Math.hypot(b.x - a.x, b.z - a.z) / BAY_M;
-            const v = height / storeyH;
-            const wg = new THREE.BufferGeometry();
-            wg.setAttribute('position', new THREE.Float32BufferAttribute([
-                a.x, 0, a.z, b.x, 0, b.z, b.x, height, b.z, a.x, 0, a.z, b.x, height, b.z, a.x, height, a.z,
-            ], 3));
-            wg.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, u, 0, u, v, 0, 0, u, v, 0, v], 2));
-            wg.computeVertexNormals();
-            const wm = new THREE.Mesh(wg, wallMat);
-            wm.userData.studioWallEdge = i;
-            into.add(wm);
+            const edgeLen = Math.hypot(b.x - a.x, b.z - a.z);
+            const uMax = edgeLen / BAY_M;
+            const vMax = height / storeyH;
+            const vDoor = doorH / storeyH;
+            const pos = [];
+            const uv = [];
+            const pushSeg = (t0, t1, y0, y1, v0, v1) => {
+                if (t1 - t0 < 1e-4 || y1 - y0 < 1e-4) return;
+                const x0 = a.x + (b.x - a.x) * t0;
+                const z0 = a.z + (b.z - a.z) * t0;
+                const x1 = a.x + (b.x - a.x) * t1;
+                const z1 = a.z + (b.z - a.z) * t1;
+                const u0 = t0 * uMax;
+                const u1 = t1 * uMax;
+                pos.push(x0, y0, z0, x1, y0, z1, x1, y1, z1, x0, y0, z0, x1, y1, z1, x0, y1, z0);
+                uv.push(u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1);
+            };
+            let from = 0;
+            for (const [t0, t1] of (spans.get(i) || []).sort((x, y) => x[0] - y[0])) {
+                pushSeg(from, t0, 0, height, 0, vMax);
+                pushSeg(t0, t1, doorH, height, vDoor, vMax);
+                from = Math.max(from, t1);
+            }
+            pushSeg(from, 1, 0, height, 0, vMax);
+            if (pos.length) {
+                const wg = new THREE.BufferGeometry();
+                wg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                wg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+                wg.computeVertexNormals();
+                const wm = new THREE.Mesh(wg, wallMat);
+                wm.userData.studioWallEdge = i;
+                if (xray) wm.renderOrder = 4;
+                into.add(wm);
+            }
         });
+        if (xray) {
+            const shellEdge = new THREE.LineBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.65 });
+            ring.forEach((a, i) => {
+                const b = ring[(i + 1) % ring.length];
+                into.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(a.x, 0, a.z), new THREE.Vector3(a.x, height, a.z),
+                ]), shellEdge));
+                into.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(a.x, height, a.z), new THREE.Vector3(b.x, height, b.z),
+                ]), shellEdge));
+            });
+        }
     } else {
         const pos = [];
         const uv = [];
@@ -717,6 +773,7 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
     const roofMat = new THREE.MeshStandardMaterial({
         color: sheet ? 0xffffff : roofColorOf(look), map: sheet, roughness: 0.7, metalness: look.roof?.material === 'metal' ? 0.25 : 0.1,
         flatShading: true, side: THREE.DoubleSide,
+        ...(xray ? { transparent: true, opacity: 0.2, depthWrite: false } : {}),
     });
     const faces = [];
     const uvs = [];
@@ -774,6 +831,8 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
         color: doorColor,
         roughness: isGlazedDoor ? 0.28 : (entrance.door === 'steel' || entrance.door === 'roll_up' ? 0.45 : 0.8),
         metalness: entrance.door === 'wood' || entrance.door === 'double_wood' ? 0.05 : (entrance.door === 'steel' || entrance.door === 'roll_up' ? 0.45 : 0.25),
+        side: THREE.DoubleSide,
+        ...(studio && isGlazedDoor ? { transparent: true, opacity: 0.34, depthWrite: false } : {}),
     });
     doors.forEach((door, i) => {
         const len = Math.hypot(door.b.x - door.a.x, door.b.z - door.a.z) || 1;
@@ -783,9 +842,10 @@ export function drawBuildingExterior(into, { ring, height, floors, look, doors =
         const c = { x: (door.a.x + door.b.x) / 2, z: (door.a.z + door.b.z) / 2 };
         const turn = Math.atan2(-d.z, d.x);
         const canopyY = DOOR_HEIGHT_M + 0.45;
-        // The doorway itself, a little out from the wall's painted front.
+        // The doorway itself, sitting in the wall opening (or slightly proud on solid exterior).
         const doorway = new THREE.Mesh(new THREE.PlaneGeometry(len, DOOR_HEIGHT_M), doorMat);
-        doorway.position.set(c.x + n.x * 0.04, DOOR_HEIGHT_M / 2, c.z + n.z * 0.04);
+        const offsetOut = studio ? 0.01 : 0.04;
+        doorway.position.set(c.x + n.x * offsetOut, DOOR_HEIGHT_M / 2, c.z + n.z * offsetOut);
         doorway.lookAt(doorway.position.x + n.x, doorway.position.y, doorway.position.z + n.z);
         if (studio) {
             doorway.userData.studioDoorIndex = i;
@@ -1286,7 +1346,7 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         // Its outside as its department dressed it (Building Studio), or the plain look with windows.
         const roofTop = b.status === 'under_construction' ? height : drawBuildingExterior(group, {
             ring, height, floors: b.floors, look: appearanceOf(b),
-            doors: doorFrames(b.polygon, b.doors).map((d) => ({ a: xz(d.a.lat, d.a.lng), b: xz(d.b.lat, d.b.lng), normalDeg: d.normalDeg })),
+            doors: doorFrames(b.polygon, b.doors).map((d) => ({ a: xz(d.a.lat, d.a.lng), b: xz(d.b.lat, d.b.lng), normalDeg: d.normalDeg, edge: d.edge })),
             studio: studio && b.id === studio.buildingId ? studio : null,
         });
         const cx = ring.reduce((sum, p) => sum + p.x, 0) / ring.length;
@@ -1736,6 +1796,92 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         return { pts, stops };
     };
     const { pts, stops } = routePoints(path, true);
+    // Building Studio interior: always render floors, door thresholds, staircases, corridors, and rooms
+    // inside the studio building so flying inside or looking through glass doors/X-ray shows the real interior.
+    if (studio?.buildingId != null && byId.has(studio.buildingId)) {
+        const sb = byId.get(studio.buildingId);
+        const sRing = (sb.polygon || []).map((p) => xz(p.lat, p.lng));
+        if (sRing.length >= 3) {
+            const levels = Math.max(1, Number(sb.floors) || Math.round(buildingHeightM(sb) / 3.2) || 1);
+            const h = storey(sb);
+            const shape = new THREE.Shape(sRing.map((p) => new THREE.Vector2(p.x, -p.z)));
+            const SLAB = 0.24;
+            for (let f = 0; f < levels; f += 1) {
+                const label = screenLabel(floorAria(f), f === 0 ? { bg: '#166534', fg: '#dcfce7' } : {}, 0.038);
+                label.position.set(sRing[0].x, f * h + 0.85, sRing[0].z);
+                group.add(label);
+                if (f === 0) {
+                    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false });
+                    geo.rotateX(-Math.PI / 2);
+                    const base = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x2f6b46, transparent: true, opacity: 0.55, depthWrite: false }));
+                    base.position.y = 0.02;
+                    group.add(base);
+                    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: 0x9fd9b4 }));
+                    edges.position.y = 0.02;
+                    group.add(edges);
+                    continue;
+                }
+                const geo = new THREE.ExtrudeGeometry(shape, { depth: SLAB, bevelEnabled: false });
+                geo.rotateX(-Math.PI / 2);
+                const top = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.8, transparent: true, opacity: 0.56 });
+                const side = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.9, transparent: true, opacity: 0.85 });
+                const slab = new THREE.Mesh(geo, [top, side]);
+                slab.position.y = f * h - SLAB;
+                slab.renderOrder = 2;
+                group.add(slab);
+                const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }));
+                edges.position.y = slab.position.y;
+                edges.renderOrder = 3;
+                group.add(edges);
+            }
+            // Door threshold highlights on ground floor.
+            const doorH = Math.min(DOOR_HEIGHT_M, h * 0.85);
+            for (const d of doorFrames(sb.polygon, sb.doors)) {
+                const a = xz(d.a.lat, d.a.lng);
+                const c = xz(d.b.lat, d.b.lng);
+                const dg = new THREE.BufferGeometry();
+                dg.setAttribute('position', new THREE.Float32BufferAttribute([
+                    a.x, 0.02, a.z, c.x, 0.02, c.z, c.x, doorH, c.z, a.x, 0.02, a.z, c.x, doorH, c.z, a.x, doorH, a.z,
+                ], 3));
+                group.add(new THREE.Mesh(dg, new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })));
+            }
+            // Indoor staircases & corridor links + rooms/nodes.
+            const sNodeById = new Map((nodes || []).map((n) => [n.id, n]));
+            const corridorMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8 });
+            for (const l of links || []) {
+                const a = sNodeById.get(l.node_a_id);
+                const b = sNodeById.get(l.node_b_id);
+                if (!a || !b || a.building_id !== sb.id || b.building_id !== sb.id) continue;
+                if (l.kind === 'stairs' || floorOf(a) !== floorOf(b)) {
+                    const { plan, bottom, top } = planFromLink(l, a, b);
+                    drawSteps(plan, bottom, top);
+                } else {
+                    const pa = xz(a.latitude, a.longitude);
+                    const pb = xz(b.latitude, b.longitude);
+                    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(pa.x, yOf(a) + 0.08, pa.z),
+                        new THREE.Vector3(pb.x, yOf(b) + 0.08, pb.z),
+                    ]), corridorMat));
+                }
+            }
+            const roomDiscMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.5 });
+            const routeDiscMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.5 });
+            for (const n of nodes || []) {
+                if (n.building_id !== sb.id) continue;
+                const p = xz(n.latitude, n.longitude);
+                const py = yOf(n);
+                const isRoom = n.type === 'location';
+                const disc = new THREE.Mesh(new THREE.CylinderGeometry(isRoom ? 0.34 : 0.2, isRoom ? 0.34 : 0.2, 0.08, 14), isRoom ? roomDiscMat : routeDiscMat);
+                disc.position.set(p.x, py + 0.06, p.z);
+                group.add(disc);
+                if (isRoom && n.name) {
+                    const tag = screenLabel(n.name, { bg: '#16161b', fg: '#ffffff', icon: 'pin', border: 'rgba(74, 222, 128, 0.7)' }, 0.036);
+                    tag.position.set(p.x, py + 1.05, p.z);
+                    group.add(tag);
+                }
+            }
+        }
+    }
     // Every staircase up to a bridge deck, on the route or not: a bridge is seen with its stairs.
     if (bridges?.length && nodes?.length) {
         const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -1914,6 +2060,7 @@ export default function RouteModel3D({ route, buildings, links, bridges = [], ob
             s.target.addScaledVector(f, fwd * speed).addScaledVector(r, side * speed);
             s.dirty = true;
         };
+        const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         const loop = (now = 0) => {
             s.raf = requestAnimationFrame(loop);
             const dt = s.last ? Math.min(0.05, (now - s.last) / 1000) : 0;

@@ -110,6 +110,20 @@ await assert.rejects(downloadOfflineData({ fetchImpl: fakeFetch({}), store, now:
 assert.equal((await store.get('map')).savedAt, 111);
 await assert.rejects(downloadOfflineData({ fetchImpl: fakeFetch({ [STATIC_MAP_PATH]: { body: MAP } }), store: null }), /cannot store offline data/);
 
+// signed-in student (Authorization header): skips the public static visitor snapshot and fetches the full member map from API
+const MEMBER_MAP = { version: 8, audience: 'member', nodes: [node(1), node(2), node(3)], links: [{ id: 1 }], borders: [] };
+f = fakeFetch({ [STATIC_MAP_PATH]: { body: MAP }, [API_MAP_PATH]: { body: MEMBER_MAP }, [STATIC_WEATHER_PATH]: { body: WEATHER(5) } });
+m = await loadMapData({ fetchImpl: f, headers: { Authorization: 'Bearer tok-123' }, store: fakeStore() });
+assert.equal(m.via, 'api');
+assert.equal(m.data.nodes.length, 3);
+assert.deepEqual(f.calls, [API_MAP_PATH]);
+
+store = fakeStore();
+f = fakeFetch({ [STATIC_MAP_PATH]: { body: MAP }, [API_MAP_PATH]: { body: MEMBER_MAP }, [STATIC_WEATHER_PATH]: { body: WEATHER(5) } });
+d = await downloadOfflineData({ fetchImpl: f, headers: { Authorization: 'Bearer tok-123' }, store, now: () => NOW });
+assert.equal(d.nodes, 3);
+assert.deepEqual(f.calls, [API_MAP_PATH, STATIC_WEATHER_PATH]);
+
 // ---- helpers
 assert.equal(await readOfflineMeta(fakeStore()), null);
 assert.equal(await readOfflineMeta(null), null);

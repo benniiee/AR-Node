@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import { api } from '../api';
+import { useWeather } from '../useWeather';
 import AdminDepartments from './AdminDepartments';
 import AdminStudents from './AdminStudents';
 import AdminWeather from './AdminWeather';
@@ -37,6 +38,9 @@ import { createDestinationPinIcon } from '../mapIcons';
 import { BuildingStudio } from './Lazy3D';
 import { createTileLayer, campusLatLngBounds, lockToCampus, CAMPUS_CENTER, CAMPUS_MIN_ZOOM, CAMPUS_MAX_ZOOM, CAMPUS_MAP_LOCK, GPS_HIDDEN_LAYERS, GPS_FLAVOR } from '../campusMap';
 import { SmoothPoint, SmoothAngle, createPovIcon, paintPovRotation, createHeadingListener } from '../povMotion';
+
+// The 3D sky is three.js, like the other 3D views, so it loads only when the map opens.
+const CloudField3D = React.lazy(() => import('./CloudField3D'));
 
 // ── Theme: ARNode black / white / green ─────────────────────────────
 // Same HUD language as the mobile screens (see src/uiTokens.js): near-black
@@ -198,6 +202,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
     const isAdmin = currentUser?.role === 'admin';
     // Office staff (not their department's head): they set the hours of the places assigned to them, nothing else.
     const isOfficeStaff = currentUser?.role === 'faculty' && currentUser?.is_head === false;
+    // The same live campus weather the student map reads, for the sky over this map.
+    const [weather] = useWeather();
     const mapRef = useRef(null);
     const mapInstance = useRef(null);
     const markersRef = useRef({});
@@ -2981,6 +2987,8 @@ export default function AdminMap({ currentUser, tab = 'map' }) {
                 .popup-btn-danger:hover { background: rgba(255,35,56,0.12); }
             `}</style>
             <div ref={mapRef} className={tab === 'map' ? 'map-in' : undefined} style={{ ...styles.map, display: tab === 'map' ? 'block' : 'none' }} />
+            {/* The sky draws into its own Leaflet pane (CloudField3D), so it needs no slot here. */}
+            <React.Suspense fallback={null}><CloudField3D weather={weather} mapRef={mapInstance} /></React.Suspense>
 
             {tab === 'departments' && isAdmin && (
                 <AdminDepartments

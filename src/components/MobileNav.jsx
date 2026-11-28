@@ -54,6 +54,8 @@ const ARView = React.lazy(() => import('./ARView'));
 const RouteModel3D = React.lazy(() => import('./RouteModel3D').then((m) => ({
     default: (props) => <><style>{m.ROUTE_MODEL_CSS}</style><m.default {...props} /></>,
 })));
+// The 3D sky over the map: also three.js, so it loads with the same on-demand rule.
+const CloudField3D = React.lazy(() => import('./CloudField3D'));
 const LOADING_3D = { display: 'grid', placeItems: 'center', color: C.muted, font: '500 15px/1.4 system-ui, sans-serif' };
 
 // The "you are here" dot. White core (the palette reserves green for the
@@ -2621,6 +2623,8 @@ export default function MobileNav({ session = { role: 'visitor' }, onSignOut, on
 
             <div ref={mapWrapRef} className="mnav-mapwrap">
                 <div ref={mapRef} style={{ position: 'absolute', inset: 0 }} />
+                {/* The live 3D sky: above the buildings, below markers and controls, never tappable. */}
+                <React.Suspense fallback={null}><CloudField3D weather={weather} mapRef={mapInstance} /></React.Suspense>
                 {/* One pill for every notice: sync news, and errors (a failed
                     map load keeps its Try again button until it is handled). */}
                 {/* Route tools, bottom centre (same panel as Map / Satellite):

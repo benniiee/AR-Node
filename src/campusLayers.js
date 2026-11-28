@@ -929,6 +929,10 @@ function drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, intera
         L.polygon(ring.map((q) => at(q, from + h)), { color: '#55524c', weight: 0.5, fillColor: lit, fillOpacity: 1, interactive: false }).addTo(layer);
     };
 
+    const style = b.construction_style || 'crane';
+    const withCrane = style !== 'workers';
+    const withWorkers = style === 'workers' || style === 'workers_crane';
+
     // The tower crane, standing out from the longest side facing the viewer, its jib over the building.
     const front = walls.reduce((best, w) => (!best || lengthM(w) > lengthM(best) ? w : best), null);
     if (!front) return shapes;
@@ -938,6 +942,24 @@ function drawSite25D(layer, b, { raise, kLng, sun, theme, viewDeg, depth, intera
     const across = (front.normalDeg + 90) % 360;
     const yellow = (pts, weight = 1.6) => { line(pts, SITE.craneEdge, weight + 1.2, 0.8); line(pts, SITE.crane, weight); };
     for (let i = 0; i < 3; i += 1) box(move(move(base, front.normalDeg, 2.4), across, -3 - i * 1.5), 0.8);
+
+    if (withWorkers) {
+        const worker25D = (p, hBase = 0, vest = '#f97316', helmet = '#facc15') => {
+            const foot = at(p, hBase);
+            const waist = at(p, hBase + 0.85);
+            const shoulder = at(p, hBase + 1.42);
+            const headPt = at(p, hBase + 1.66);
+            line([foot, waist], '#1e293b', 3.4);
+            line([waist, shoulder], vest, 4.4);
+            L.circleMarker(headPt, { radius: 2.8, color: '#3b2f05', weight: 0.7, fillColor: helmet, fillOpacity: 1, interactive: false }).addTo(layer);
+        };
+        const cPt = { lat: b.polygon.reduce((s, p) => s + +p.lat, 0) / b.polygon.length, lng: b.polygon.reduce((s, p) => s + +p.lng, 0) / b.polygon.length };
+        worker25D(cPt, slabH, '#f97316', '#facc15');
+        worker25D(move(along(front, 0.35), front.normalDeg, 2.2), 0, '#f97316', '#facc15');
+        worker25D(move(along(front, 0.7), front.normalDeg, 3.6), 0, '#eab308', '#f8fafc');
+        worker25D(move(move(base, front.normalDeg, 1.2), across, -2.0), 0, '#f97316', '#facc15');
+    }
+    if (!withCrane) return shapes;
 
     // Concrete foundation pad + base anchor struts.
     const padRing = [

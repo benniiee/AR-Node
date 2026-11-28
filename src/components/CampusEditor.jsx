@@ -221,6 +221,7 @@ export default function CampusEditor({
     // Buildings: completed (the default) or under construction (shown faded, never routed into or to);
     // the admin's to set. Paths and bridges are always existing.
     const [buildingStatus, setBuildingStatus] = useState(record?.status === 'under_construction' ? 'under_construction' : 'existing');
+    const [constructionStyle, setConstructionStyle] = useState(record?.construction_style || 'crane');
     const status = isBuilding ? buildingStatus : 'existing';
     // Legacy column, kept as it was: the campus now comes from the campus areas.
     const campus = record?.campus === 'B' ? 'B' : 'A';
@@ -681,6 +682,7 @@ export default function CampusEditor({
                     floors: clampInt(floors, 1, 50, 1),
                     height_m: heightM.trim() === '' ? null : Math.min(200, Math.max(2, Number(heightM) || 0)) || null,
                     status,
+                    ...(canChangeDepartment ? { construction_style: constructionStyle } : {}),
                     campus,
                     polygon: points,
                     // Re-snapped onto the (possibly reshaped) outline; doors left
@@ -1050,6 +1052,20 @@ export default function CampusEditor({
                                     : canChangeDepartment ? 'In use: students can be routed to it.' : 'Only an admin can change the status.'}
                             </span>
                         </div>
+                        {buildingStatus === 'under_construction' && (
+                            <div className="ui-field">
+                                <label className="ui-label" htmlFor="cf-construction-style">Construction style</label>
+                                <select
+                                    id="cf-construction-style" className="ui-select" value={constructionStyle}
+                                    onChange={(e) => setConstructionStyle(e.target.value)}
+                                    disabled={!canChangeDepartment}
+                                >
+                                    <option value="crane">Crane</option>
+                                    <option value="workers">Construction workers</option>
+                                    <option value="workers_crane">Construction workers + crane</option>
+                                </select>
+                            </div>
+                        )}
                         <div className="ui-field">
                             <label className="ui-label" htmlFor="cf-category">Building type</label>
                             <select

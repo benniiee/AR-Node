@@ -127,7 +127,7 @@ function addBars(into, segments, size, material) {
  * How far along it is comes from `seed` (the building's id), so it looks the same every time.
  * `ring`: its outline in scene coordinates ({x, z}), `height` its finished height (m).
  */
-export function drawConstructionSite(into, ring, height, floors, seed) {
+export function drawConstructionSite(into, ring, height, floors, seed, style = 'crane') {
     const rand = seededRandom((Number(seed) || 1) * 7 + 3);
     const levels = Math.max(1, Number(floors) || 1);
     const storeyH = height / levels;
@@ -243,21 +243,57 @@ export function drawConstructionSite(into, ring, height, floors, seed) {
         into.add(board);
     }
 
-    // The tower crane, beside the longest side, its jib swung out over the building.
+    const withCrane = style !== 'workers';
+    const withWorkers = style === 'workers' || style === 'workers_crane';
     const long = sides.reduce((best, side) => (side.len > best.len ? side : best), sides[0]);
-    const crane = new THREE.Group();
     const along = 0.25 + rand() * 0.5;
-    crane.position.set(
-        long.a.x + long.d.x * long.len * along + long.n.x * 5,
-        0,
-        long.a.z + long.d.z * long.len * along + long.n.z * 5,
-    );
+    const sitePos = {
+        x: long.a.x + long.d.x * long.len * along + long.n.x * 5,
+        z: long.a.z + long.d.z * long.len * along + long.n.z * 5,
+    };
     const baseYaw = Math.atan2(long.n.z, -long.n.x) + (rand() - 0.5) * 1.2;
-    into.add(crane);
-    const mastH = height + 9;
-    const w = 0.85;
     const darkSteel = new THREE.MeshStandardMaterial({ color: 0x262930, roughness: 0.55, metalness: 0.45 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x1e3a4c, roughness: 0.15, metalness: 0.55 });
+    const blockMat = new THREE.MeshStandardMaterial({ color: blocks ? 0xffffff : 0xb3ada2, map: blocks, roughness: 0.95 });
+    const cableMat = new THREE.MeshStandardMaterial({ color: 0x1e222a, roughness: 0.5, metalness: 0.6 });
+    const makePallet = (withHook = false) => {
+        const g = new THREE.Group();
+        const stack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 1), blockMat);
+        stack.position.set(0, 0.52, 0);
+        const base = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.12, 1.05), plank);
+        base.position.set(0, 0.06, 0);
+        g.add(stack, base);
+        if (withHook) {
+            const hookBody = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.28), yellow);
+            hookBody.position.set(0, 1.34, 0);
+            const hookTip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 6), darkSteel);
+            hookTip.position.set(0, 1.1, 0);
+            g.add(hookBody, hookTip);
+            addBars(g, [
+                [V(0, 1.06, 0), V(-0.56, 0.9, -0.46)],
+                [V(0, 1.06, 0), V(0.56, 0.9, -0.46)],
+                [V(0, 1.06, 0), V(0.56, 0.9, 0.46)],
+                [V(0, 1.06, 0), V(-0.56, 0.9, 0.46)],
+            ], 0.02, cableMat);
+        }
+        return g;
+    };
+
+    // Pallets of blocks waiting on the ground beside the site.
+    const piles = 3 + Math.floor(rand() * 3);
+    for (let i = 0; i < piles; i += 1) {
+        const groundPallet = makePallet(false);
+        groundPallet.position.set(sitePos.x - 3 - (i % 3) * 1.5, 0, sitePos.z + 2.6 + Math.floor(i / 3) * 1.3);
+        into.add(groundPallet);
+    }
+
+    if (withCrane) {
+        // The tower crane, beside the longest side, its jib swung out over the building.
+        const crane = new THREE.Group();
+        crane.position.set(sitePos.x, 0, sitePos.z);
+        into.add(crane);
+        const mastH = height + 9;
+        const w = 0.85;
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x1e3a4c, roughness: 0.15, metalness: 0.55 });
     const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff1a1a, emissiveIntensity: 0.9, roughness: 0.3 });
 
     // Heavy concrete foundation pad + base anchor struts.
@@ -409,7 +445,6 @@ export function drawConstructionSite(into, ring, height, floors, seed) {
         wheel.position.set(wx, jibY - 0.02, wz);
         trolleyGroup.add(wheel);
     }
-    const cableMat = new THREE.MeshStandardMaterial({ color: 0x222226, metalness: 0.4 });
     const cable = new THREE.Group();
     for (const cz of [-0.1, 0.1]) {
         const lineMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1, 6), cableMat);
@@ -421,29 +456,6 @@ export function drawConstructionSite(into, ring, height, floors, seed) {
     cable.position.set(0, jibY - 0.15 - cableLen / 2, 0);
     trolleyGroup.add(cable);
 
-    const blockMat = new THREE.MeshStandardMaterial({ color: blocks ? 0xffffff : 0xb3ada2, map: blocks, roughness: 0.95 });
-    const makePallet = (withHook = false) => {
-        const g = new THREE.Group();
-        const stack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 1), blockMat);
-        stack.position.set(0, 0.52, 0);
-        const base = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.12, 1.05), plank);
-        base.position.set(0, 0.06, 0);
-        g.add(stack, base);
-        if (withHook) {
-            const hookBody = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.28), yellow);
-            hookBody.position.set(0, 1.34, 0);
-            const hookTip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 6), darkSteel);
-            hookTip.position.set(0, 1.1, 0);
-            g.add(hookBody, hookTip);
-            addBars(g, [
-                [V(0, 1.06, 0), V(-0.56, 0.9, -0.46)],
-                [V(0, 1.06, 0), V(0.56, 0.9, -0.46)],
-                [V(0, 1.06, 0), V(0.56, 0.9, 0.46)],
-                [V(0, 1.06, 0), V(-0.56, 0.9, 0.46)],
-            ], 0.02, cableMat);
-        }
-        return g;
-    };
     const load = makePallet(true);
     load.position.set(0, hookY, 0);
     trolleyGroup.add(load);
@@ -463,34 +475,218 @@ export function drawConstructionSite(into, ring, height, floors, seed) {
         hookMin: Math.max(1.8, height * 0.3),
         hookMax: Math.max(2.6, Math.min(jibY - 2.8, height * 0.92)),
     });
+    }
 
-    // Pallets of blocks waiting on the ground by the crane.
-    const piles = 3 + Math.floor(rand() * 3);
-    for (let i = 0; i < piles; i += 1) {
-        const groundPallet = makePallet(false);
-        groundPallet.position.set(-3 - (i % 3) * 1.5, 0, 2.6 + Math.floor(i / 3) * 1.3);
-        crane.add(groundPallet);
+    if (withWorkers) {
+        // Construction workers sharing the same humanoid rig as the 3D player model, dressed in
+        // high-visibility safety vests, work pants, boots, and hard hats.
+        const makeWorker = ({ vest = 0xf97316, helmet = 0xfacc15, shirt = 0x334155, action = 'walk' } = {}) => {
+            const m = (color, roughness = 0.65) => new THREE.MeshStandardMaterial({ color, roughness });
+            const skin = m(0xd2a27c, 0.6);
+            const shirtMat = m(shirt, 0.75);
+            const vestMat = m(vest, 0.6);
+            const stripeMat = m(0xe2e8f0, 0.35);
+            const pantsMat = m(0x1e293b, 0.8);
+            const bootMat = m(0x18181b, 0.55);
+            const helmetMat = m(helmet, 0.35);
+
+            const body = new THREE.Group();
+            const torso = new THREE.Group();
+            body.add(torso);
+            const part = (parent, geo, material, x, y, z) => {
+                const mesh = new THREE.Mesh(geo, material);
+                mesh.position.set(x, y, z);
+                parent.add(mesh);
+                return mesh;
+            };
+            const pivot = (x, y, parent = torso) => {
+                const g = new THREE.Group();
+                g.position.set(x, y, 0);
+                parent.add(g);
+                return g;
+            };
+
+            const legL = pivot(-0.1, 0.88);
+            const legR = pivot(0.1, 0.88);
+            for (const leg of [legL, legR]) {
+                part(leg, new THREE.CapsuleGeometry(0.075, 0.72, 4, 10), pantsMat, 0, -0.44, 0);
+                part(leg, new THREE.BoxGeometry(0.1, 0.06, 0.2), bootMat, 0, -0.85, 0.035);
+            }
+
+            part(torso, new THREE.CapsuleGeometry(0.17, 0.42, 4, 12), shirtMat, 0, 1.15, 0).scale.set(1, 1, 0.62);
+            part(torso, new THREE.CylinderGeometry(0.174, 0.165, 0.2, 18), pantsMat, 0, 0.8, 0).scale.set(1, 1, 0.64);
+            part(torso, new THREE.CylinderGeometry(0.178, 0.178, 0.05, 18), bootMat, 0, 0.91, 0).scale.set(1, 1, 0.66);
+            // High-vis vest + reflective bands.
+            part(torso, new THREE.CylinderGeometry(0.18, 0.177, 0.35, 18), vestMat, 0, 1.17, 0).scale.set(1.03, 1, 0.65);
+            part(torso, new THREE.CylinderGeometry(0.184, 0.184, 0.045, 18), stripeMat, 0, 1.07, 0).scale.set(1.03, 1, 0.66);
+            part(torso, new THREE.CylinderGeometry(0.184, 0.184, 0.045, 18), stripeMat, 0, 1.23, 0).scale.set(1.03, 1, 0.66);
+
+            const armL = pivot(-0.24, 1.38);
+            const armR = pivot(0.24, 1.38);
+            for (const [arm, side] of [[armL, -1], [armR, 1]]) {
+                part(arm, new THREE.CapsuleGeometry(0.055, 0.56, 4, 10), skin, side * 0.01, -0.28, 0).rotation.z = side * 0.12;
+                part(arm, new THREE.CapsuleGeometry(0.07, 0.14, 4, 10), shirtMat, side * 0.002, -0.06, 0).rotation.z = side * 0.12;
+            }
+
+            const head = pivot(0, 1.49);
+            part(head, new THREE.CylinderGeometry(0.045, 0.05, 0.08, 10), skin, 0, 0, 0);
+            part(head, new THREE.SphereGeometry(0.115, 18, 14), skin, 0, 0.11, 0);
+            part(head, new THREE.SphereGeometry(0.122, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), m(0x2a1d16, 0.9), 0, 0.112, -0.012);
+            // Construction hard hat: dome, front visor brim, and top ridge.
+            part(head, new THREE.SphereGeometry(0.132, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.54), helmetMat, 0, 0.135, 0);
+            part(head, new THREE.CylinderGeometry(0.146, 0.146, 0.02, 18), helmetMat, 0, 0.13, 0.032).scale.set(1, 1, 1.22);
+            part(head, new THREE.BoxGeometry(0.03, 0.032, 0.19), helmetMat, 0, 0.26, 0);
+
+            if (action === 'carry') {
+                part(torso, new THREE.BoxGeometry(0.42, 0.22, 0.22), blockMat, 0, 1.06, 0.28);
+            } else if (action === 'lunch') {
+                part(armR, new THREE.CylinderGeometry(0.042, 0.034, 0.11, 10), m(0xf8fafc, 0.4), 0.01, -0.53, 0.06);
+                part(armR, new THREE.CylinderGeometry(0.038, 0.038, 0.015, 10), m(0x3f2312, 0.3), 0.01, -0.478, 0.06);
+                part(armL, new THREE.BoxGeometry(0.13, 0.055, 0.085), m(0xd97706, 0.8), -0.01, -0.53, 0.06);
+            }
+
+            body.userData.rig = { torso, legL, legR, armL, armR, head };
+            return body;
+        };
+
+        if (!into.userData.workers) into.userData.workers = [];
+        const addWorker = (opts, anim) => {
+            const mesh = makeWorker(opts);
+            into.add(mesh);
+            into.userData.workers.push({ mesh, rig: mesh.userData.rig, phase: rand() * Math.PI * 2, ...anim });
+        };
+
+        const cx = ring.reduce((s, p) => s + p.x, 0) / ring.length;
+        const cz = ring.reduce((s, p) => s + p.z, 0) / ring.length;
+        const upperY = levels > 1 ? (levels - 1) * storeyH : 0;
+        const side1 = sides[0];
+        const side2 = sides[Math.min(1, sides.length - 1)];
+        const side3 = sides[Math.min(2, sides.length - 1)];
+
+        // 1. Walking along an upper floor slab (or interior) in another part of the building.
+        const w1a = { x: cx + (side1.a.x - cx) * 0.45, z: cz + (side1.a.z - cz) * 0.45 };
+        const w1b = { x: cx + (side2.b.x - cx) * 0.45, z: cz + (side2.b.z - cz) * 0.45 };
+        addWorker({ vest: 0xf97316, helmet: 0xfacc15, action: 'walk' }, {
+            action: 'walk', a: w1a, b: w1b, y: upperY, speed: 0.35,
+        });
+
+        // 2. Walking along another side of the building perimeter.
+        const w2a = { x: side3.a.x + side3.d.x * side3.len * 0.15 + side3.n.x * 2.2, z: side3.a.z + side3.d.z * side3.len * 0.15 + side3.n.z * 2.2 };
+        const w2b = { x: side3.a.x + side3.d.x * side3.len * 0.85 + side3.n.x * 2.2, z: side3.a.z + side3.d.z * side3.len * 0.85 + side3.n.z * 2.2 };
+        addWorker({ vest: 0xeab308, helmet: 0xfacc15, action: 'walk' }, {
+            action: 'walk', a: w2a, b: w2b, y: 0, speed: 0.42,
+        });
+
+        // 3. Carrying blocks between the ground pallet area and the building wall.
+        const cA = { x: sitePos.x - 2.2, z: sitePos.z + 1.8 };
+        const cB = { x: long.a.x + long.d.x * long.len * 0.45 + long.n.x * 1.9, z: long.a.z + long.d.z * long.len * 0.45 + long.n.z * 1.9 };
+        addWorker({ vest: 0xf97316, helmet: 0xf97316, action: 'carry' }, {
+            action: 'carry', a: cA, b: cB, y: 0, speed: 0.32,
+        });
+
+        // 4. Thinking (foreman in white helmet, hand on chin).
+        const thinkPos = { x: sitePos.x - 1.2, z: sitePos.z + 0.8 };
+        addWorker({ vest: 0xeab308, helmet: 0xf8fafc, shirt: 0x1e3a8a, action: 'think' }, {
+            action: 'think', pos: thinkPos, y: 0, yaw: Math.atan2(cx - thinkPos.x, cz - thinkPos.z),
+        });
+
+        // 5. Looking up at the building (inspecting progress).
+        const lookPos = {
+            x: long.a.x + long.d.x * long.len * 0.72 + long.n.x * 3.8,
+            z: long.a.z + long.d.z * long.len * 0.72 + long.n.z * 3.8,
+        };
+        addWorker({ vest: 0xf97316, helmet: 0xfacc15, action: 'inspect' }, {
+            action: 'inspect', pos: lookPos, y: 0, yaw: Math.atan2(-long.n.x, -long.n.z),
+        });
+
+        // 6. Drinking coffee & eating bread/lunch beside the pallets.
+        const lunchPos = { x: sitePos.x - 4.5, z: sitePos.z + 1.4 };
+        addWorker({ vest: 0xf97316, helmet: 0xfacc15, shirt: 0x475569, action: 'lunch' }, {
+            action: 'lunch', pos: lunchPos, y: 0, yaw: Math.atan2(cx - lunchPos.x, cz - lunchPos.z) + 0.5,
+        });
     }
 }
 
 /**
- * Gently animates all under-construction tower cranes in `root` (slewing jib, gliding trolley,
- * and hoisting load). Safe to call every frame.
+ * Gently animates all under-construction tower cranes and construction workers in `root`.
+ * Safe to call every frame.
  */
 export function animateCranes(root, timeSec) {
     const cranes = root?.userData?.cranes;
-    if (!Array.isArray(cranes) || !cranes.length) return false;
-    for (const c of cranes) {
-        const t = timeSec + c.phase;
-        c.slew.rotation.y = c.baseYaw + Math.sin(t * 0.22) * 0.48;
-        const reachMix = 0.5 + 0.5 * Math.sin(t * 0.31 + 1.1);
-        c.trolleyGroup.position.x = c.reachMin + (c.reachMax - c.reachMin) * reachMix;
-        const hookMix = 0.5 + 0.5 * Math.sin(t * 0.45 + 2.3);
-        const hy = c.hookMin + (c.hookMax - c.hookMin) * hookMix;
-        c.load.position.y = hy;
-        const cableLen = Math.max(0.5, c.jibY - 0.15 - (hy + 1.35));
-        c.cable.scale.y = cableLen;
-        c.cable.position.y = c.jibY - 0.15 - cableLen / 2;
+    const workers = root?.userData?.workers;
+    const hasCranes = Array.isArray(cranes) && cranes.length > 0;
+    const hasWorkers = Array.isArray(workers) && workers.length > 0;
+    if (!hasCranes && !hasWorkers) return false;
+    if (hasCranes) {
+        for (const c of cranes) {
+            const t = timeSec + c.phase;
+            c.slew.rotation.y = c.baseYaw + Math.sin(t * 0.22) * 0.48;
+            const reachMix = 0.5 + 0.5 * Math.sin(t * 0.31 + 1.1);
+            c.trolleyGroup.position.x = c.reachMin + (c.reachMax - c.reachMin) * reachMix;
+            const hookMix = 0.5 + 0.5 * Math.sin(t * 0.45 + 2.3);
+            const hy = c.hookMin + (c.hookMax - c.hookMin) * hookMix;
+            c.load.position.y = hy;
+            const cableLen = Math.max(0.5, c.jibY - 0.15 - (hy + 1.35));
+            c.cable.scale.y = cableLen;
+            c.cable.position.y = c.jibY - 0.15 - cableLen / 2;
+        }
+    }
+    if (hasWorkers) {
+        for (const w of workers) {
+            const t = timeSec + w.phase;
+            const { torso, legL, legR, armL, armR, head } = w.rig;
+            if (w.action === 'walk' || w.action === 'carry') {
+                const raw = (Math.sin(t * w.speed) + 1) * 0.5;
+                const dir = Math.cos(t * w.speed) >= 0 ? 1 : -1;
+                w.mesh.position.set(
+                    w.a.x + (w.b.x - w.a.x) * raw,
+                    w.y,
+                    w.a.z + (w.b.z - w.a.z) * raw,
+                );
+                w.mesh.rotation.y = Math.atan2((w.b.x - w.a.x) * dir, (w.b.z - w.a.z) * dir);
+                const stride = Math.sin(t * 5.2);
+                legL.rotation.x = stride * 0.55;
+                legR.rotation.x = -stride * 0.55;
+                torso.position.y = Math.abs(stride) * 0.04;
+                if (w.action === 'carry') {
+                    armL.rotation.x = -1.15;
+                    armR.rotation.x = -1.15;
+                    armL.rotation.z = 0.15;
+                    armR.rotation.z = -0.15;
+                } else {
+                    armL.rotation.x = -stride * 0.45;
+                    armR.rotation.x = stride * 0.45;
+                }
+            } else if (w.action === 'think') {
+                w.mesh.position.set(w.pos.x, w.y, w.pos.z);
+                w.mesh.rotation.y = w.yaw;
+                armR.rotation.x = -1.42 + Math.sin(t * 1.4) * 0.06;
+                armR.rotation.z = -0.36;
+                armL.rotation.x = -0.35;
+                armL.rotation.z = 0.25;
+                head.rotation.x = 0.18 + Math.sin(t * 1.1) * 0.08;
+                head.rotation.y = Math.sin(t * 0.65) * 0.22;
+            } else if (w.action === 'inspect') {
+                w.mesh.position.set(w.pos.x, w.y, w.pos.z);
+                w.mesh.rotation.y = w.yaw;
+                head.rotation.x = -0.42 + Math.sin(t * 0.8) * 0.1;
+                head.rotation.y = Math.sin(t * 0.55) * 0.45;
+                armR.rotation.x = -1.05 + Math.sin(t * 0.9) * 0.15;
+                armR.rotation.z = -0.15;
+                armL.rotation.x = -0.18;
+            } else if (w.action === 'lunch') {
+                w.mesh.position.set(w.pos.x, w.y, w.pos.z);
+                w.mesh.rotation.y = w.yaw;
+                const sip = Math.max(0, Math.sin(t * 1.4));
+                const bite = Math.max(0, Math.sin(t * 1.4 + Math.PI));
+                armR.rotation.x = -0.55 - sip * 0.95;
+                armR.rotation.z = -0.18;
+                armL.rotation.x = -0.55 - bite * 0.95;
+                armL.rotation.z = 0.18;
+                head.rotation.x = (sip + bite) * 0.12;
+                head.rotation.y = Math.sin(t * 0.5) * 0.18;
+            }
+        }
     }
     return true;
 }
@@ -1378,8 +1574,8 @@ export function buildScene(group, { route, buildings, links, pathways = [], brid
         const ring = b.polygon.map((p) => xz(p.lat, p.lng));
         const height = buildingHeightM(b);
         if (b.status === 'under_construction') {
-            // Being built: a frame with hollow-block walls going up, scaffolding and a tower crane.
-            drawConstructionSite(group, ring, height, b.floors, b.id);
+            // Being built: a frame with hollow-block walls going up, scaffolding, and crane / workers.
+            drawConstructionSite(group, ring, height, b.floors, b.id, b.construction_style || 'crane');
         }
         // Its outside as its department dressed it (Building Studio), or the plain look with windows.
         const roofTop = b.status === 'under_construction' ? height : drawBuildingExterior(group, {

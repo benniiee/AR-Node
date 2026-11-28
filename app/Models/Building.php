@@ -18,6 +18,8 @@ class Building extends Model
 
     public const STATUSES = ['existing', 'under_construction', 'planned'];
 
+    public const CONSTRUCTION_STYLES = ['crane', 'workers', 'workers_crane'];
+
     public const SOURCES = ['osm', 'custom'];
 
     /**
@@ -71,6 +73,7 @@ class Building extends Model
         // Optional measured height (m); null = estimated from floors on the maps.
         'height_m',
         'status',
+        'construction_style',
         // 'school' or 'office': follows the owning department's kind; an admin labels unowned ones.
         'category',
         'campus',
@@ -95,6 +98,7 @@ class Building extends Model
     protected $attributes = [
         'floors' => 1,
         'status' => 'existing',
+        'construction_style' => 'crane',
         'category' => 'school',
         'campus' => 'A',
         'source' => 'custom',

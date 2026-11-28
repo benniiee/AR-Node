@@ -91,6 +91,9 @@ class BuildingController extends Controller
         if (! $user->isAdmin() && $request->has('status') && $request->input('status') !== $building->status) {
             abort(403, 'Only an admin can mark a building completed or under construction.');
         }
+        if (! $user->isAdmin() && $request->has('construction_style') && $request->input('construction_style') !== $building->construction_style) {
+            abort(403, 'Only an admin can change the construction style.');
+        }
         // How it looks (Building Studio) is the department's, like its doors; an admin only for a building with none.
         if ($user->isAdmin() && $request->has('appearance') && $building->department_id !== null) {
             abort(403, 'How a building looks is decided by the department or office that runs it.');
@@ -252,6 +255,7 @@ class BuildingController extends Controller
             'floors' => 'sometimes|integer|min:1|max:'.Building::MAX_FLOORS,
             'height_m' => 'sometimes|nullable|numeric|min:'.Building::MIN_HEIGHT_M.'|max:'.Building::MAX_HEIGHT_M,
             'status' => ['sometimes', Rule::in(Building::STATUSES)],
+            'construction_style' => ['sometimes', Rule::in(Building::CONSTRUCTION_STYLES)],
             'category' => ['sometimes', Rule::in(Building::CATEGORIES)],
             'campus' => 'sometimes|in:A,B',
             'polygon' => "{$required}|array|min:3|max:500",

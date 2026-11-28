@@ -647,7 +647,7 @@ export default function BuildingStudio({
     const [movingDoor, setMovingDoor] = useState(null);
     const [newDoorWidth, setNewDoorWidth] = useState(DOOR_WIDTH_M);
     const [doorNote, setDoorNote] = useState(null);
-    const [showInterior, setShowInterior] = useState(true);
+    const [showInterior, setShowInterior] = useState(false);
 
     const look = draft.look;
     const doors = draft.doors;
